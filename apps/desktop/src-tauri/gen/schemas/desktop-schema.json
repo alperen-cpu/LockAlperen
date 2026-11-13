@@ -195,6 +195,12 @@
           "markdownDescription": "Enables the lock command without any pre-configured scope."
         },
         {
+          "description": "Enables the lock_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lock-status",
+          "markdownDescription": "Enables the lock_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_vault_file command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-vault-file",
@@ -229,6 +235,12 @@
           "type": "string",
           "const": "deny-lock",
           "markdownDescription": "Denies the lock command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lock_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lock-status",
+          "markdownDescription": "Denies the lock_status command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_vault_file command without any pre-configured scope.",

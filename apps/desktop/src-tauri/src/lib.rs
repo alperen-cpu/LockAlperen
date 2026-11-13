@@ -1,6 +1,7 @@
 //! LockAlperen desktop shell. The WebView only renders; every decision and
 //! every secret stays on the Rust side (`session`).
 
+mod autolock;
 mod clipboard;
 mod session;
 
@@ -76,8 +77,8 @@ async fn unlock(password: String, state: State<'_, Shared>) -> Result<VaultInfo,
 
 #[tauri::command]
 fn lock(state: State<'_, Shared>, last: State<'_, LastCopy>) -> Result<(), String> {
-    last.clear();
-    state.with(Session::lock)
+    lock_all(&state, &last);
+    Ok(())
 }
 
 /// Copies a field in Rust: the value never passes through the WebView.
@@ -106,6 +107,30 @@ async fn copy_field(
         }
     });
     Ok(CLIPBOARD_SECONDS)
+}
+
+/// Locks the vault and clears our clipboard content. Used by the button,
+/// Ctrl+L, idle timeout and Windows session/power events alike.
+fn lock_all(shared: &Shared, last: &LastCopy) {
+    last.clear();
+    let _ = shared.with(Session::lock);
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockStatus {
+    unlocked: bool,
+    /// Seconds until the idle lock (system-wide input resets it).
+    lock_in_secs: u64,
+}
+
+/// Polled by the UI for the countdown and to notice an automatic lock.
+#[tauri::command]
+fn lock_status(state: State<'_, Shared>) -> Result<LockStatus, String> {
+    Ok(LockStatus {
+        unlocked: state.with(|s| s.is_unlocked())?,
+        lock_in_secs: autolock::seconds_left(autolock::system_idle(), autolock::idle_timeout()),
+    })
 }
 
 /// Sends the password to the WebView for display. Only on an explicit
@@ -139,7 +164,32 @@ fn navigation_allowed(url: &tauri::Url) -> bool {
     bundled || dev
 }
 
+/// Starts the Windows session/power watcher and the idle check.
+fn start_autolock(shared: Shared, last: LastCopy) {
+    {
+        let (shared, last) = (shared.clone(), last.clone());
+        // If the watcher cannot start, idle locking still works; the failure
+        // is not hidden from developers.
+        if autolock::watch(move |_reason| lock_all(&shared, &last)).is_none() {
+            eprintln!("LockAlperen: session/power watcher could not start");
+        }
+    }
+    std::thread::Builder::new()
+        .name("lav-idle".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let unlocked = shared.with(|s| s.is_unlocked()).unwrap_or(false);
+            if unlocked && autolock::system_idle() >= autolock::idle_timeout() {
+                lock_all(&shared, &last);
+            }
+        })
+        .expect("idle thread");
+}
+
 pub fn run() {
+    let shared = Shared::default();
+    let last = LastCopy::default();
+    start_autolock(shared.clone(), last.clone());
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -147,15 +197,16 @@ pub fn run() {
                 .on_navigation(|_, url| navigation_allowed(url))
                 .build(),
         )
-        .manage(Shared::default())
-        .manage(LastCopy::default())
+        .manage(shared)
+        .manage(last)
         .invoke_handler(tauri::generate_handler![
             pick_vault_file,
             unlock,
             lock,
             list_entries,
             copy_field,
-            reveal_password
+            reveal_password,
+            lock_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

@@ -45,6 +45,14 @@ export const copyField = (id: string, field: CopyField) =>
 /** Only on an explicit "show" click; the UI hides it again soon. */
 export const revealPassword = (id: string) => invoke<string>("reveal_password", { id });
 
+export interface LockStatus {
+  unlocked: boolean;
+  lockInSecs: number;
+}
+
+/** Rust decides when to lock (idle, Windows lock, sleep); the UI only polls. */
+export const lockStatus = () => invoke<LockStatus>("lock_status");
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";

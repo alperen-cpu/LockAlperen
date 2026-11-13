@@ -114,7 +114,6 @@ impl Session {
         info
     }
 
-    #[cfg(test)]
     pub fn is_unlocked(&self) -> bool {
         self.vault.is_some()
     }

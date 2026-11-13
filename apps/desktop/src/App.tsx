@@ -3,6 +3,7 @@ import * as api from "./api";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
+  ClockIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
@@ -44,8 +45,13 @@ export function App() {
     }
   }
 
+  function autoLocked() {
+    setOpen(null);
+    setError("Kasa otomatik olarak kilitlendi.");
+  }
+
   if (open && file) {
-    return <VaultScreen file={file} open={open} onLock={doLock} />;
+    return <VaultScreen file={file} open={open} onLock={doLock} onAutoLocked={autoLocked} />;
   }
   return (
     <UnlockScreen
@@ -219,7 +225,46 @@ function Avatar({ title, size }: { title: string; size: number }) {
   );
 }
 
-function VaultScreen({ file, open, onLock }: { file: SelectedFile; open: Open; onLock: () => void }) {
+function formatClock(secs: number) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function VaultScreen({
+  file,
+  open,
+  onLock,
+  onAutoLocked,
+}: {
+  file: SelectedFile;
+  open: Open;
+  onLock: () => void;
+  onAutoLocked: () => void;
+}) {
+  const [lockIn, setLockIn] = useState<number | null>(null);
+
+  // Rust locks on its own (idle, Win+L, sleep); here we only notice it.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const st = await api.lockStatus();
+        if (!alive) return;
+        if (!st.unlocked) onAutoLocked();
+        else setLockIn(st.lockInSecs);
+      } catch {
+        /* next tick retries */
+      }
+    };
+    void tick();
+    const t = window.setInterval(tick, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [onAutoLocked]);
+
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(open.entries[0]?.id ?? null);
@@ -289,6 +334,12 @@ function VaultScreen({ file, open, onLock }: { file: SelectedFile; open: Open; o
           <strong>{file.fileName}</strong>
         </div>
         <div className="topbar-right">
+          {lockIn !== null && (
+            <span className="autolock muted" title="Klavye ya da fare kullanılınca sıfırlanır">
+              <ClockIcon />
+              Otomatik kilit {formatClock(lockIn)}
+            </span>
+          )}
           <button type="button" className="btn" onClick={onLock}>
             <LockIcon />
             Kilitle <span className="kbd">Ctrl+L</span>

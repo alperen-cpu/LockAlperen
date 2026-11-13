@@ -11,7 +11,7 @@
 //! clipboard while the secret is on it, and the memory Windows frees on
 //! `EmptyClipboard` is not wiped by us.
 //!
-//! This is the only module with `unsafe` code in the app.
+//! One of the two modules with `unsafe` code in the app (with autolock.rs).
 #![allow(unsafe_code)]
 
 use std::{thread, time::Duration};

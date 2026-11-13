@@ -341,7 +341,16 @@ h1 {
 .topbar-right {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+}
+
+.autolock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .panes {

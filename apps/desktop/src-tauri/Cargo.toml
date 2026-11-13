@@ -23,12 +23,18 @@ tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-dialog = "=2.8.4"
 serde = { version = "1", features = ["derive"] }
 zeroize = "1"
-# Already in Tauri's tree at this version; used only by src/clipboard.rs.
+# Already in Tauri's tree at this version; used only by src/clipboard.rs
+# and src/autolock.rs (the only unsafe code in the app).
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

@@ -9,6 +9,7 @@
     "allow-lock",
     "allow-list-entries",
     "allow-copy-field",
-    "allow-reveal-password"
+    "allow-reveal-password",
+    "allow-lock-status"
   ]
 }

@@ -9,6 +9,7 @@ fn main() {
             "list_entries",
             "copy_field",
             "reveal_password",
+            "lock_status",
         ]),
     ))
     .expect("failed to run tauri-build");
