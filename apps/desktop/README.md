@@ -1,7 +1,7 @@
 # LockAlperen masaüstü (Faz 2: iskelet)
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur.
 
 ## Geliştirme
 
@@ -35,13 +35,17 @@ var.
 | Pano | Kopyalamayı Rust yapar; değer WebView'e gitmez. Pano geçmişi (Win+V), bulut panosu ve izleyiciler için üç işaret (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory=0`, `CanUploadToCloudClipboard=0`) konur. 12 sn sonra ve kilitlenince pano temizlenir, ama **yalnızca hâlâ bizim içeriğimiz duruyorsa** (sıra numarası kontrolü). `unsafe` kod yalnızca `src/clipboard.rs`'te. |
 | Parolayı göster | Yalnızca tıklanınca Rust'tan istenir; 15 sn sonra, başka kayıt seçilince ya da kilitlenince ekrandan ve React state'inden düşer. Bu sırada parola WebView belleğindedir (silinemez). |
 | Otomatik kilit | Kararı Rust verir; WebView yalnızca geri sayımı gösterir ve kilidi açık tutamaz. **Boşta kalma:** sistem genelinde son klavye ya da fare girdisinden itibaren 5 dk (`GetLastInputInfo`). Debug derlemede `LAV_IDLE_SECS` ile kısaltılabilir, release derlemede bu değişken yok sayılır. **Windows olayları:** kendi gizli penceremiz şunları alır: Win+L, konsol ya da uzak bağlantının kesilmesi, oturum kapatma (`WM_WTSSESSION_CHANGE`) ve uyku (`PBT_APMSUSPEND`). Her durumda pano da temizlenir. `unsafe` kod `src/autolock.rs`'te. |
+| Yeni kasa | Kaydetme penceresini Rust açar; yol Rust'ta kalır, `.lav` uzantısı eklenir. Parola ve tekrarı Rust'ta karşılaştırılır, en az 8 karakter (çekirdeğin kuralı). **Var olan dosyanın üzerine asla yazılmaz:** önce varlık kontrolü yapılır; arada dosya oluşursa çekirdeğin `save_file` kilidi altındaki kontrolü reddeder. "Üzerine yaz" seçeneği bilinçli olarak yok. Varsayılan KDF: Argon2id 64 MiB, 3 geçiş. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 11 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 18 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
+- Yeni kasa elle denendi: kaydetme penceresi, parolalar uyuşmayınca mesaj, oluşturunca boş kasa
+  açılıyor ve dosya diskte. Testler: kaydet-aç-yeniden aç, ad/tekrar/uzunluk kontrolleri, var olan
+  dosyanın baytlarının değişmemesi.
 - Otomatik kilit elle denendi (`LAV_IDLE_SECS=20`): geri sayım göründü, süre dolunca kasa
   kilitlendi ve bildirim çıktı. Gizli pencereye gönderilen gerçek mesajlarla (kilitlenme, uyku)
   kilitleme testi var.
@@ -89,6 +93,7 @@ Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyl
   - parola üretici;
   - TOTP;
   - son kasalar (L2 ile yerel veri dizini);
+  - yeni kasaya kayıt ekleme (kaydetme akışı henüz yok);
   - parola sağlığı;
   - KeePass içe aktarma;
   - Windows Hello.

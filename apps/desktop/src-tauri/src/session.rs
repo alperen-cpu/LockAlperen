@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use lav_core::format::{HEADER_LEN, TAG_LEN};
-use lav_core::Vault;
+use lav_core::{Error as CoreError, KdfParams, Vault};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -59,11 +59,21 @@ pub struct VaultInfo {
 pub struct Session {
     path: Option<PathBuf>,
     vault: Option<Vault>,
+    /// Where "Yeni kasa" will be written, chosen in the save dialog.
+    new_path: Option<PathBuf>,
 }
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
 pub const LOCKED: &str = "Kasa kilitli.";
 pub const NO_SUCH_ENTRY: &str = "Kayıt bulunamadı.";
+pub const NO_NEW_PATH: &str = "Önce yeni kasanın kaydedileceği yeri seçin.";
+pub const PASSWORDS_DIFFER: &str = "Parolalar aynı değil.";
+pub const EMPTY_NAME: &str = "Kasa adı boş olamaz.";
+pub const WEAK_PASSWORD: &str = "Ana parola en az 8 karakter olmalı.";
+pub const FILE_EXISTS: &str =
+    "Bu adda bir dosya zaten var. Var olan bir dosyanın üzerine yazılmaz; başka bir ad seçin.";
+pub const CREATE_FAILED: &str = "Kasa oluşturulamadı.";
+pub const SAVE_FAILED: &str = "Kasa kaydedilemedi.";
 
 /// A field the user can copy. Only these two can leave the vault, and only
 /// on an explicit click.
@@ -112,6 +122,74 @@ impl Session {
         };
         self.path = Some(path);
         info
+    }
+
+    /// Remembers where a new vault will go. Always adds the `.lav` extension.
+    pub fn select_new(&mut self, mut path: PathBuf) -> String {
+        if path
+            .extension()
+            .is_none_or(|e| !e.eq_ignore_ascii_case("lav"))
+        {
+            let mut name = path.file_name().unwrap_or_default().to_os_string();
+            name.push(".lav");
+            path.set_file_name(name);
+        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.new_path = Some(path);
+        name
+    }
+
+    /// Creates, saves and opens a new vault at the chosen path. Never
+    /// overwrites an existing file.
+    pub fn create(
+        &mut self,
+        name: &str,
+        password: &str,
+        confirm: &str,
+    ) -> Result<(SelectedFile, VaultInfo), String> {
+        self.create_with(name, password, confirm, KdfParams::default())
+    }
+
+    fn create_with(
+        &mut self,
+        name: &str,
+        password: &str,
+        confirm: &str,
+        kdf: KdfParams,
+    ) -> Result<(SelectedFile, VaultInfo), String> {
+        self.lock();
+        let path = self.new_path.clone().ok_or(NO_NEW_PATH)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(EMPTY_NAME.into());
+        }
+        if password != confirm {
+            return Err(PASSWORDS_DIFFER.into());
+        }
+        if path.exists() {
+            return Err(FILE_EXISTS.into());
+        }
+        let mut vault = Vault::create(name, password, None, kdf).map_err(|e| match e {
+            CoreError::WeakPassword(_) => WEAK_PASSWORD.to_owned(),
+            _ => CREATE_FAILED.to_owned(),
+        })?;
+        vault.save_file(&path).map_err(|e| match e {
+            // save_file refuses a path holding a file this vault did not load
+            // (e.g. created between the check above and now).
+            CoreError::FileChangedOnDisk => FILE_EXISTS.to_owned(),
+            _ => SAVE_FAILED.to_owned(),
+        })?;
+        let info = VaultInfo {
+            name: vault.data.name.clone(),
+            entry_count: vault.data.entries.len(),
+        };
+        let file = self.select(path);
+        self.vault = Some(vault);
+        self.new_path = None;
+        Ok((file, info))
     }
 
     pub fn is_unlocked(&self) -> bool {
@@ -362,6 +440,66 @@ mod tests {
         let f: Field = serde_json::from_str("\"password\"").unwrap();
         assert_eq!(f, Field::Password);
         assert!(serde_json::from_str::<Field>("\"notes\"").is_err());
+    }
+
+    #[test]
+    fn create_saves_opens_and_reopens() {
+        let dir = temp_dir("create");
+        let mut s = Session::default();
+        assert_eq!(s.select_new(dir.join("Yeni")), "Yeni.lav");
+        let (file, info) = s
+            .create_with("İş kasası", PASSWORD, PASSWORD, fast_kdf())
+            .unwrap();
+        assert_eq!(file.file_name, "Yeni.lav");
+        assert_eq!(info.name, "İş kasası");
+        assert!(s.is_unlocked());
+        assert!(s.entries().unwrap().is_empty());
+
+        // The file on disk opens with the same password.
+        s.lock();
+        assert_eq!(s.unlock(PASSWORD).unwrap().name, "İş kasası");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn create_checks_name_confirmation_and_length() {
+        let dir = temp_dir("create-checks");
+        let mut s = Session::default();
+        assert_eq!(
+            s.create_with("a", PASSWORD, PASSWORD, fast_kdf()),
+            Err(NO_NEW_PATH.to_owned())
+        );
+        s.select_new(dir.join("k.lav"));
+        assert_eq!(
+            s.create_with("  ", PASSWORD, PASSWORD, fast_kdf()),
+            Err(EMPTY_NAME.to_owned())
+        );
+        assert_eq!(
+            s.create_with("a", PASSWORD, "other password", fast_kdf()),
+            Err(PASSWORDS_DIFFER.to_owned())
+        );
+        assert_eq!(
+            s.create_with("a", "kisa", "kisa", fast_kdf()),
+            Err(WEAK_PASSWORD.to_owned())
+        );
+        assert!(!dir.join("k.lav").exists(), "nothing written on failure");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn create_never_overwrites_an_existing_file() {
+        let dir = temp_dir("create-exists");
+        let existing = make_vault(&dir);
+        let before = std::fs::read(&existing).unwrap();
+        let mut s = Session::default();
+        s.select_new(existing.clone());
+        assert_eq!(
+            s.create_with("x", PASSWORD, PASSWORD, fast_kdf()),
+            Err(FILE_EXISTS.to_owned())
+        );
+        assert_eq!(std::fs::read(&existing).unwrap(), before);
+        assert!(!s.is_unlocked());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

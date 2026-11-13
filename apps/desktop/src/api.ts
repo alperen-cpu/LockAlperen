@@ -53,6 +53,13 @@ export interface LockStatus {
 /** Rust decides when to lock (idle, Windows lock, sleep); the UI only polls. */
 export const lockStatus = () => invoke<LockStatus>("lock_status");
 
+/** Save dialog for a new vault. Returns the file name, or null. */
+export const pickNewVaultPath = () => invoke<string | null>("pick_new_vault_path");
+
+/** Creates, saves and opens the new vault. Never overwrites a file. */
+export const createVault = (name: string, password: string, confirm: string) =>
+  invoke<{ file: SelectedFile; info: VaultInfo }>("create_vault", { name, password, confirm });
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";

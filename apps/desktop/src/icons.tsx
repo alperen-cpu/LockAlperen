@@ -86,3 +86,9 @@ export const ClockIcon = () => (
     <path d="M12 7v5l3 2" />
   </Icon>
 );
+
+export const PlusIcon = () => (
+  <Icon>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+);

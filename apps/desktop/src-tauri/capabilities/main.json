@@ -10,6 +10,8 @@
     "allow-list-entries",
     "allow-copy-field",
     "allow-reveal-password",
-    "allow-lock-status"
+    "allow-lock-status",
+    "allow-pick-new-vault-path",
+    "allow-create-vault"
   ]
 }

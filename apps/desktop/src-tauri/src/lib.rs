@@ -64,6 +64,54 @@ async fn pick_vault_file(
     state.with(|s| s.select(path)).map(Some)
 }
 
+/// Save dialog for a new vault (from Rust, like the open dialog). Returns
+/// the file name to display; the path stays in Rust.
+#[tauri::command]
+async fn pick_new_vault_path(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("LockAlperen kasası", &["lav"])
+            .set_file_name("Kasa.lav")
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
+    state.with(|s| s.select_new(path)).map(Some)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Created {
+    file: SelectedFile,
+    info: VaultInfo,
+}
+
+#[tauri::command]
+async fn create_vault(
+    name: String,
+    password: String,
+    confirm: String,
+    state: State<'_, Shared>,
+) -> Result<Created, String> {
+    let (password, confirm) = (Zeroizing::new(password), Zeroizing::new(confirm));
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared.with(|s| s.create(&name, &password, &confirm))
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+    .and_then(|r| r)
+    .map(|(file, info)| Created { file, info })
+}
+
 /// Argon2id takes about a second, so it runs off the main thread.
 #[tauri::command]
 async fn unlock(password: String, state: State<'_, Shared>) -> Result<VaultInfo, String> {
@@ -206,7 +254,9 @@ pub fn run() {
             list_entries,
             copy_field,
             reveal_password,
-            lock_status
+            lock_status,
+            pick_new_vault_path,
+            create_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

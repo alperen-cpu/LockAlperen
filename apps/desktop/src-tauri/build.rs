@@ -10,6 +10,8 @@ fn main() {
             "copy_field",
             "reveal_password",
             "lock_status",
+            "pick_new_vault_path",
+            "create_vault",
         ]),
     ))
     .expect("failed to run tauri-build");

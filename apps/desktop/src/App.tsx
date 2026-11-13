@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import * as api from "./api";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
@@ -11,6 +19,7 @@ import {
   FolderIcon,
   ListIcon,
   LockIcon,
+  PlusIcon,
   SearchIcon,
 } from "./icons";
 
@@ -20,6 +29,8 @@ export function App() {
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [open, setOpen] = useState<Open | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // File name chosen for a new vault: shows the create form.
+  const [newName, setNewName] = useState<string | null>(null);
 
   async function choose() {
     setError(null);
@@ -29,7 +40,18 @@ export function App() {
         // Choosing a file locks any open vault on the Rust side.
         setFile(picked);
         setOpen(null);
+        setNewName(null);
       }
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
+
+  async function startCreate() {
+    setError(null);
+    try {
+      const name = await api.pickNewVaultPath();
+      if (name !== null) setNewName(name);
     } catch (e) {
       setError(api.errorText(e));
     }
@@ -53,14 +75,158 @@ export function App() {
   if (open && file) {
     return <VaultScreen file={file} open={open} onLock={doLock} onAutoLocked={autoLocked} />;
   }
+  if (newName !== null) {
+    return (
+      <CreateScreen
+        fileName={newName}
+        side={<Side busy={false} hasFile={file !== null} onChoose={choose} onCreate={startCreate} />}
+        onCancel={() => setNewName(null)}
+        onCreated={(f, info) => {
+          setFile(f);
+          setNewName(null);
+          setError(null);
+          setOpen({ info, entries: [] });
+        }}
+      />
+    );
+  }
   return (
     <UnlockScreen
       file={file}
       error={error}
       setError={setError}
       onChoose={choose}
+      onCreate={startCreate}
       onOpened={setOpen}
     />
+  );
+}
+
+function Side(props: { busy: boolean; hasFile: boolean; onChoose: () => void; onCreate: () => void }) {
+  return (
+    <aside className="unlock-side">
+      <Brand />
+      <div className="side-actions">
+        <button type="button" className="btn btn-left" onClick={props.onCreate} disabled={props.busy}>
+          <PlusIcon />
+          Yeni kasa oluştur
+        </button>
+        <button type="button" className="btn btn-left" onClick={props.onChoose} disabled={props.busy}>
+          <FileIcon />
+          {props.hasFile ? "Başka bir kasa aç…" : "Kasa dosyası aç…"}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function CreateScreen(props: {
+  fileName: string;
+  side: ReactNode;
+  onCancel: () => void;
+  onCreated: (file: SelectedFile, info: VaultInfo) => void;
+}) {
+  const [name, setName] = useState(props.fileName.replace(/\.lav$/i, ""));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Both passwords are uncontrolled and cleared on submit, never React state.
+  const pwRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
+
+  async function submit(ev: FormEvent) {
+    ev.preventDefault();
+    const pw = pwRef.current;
+    const cf = confirmRef.current;
+    if (!pw || !cf || busy) return;
+    const password = pw.value;
+    const confirm = cf.value;
+    pw.value = "";
+    cf.value = "";
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.createVault(name, password, confirm);
+      props.onCreated(r.file, r.info);
+    } catch (e) {
+      setError(api.errorText(e));
+      pw.focus();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="unlock">
+      {props.side}
+      <main className="unlock-main">
+        <form className="unlock-form" onSubmit={submit}>
+          <div className="center">
+            <h1>Yeni kasa</h1>
+            <p className="muted">{props.fileName}</p>
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="vname">
+              Kasa adı
+            </label>
+            <input
+              id="vname"
+              className="text-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              readOnly={busy}
+              autoComplete="off"
+            />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="npw">
+              Ana parola
+            </label>
+            <input
+              id="npw"
+              ref={pwRef}
+              className="text-input"
+              type="password"
+              autoComplete="new-password"
+              spellCheck={false}
+              readOnly={busy}
+              autoFocus
+            />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="npw2">
+              Ana parola (tekrar)
+            </label>
+            <input
+              id="npw2"
+              ref={confirmRef}
+              className="text-input"
+              type="password"
+              autoComplete="new-password"
+              spellCheck={false}
+              readOnly={busy}
+            />
+          </div>
+          {error ? (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className="muted small">
+              En az 8 karakter. Uzun bir parola cümlesi önerilir. Ana parola unutulursa kasa
+              açılamaz; kurtarma yolu yoktur.
+            </p>
+          )}
+          <div className="form-buttons">
+            <button type="button" className="btn wide" onClick={props.onCancel} disabled={busy}>
+              Vazgeç
+            </button>
+            <button type="submit" className="btn btn-accent wide" disabled={busy}>
+              {busy ? "Oluşturuluyor…" : "Kasayı oluştur"}
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
   );
 }
 
@@ -80,9 +246,10 @@ function UnlockScreen(props: {
   error: string | null;
   setError: (e: string | null) => void;
   onChoose: () => void;
+  onCreate: () => void;
   onOpened: (o: Open) => void;
 }) {
-  const { file, error, setError, onChoose, onOpened } = props;
+  const { file, error, setError, onChoose, onCreate, onOpened } = props;
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
   const [caps, setCaps] = useState(false);
@@ -121,15 +288,7 @@ function UnlockScreen(props: {
 
   return (
     <div className="unlock">
-      <aside className="unlock-side">
-        <Brand />
-        <div className="side-actions">
-          <button type="button" className="btn btn-left" onClick={onChoose} disabled={busy}>
-            <FileIcon />
-            {file ? "Başka bir kasa aç…" : "Kasa dosyası aç…"}
-          </button>
-        </div>
-      </aside>
+      <Side busy={busy} hasFile={file !== null} onChoose={onChoose} onCreate={onCreate} />
 
       <main className="unlock-main">
         <form className="unlock-form" onSubmit={submit}>

@@ -183,6 +183,12 @@
           "markdownDescription": "Enables the copy_field command without any pre-configured scope."
         },
         {
+          "description": "Enables the create_vault command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-create-vault",
+          "markdownDescription": "Enables the create_vault command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-entries",
@@ -199,6 +205,12 @@
           "type": "string",
           "const": "allow-lock-status",
           "markdownDescription": "Enables the lock_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_new_vault_path command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-new-vault-path",
+          "markdownDescription": "Enables the pick_new_vault_path command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_vault_file command without any pre-configured scope.",
@@ -225,6 +237,12 @@
           "markdownDescription": "Denies the copy_field command without any pre-configured scope."
         },
         {
+          "description": "Denies the create_vault command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-create-vault",
+          "markdownDescription": "Denies the create_vault command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-entries",
@@ -241,6 +259,12 @@
           "type": "string",
           "const": "deny-lock-status",
           "markdownDescription": "Denies the lock_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_new_vault_path command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-new-vault-path",
+          "markdownDescription": "Denies the pick_new_vault_path command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_vault_file command without any pre-configured scope.",
