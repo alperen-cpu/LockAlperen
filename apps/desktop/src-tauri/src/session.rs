@@ -446,6 +446,11 @@ impl Session {
         })
     }
 
+    pub fn health(&self, now: i64) -> Result<crate::health::Report, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        Ok(crate::health::check(&vault.data.entries, now))
+    }
+
     /// The entry's current TOTP code at Unix time `now`.
     pub fn totp_at(&self, id: &str, now: u64) -> Result<TotpCode, String> {
         let vault = self.vault.as_ref().ok_or(LOCKED)?;

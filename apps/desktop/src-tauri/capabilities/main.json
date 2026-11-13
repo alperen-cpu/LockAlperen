@@ -21,6 +21,7 @@
     "allow-save-entry",
     "allow-delete-entry",
     "allow-generate-password",
-    "allow-totp-code"
+    "allow-totp-code",
+    "allow-password-health"
   ]
 }

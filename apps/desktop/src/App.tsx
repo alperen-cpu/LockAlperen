@@ -504,6 +504,12 @@ function Avatar({ title, size }: { title: string; size: number }) {
   );
 }
 
+const ISSUE_LABEL: Record<api.Issue, string> = {
+  weak: "Zayıf",
+  reused: "Tekrar",
+  expired: "Süresi dolmuş",
+};
+
 function formatClock(secs: number) {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -549,8 +555,20 @@ function VaultScreen({
   }, [onAutoLocked]);
 
   const [query, setQuery] = useState("");
-  // null = all; "totp" = entries with TOTP; otherwise a group id.
+  // null = all; "totp" / "health" = special filters; otherwise a group id.
   const [group, setGroup] = useState<string | null>(null);
+  const [health, setHealth] = useState<api.HealthReport | null>(null);
+
+  // Recomputed whenever the list changes (add, edit, delete).
+  useEffect(() => {
+    api.passwordHealth().then(setHealth, () => setHealth(null));
+  }, [open.entries]);
+
+  const issuesOf = useMemo(() => {
+    const m = new Map<string, api.Issue[]>();
+    for (const e of health?.entries ?? []) m.set(e.id, e.issues);
+    return m;
+  }, [health]);
   const [selected, setSelected] = useState<string | null>(open.entries[0]?.id ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -596,10 +614,15 @@ function VaultScreen({
     const q = query.trim().toLocaleLowerCase("tr");
     return open.entries.filter(
       (e) =>
-        (group === null || (group === "totp" ? e.hasTotp : e.groupId === group)) &&
+        (group === null ||
+          (group === "totp"
+            ? e.hasTotp
+            : group === "health"
+              ? issuesOf.has(e.id)
+              : e.groupId === group)) &&
         (!q || [e.title, e.username, e.url].some((f) => f.toLocaleLowerCase("tr").includes(q))),
     );
-  }, [open.entries, query, group]);
+  }, [open.entries, query, group, issuesOf]);
 
   const current = open.entries.find((e) => e.id === selected) ?? null;
   const [toast, setToast] = useState<string | null>(null);
@@ -694,6 +717,26 @@ function VaultScreen({
               <span className="count">{g.count}</span>
             </button>
           ))}
+          {health && health.checked > 0 && (
+            <button
+              type="button"
+              className={"health-card" + (group === "health" ? " active" : "")}
+              onClick={() => setGroup(group === "health" ? null : "health")}
+              title="Zayıflık tahmini yalnızca uzunluğa ve karakter türlerine bakar; sözlük kelimelerini ve kalıpları tanımaz."
+            >
+              <span className="health-title">
+                <ShieldIcon />
+                Parola sağlığı
+                <span className="count">%{health.okPercent}</span>
+              </span>
+              <span className="health-bar">
+                <span style={{ width: `${health.okPercent}%` }} />
+              </span>
+              <span className="muted small">
+                {health.weak} zayıf · {health.reused} tekrar eden · {health.expired} süresi dolmuş
+              </span>
+            </button>
+          )}
         </nav>
 
         <section className="list-pane" aria-label="Kayıt listesi">
@@ -736,6 +779,11 @@ function VaultScreen({
                       <span className="row-title ellipsis">{e.title || "(başlıksız)"}</span>
                       <span className="row-sub ellipsis muted">{e.username}</span>
                     </span>
+                    {(issuesOf.get(e.id) ?? []).map((i) => (
+                      <span key={i} className="badge">
+                        {ISSUE_LABEL[i]}
+                      </span>
+                    ))}
                   </button>
                 </li>
               ))}

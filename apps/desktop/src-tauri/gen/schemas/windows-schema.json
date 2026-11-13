@@ -237,6 +237,12 @@
           "markdownDescription": "Enables the lock_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the password_health command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-password-health",
+          "markdownDescription": "Enables the password_health command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_new_vault_path command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-new-vault-path",
@@ -343,6 +349,12 @@
           "type": "string",
           "const": "deny-lock-status",
           "markdownDescription": "Denies the lock_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the password_health command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-password-health",
+          "markdownDescription": "Denies the password_health command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_new_vault_path command without any pre-configured scope.",

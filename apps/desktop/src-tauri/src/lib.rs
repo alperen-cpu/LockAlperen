@@ -3,6 +3,7 @@
 
 mod autolock;
 mod clipboard;
+mod health;
 mod recent;
 mod session;
 mod totp;
@@ -204,6 +205,14 @@ async fn delete_entry(id: String, state: State<'_, Shared>) -> Result<Vec<EntryS
     })
     .await
     .map_err(|_| INTERNAL.to_owned())?
+}
+
+/// Counts and per-entry labels only; never a password.
+#[tauri::command]
+fn password_health(state: State<'_, Shared>) -> Result<health::Report, String> {
+    state
+        .with(|s| s.health(recent::now() as i64))
+        .and_then(|r| r)
 }
 
 /// The current code and its countdown; the TOTP secret stays in Rust.
@@ -412,7 +421,8 @@ pub fn run() {
             save_entry,
             delete_entry,
             generate_password,
-            totp_code
+            totp_code,
+            password_health
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

@@ -126,6 +126,20 @@ export interface TotpCode {
 /** Current code only; the TOTP secret never leaves Rust here. */
 export const totpCode = (id: string) => invoke<TotpCode>("totp_code", { id });
 
+export type Issue = "weak" | "reused" | "expired";
+
+export interface HealthReport {
+  checked: number;
+  weak: number;
+  reused: number;
+  expired: number;
+  okPercent: number;
+  entries: { id: string; issues: Issue[] }[];
+}
+
+/** Counts and labels only; passwords never leave Rust. */
+export const passwordHealth = () => invoke<HealthReport>("password_health");
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";

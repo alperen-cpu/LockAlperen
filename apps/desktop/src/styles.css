@@ -506,6 +506,60 @@ h1 {
   padding: 18px 10px 6px;
 }
 
+.health-card {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.health-card.active {
+  border-color: var(--accent);
+}
+
+.health-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.health-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.health-bar span {
+  display: block;
+  height: 100%;
+  background: #3dd68c;
+}
+
+.badge {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #3a2a12;
+  color: var(--warn);
+}
+
+.badge + .badge {
+  margin-left: 0;
+}
+
 .list-pane {
   flex: 0 1 360px;
   min-width: 260px;
