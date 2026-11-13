@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The only window. App commands only: no core, file-system, shell or dialog permission for the WebView.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-pick-vault-file",
+    "allow-unlock",
+    "allow-lock",
+    "allow-list-entries"
+  ]
+}

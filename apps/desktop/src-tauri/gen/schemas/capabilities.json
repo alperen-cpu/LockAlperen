@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"The only window. App commands only: no core, file-system, shell or dialog permission for the WebView.","local":true,"windows":["main"],"permissions":["allow-pick-vault-file","allow-unlock","allow-lock","allow-list-entries"]}}

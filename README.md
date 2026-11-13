@@ -17,7 +17,7 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 | 0 | Format belgesi, tehdit modeli, repo | ✅ |
 | 1 | `lav-core`: format, kriptografi, veri modeli, parola üretici | ✅ |
 | 1b | Güvenlik sıkılaştırması ([SECURITY.md](SECURITY.md)), `lav-favicon` | ✅ |
-| 2 | Masaüstü uygulama (Tauri 2 + React) | ⏳ |
+| 2 | Masaüstü uygulama (Tauri 2 + React): [apps/desktop](apps/desktop/README.md) | 🚧 iskelet |
 | 3 | KeePass (KDBX 3.1/4) ve CSV içe aktarma | ⏳ |
 | 4 | TOTP, auto-type, Windows Hello, sızıntı kontrolü | ⏳ |
 
