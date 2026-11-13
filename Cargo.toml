@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/lav-core", "crates/lav-favicon", "crates/lav-memtest"]
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Argon2 is extremely slow without optimizations; keep dependencies fast in dev/test builds.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+# Integer overflow is a bug, not a wrap-around, also in release builds.
+overflow-checks = true
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev.package.lav-memtest]
+opt-level = 3
+
+# fuzz/ is its own workspace (cargo-fuzz)

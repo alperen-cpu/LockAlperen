@@ -1,0 +1,19 @@
+[package]
+name = "lav-memtest"
+description = "Attack simulation: scans a live process for secrets left in memory (CVE-2023-32784 class)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+lav-core = { path = "../lav-core" }
+zeroize = "1.8"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+] }

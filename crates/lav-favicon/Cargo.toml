@@ -1,0 +1,18 @@
+[package]
+name = "lav-favicon"
+description = "Hardened site-icon fetcher for LockAlperen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico", "jpeg", "gif", "webp", "bmp"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
+scraper = "0.20"
+thiserror = "2"
+tokio = { version = "1", features = ["net", "time"] }
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

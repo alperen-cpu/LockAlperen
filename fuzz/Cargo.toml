@@ -1,0 +1,57 @@
+[package]
+name = "lav-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+lav-core = { path = "../crates/lav-core" }
+lav-favicon = { path = "../crates/lav-favicon" }
+ciborium = "0.2"
+url = "2"
+
+# Own workspace so the fuzz crate never affects normal builds.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "header_parse"
+path = "fuzz_targets/header_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "payload_decode"
+path = "fuzz_targets/payload_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "image_sanitize"
+path = "fuzz_targets/image_sanitize.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "icon_links"
+path = "fuzz_targets/icon_links.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "site_origin"
+path = "fuzz_targets/site_origin.rs"
+test = false
+doc = false
+bench = false

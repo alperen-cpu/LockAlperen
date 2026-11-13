@@ -1,0 +1,13 @@
+/target
+node_modules/
+dist/
+*.lav.tmp
+*.lav.lock
+.vscode/
+.idea/
+
+# cargo-fuzz outputs (targets themselves are tracked)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
