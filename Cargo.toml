@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lav-core", "crates/lav-favicon", "crates/lav-memtest"]
+members = ["crates/lav-core", "crates/lav-favicon", "crates/lav-memtest", "prototypes/r1-rollback"]
 exclude = ["fuzz"]
 
 [workspace.package]
