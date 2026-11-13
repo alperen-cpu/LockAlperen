@@ -12,6 +12,9 @@ fn main() {
             "lock_status",
             "pick_new_vault_path",
             "create_vault",
+            "recent_vaults",
+            "select_recent",
+            "forget_recent",
         ]),
     ))
     .expect("failed to run tauri-build");

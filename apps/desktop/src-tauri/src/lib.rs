@@ -3,6 +3,7 @@
 
 mod autolock;
 mod clipboard;
+mod recent;
 mod session;
 
 use std::sync::{Arc, Mutex};
@@ -15,6 +16,41 @@ use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 const INTERNAL: &str = "Beklenmeyen bir hata oluştu.";
+
+/// "Son kasalar": the list and the file it lives in (set at startup).
+#[derive(Default, Clone)]
+struct Recent(Arc<Mutex<(Option<std::path::PathBuf>, Vec<recent::Item>)>>);
+
+impl Recent {
+    fn views(&self) -> Vec<recent::View> {
+        self.0
+            .lock()
+            .map(|g| g.1.iter().map(recent::View::from).collect())
+            .unwrap_or_default()
+    }
+
+    fn path(&self, index: usize) -> Option<std::path::PathBuf> {
+        self.0.lock().ok()?.1.get(index).map(|i| i.path.clone())
+    }
+
+    fn update(&self, f: impl FnOnce(&mut Vec<recent::Item>)) {
+        if let Ok(mut g) = self.0.lock() {
+            f(&mut g.1);
+            if let Some(file) = g.0.clone() {
+                // Best effort: losing the list must never break unlocking.
+                let _ = recent::save(&file, &g.1);
+            }
+        }
+    }
+
+    /// Records the session's open vault, if any. Takes the session lock
+    /// first and releases it before touching the list (no nested locks).
+    fn record(&self, shared: &Shared) {
+        if let Ok(Some(path)) = shared.with(|s| s.open_path()) {
+            self.update(|l| recent::touch(l, &path, recent::now()));
+        }
+    }
+}
 
 /// How long a copied secret stays on the clipboard.
 const CLIPBOARD_SECONDS: u64 = 12;
@@ -100,27 +136,58 @@ async fn create_vault(
     password: String,
     confirm: String,
     state: State<'_, Shared>,
+    recent: State<'_, Recent>,
 ) -> Result<Created, String> {
     let (password, confirm) = (Zeroizing::new(password), Zeroizing::new(confirm));
     let shared = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let created = tauri::async_runtime::spawn_blocking(move || {
         shared.with(|s| s.create(&name, &password, &confirm))
     })
     .await
     .map_err(|_| INTERNAL.to_owned())?
     .and_then(|r| r)
-    .map(|(file, info)| Created { file, info })
+    .map(|(file, info)| Created { file, info })?;
+    recent.record(&state);
+    Ok(created)
+}
+
+#[tauri::command]
+fn recent_vaults(recent: State<'_, Recent>) -> Vec<recent::View> {
+    recent.views()
+}
+
+/// Selects a vault from "Son kasalar" by its position; Rust holds the path.
+#[tauri::command]
+fn select_recent(
+    index: usize,
+    state: State<'_, Shared>,
+    recent: State<'_, Recent>,
+) -> Result<SelectedFile, String> {
+    let path = recent.path(index).ok_or(INTERNAL)?;
+    state.with(|s| s.select(path))
+}
+
+#[tauri::command]
+fn forget_recent(index: usize, recent: State<'_, Recent>) -> Vec<recent::View> {
+    recent.update(|l| recent::remove(l, index));
+    recent.views()
 }
 
 /// Argon2id takes about a second, so it runs off the main thread.
 #[tauri::command]
-async fn unlock(password: String, state: State<'_, Shared>) -> Result<VaultInfo, String> {
+async fn unlock(
+    password: String,
+    state: State<'_, Shared>,
+    recent: State<'_, Recent>,
+) -> Result<VaultInfo, String> {
     let password = Zeroizing::new(password);
     let shared = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || shared.with(|s| s.unlock(&password)))
+    let info = tauri::async_runtime::spawn_blocking(move || shared.with(|s| s.unlock(&password)))
         .await
         .map_err(|_| INTERNAL.to_owned())?
-        .and_then(|r| r)
+        .and_then(|r| r)?;
+    recent.record(&state);
+    Ok(info)
 }
 
 #[tauri::command]
@@ -247,6 +314,18 @@ pub fn run() {
         )
         .manage(shared)
         .manage(last)
+        .manage(Recent::default())
+        .setup(|app| {
+            use tauri::Manager;
+            if let Ok(dir) = app.path().app_local_data_dir() {
+                let file = dir.join("recent.json");
+                let list = recent::load(&file);
+                if let Ok(mut g) = app.state::<Recent>().0.lock() {
+                    *g = (Some(file), list);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pick_vault_file,
             unlock,
@@ -256,7 +335,10 @@ pub fn run() {
             reveal_password,
             lock_status,
             pick_new_vault_path,
-            create_vault
+            create_vault,
+            recent_vaults,
+            select_recent,
+            forget_recent
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

@@ -192,6 +192,11 @@ impl Session {
         Ok((file, info))
     }
 
+    /// The file of the open vault, if any (for "Son kasalar").
+    pub fn open_path(&self) -> Option<PathBuf> {
+        self.vault.as_ref().and(self.path.clone())
+    }
+
     pub fn is_unlocked(&self) -> bool {
         self.vault.is_some()
     }

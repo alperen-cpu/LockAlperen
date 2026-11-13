@@ -21,6 +21,7 @@ import {
   LockIcon,
   PlusIcon,
   SearchIcon,
+  XIcon,
 } from "./icons";
 
 type Open = { info: VaultInfo; entries: EntrySummary[] };
@@ -31,6 +32,58 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   // File name chosen for a new vault: shows the create form.
   const [newName, setNewName] = useState<string | null>(null);
+  const [recents, setRecents] = useState<api.RecentVault[]>([]);
+
+  async function refreshRecents(autoSelect: boolean) {
+    try {
+      const list = await api.recentVaults();
+      setRecents(list);
+      if (autoSelect && list.length > 0) setFile(await api.selectRecent(0));
+    } catch {
+      /* the list is a convenience; ignore */
+    }
+  }
+
+  // On start, offer the most recently opened vault.
+  useEffect(() => {
+    void refreshRecents(true);
+  }, []);
+
+  // After unlocking or creating, Rust has updated the list.
+  useEffect(() => {
+    if (open) void refreshRecents(false);
+  }, [open]);
+
+  async function pickRecent(i: number) {
+    setError(null);
+    setNewName(null);
+    try {
+      setFile(await api.selectRecent(i));
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
+
+  async function forget(i: number) {
+    try {
+      setRecents(await api.forgetRecent(i));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const side = (busy: boolean) => (
+    <Side
+      busy={busy}
+      hasFile={file !== null}
+      current={file}
+      recents={recents}
+      onPickRecent={pickRecent}
+      onForget={forget}
+      onChoose={choose}
+      onCreate={startCreate}
+    />
+  );
 
   async function choose() {
     setError(null);
@@ -79,7 +132,7 @@ export function App() {
     return (
       <CreateScreen
         fileName={newName}
-        side={<Side busy={false} hasFile={file !== null} onChoose={choose} onCreate={startCreate} />}
+        side={side(false)}
         onCancel={() => setNewName(null)}
         onCreated={(f, info) => {
           setFile(f);
@@ -95,17 +148,74 @@ export function App() {
       file={file}
       error={error}
       setError={setError}
-      onChoose={choose}
-      onCreate={startCreate}
+      side={side}
       onOpened={setOpen}
     />
   );
 }
 
-function Side(props: { busy: boolean; hasFile: boolean; onChoose: () => void; onCreate: () => void }) {
+function timeAgo(unix: number) {
+  const days = Math.floor((Date.now() / 1000 - unix) / 86400);
+  if (days <= 0) return "bugün";
+  if (days === 1) return "dün";
+  if (days < 7) return `${days} gün önce`;
+  if (days < 30) return `${Math.floor(days / 7)} hafta önce`;
+  return `${Math.floor(days / 30)} ay önce`;
+}
+
+function Side(props: {
+  busy: boolean;
+  hasFile: boolean;
+  current: SelectedFile | null;
+  recents: api.RecentVault[];
+  onPickRecent: (i: number) => void;
+  onForget: (i: number) => void;
+  onChoose: () => void;
+  onCreate: () => void;
+}) {
+  const isCurrent = (r: api.RecentVault) =>
+    props.current !== null &&
+    r.fileName === props.current.fileName &&
+    r.folder === props.current.folder;
   return (
     <aside className="unlock-side">
       <Brand />
+      {props.recents.length > 0 && (
+        <>
+          <div className="lbl recent-lbl">Son kasalar</div>
+          <ul className="recents">
+            {props.recents.map((r, i) => (
+              <li key={`${r.folder}\\${r.fileName}`} className={isCurrent(r) ? "active" : ""}>
+                <button
+                  type="button"
+                  className="recent"
+                  onClick={() => props.onPickRecent(i)}
+                  disabled={props.busy}
+                  title={`${r.folder}\\${r.fileName}`}
+                >
+                  <LockIcon size={18} />
+                  <span className="recent-text">
+                    <span className="recent-name ellipsis">{r.fileName}</span>
+                    <span className="recent-sub ellipsis muted">
+                      {r.folder} · {timeAgo(r.opened)}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ghost-icon forget"
+                  aria-label={`${r.fileName} kasasını listeden kaldır`}
+                  title="Listeden kaldır (dosya silinmez)"
+                  onClick={() => props.onForget(i)}
+                  disabled={props.busy}
+                >
+                  <XIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="side-actions">
         <button type="button" className="btn btn-left" onClick={props.onCreate} disabled={props.busy}>
           <PlusIcon />
@@ -245,11 +355,10 @@ function UnlockScreen(props: {
   file: SelectedFile | null;
   error: string | null;
   setError: (e: string | null) => void;
-  onChoose: () => void;
-  onCreate: () => void;
+  side: (busy: boolean) => ReactNode;
   onOpened: (o: Open) => void;
 }) {
-  const { file, error, setError, onChoose, onCreate, onOpened } = props;
+  const { file, error, setError, side, onOpened } = props;
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
   const [caps, setCaps] = useState(false);
@@ -288,7 +397,7 @@ function UnlockScreen(props: {
 
   return (
     <div className="unlock">
-      <Side busy={busy} hasFile={file !== null} onChoose={onChoose} onCreate={onCreate} />
+      {side(busy)}
 
       <main className="unlock-main">
         <form className="unlock-form" onSubmit={submit}>

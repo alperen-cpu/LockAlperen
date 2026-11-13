@@ -60,6 +60,20 @@ export const pickNewVaultPath = () => invoke<string | null>("pick_new_vault_path
 export const createVault = (name: string, password: string, confirm: string) =>
   invoke<{ file: SelectedFile; info: VaultInfo }>("create_vault", { name, password, confirm });
 
+export interface RecentVault {
+  fileName: string;
+  folder: string;
+  /** Unix seconds. */
+  opened: number;
+}
+
+export const recentVaults = () => invoke<RecentVault[]>("recent_vaults");
+
+/** Chooses by position; Rust holds the paths. */
+export const selectRecent = (index: number) => invoke<SelectedFile>("select_recent", { index });
+
+export const forgetRecent = (index: number) => invoke<RecentVault[]>("forget_recent", { index });
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";

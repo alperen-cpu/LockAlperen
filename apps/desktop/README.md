@@ -1,7 +1,7 @@
 # LockAlperen masaüstü (Faz 2: iskelet)
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar.
 
 ## Geliştirme
 
@@ -36,13 +36,16 @@ var.
 | Parolayı göster | Yalnızca tıklanınca Rust'tan istenir; 15 sn sonra, başka kayıt seçilince ya da kilitlenince ekrandan ve React state'inden düşer. Bu sırada parola WebView belleğindedir (silinemez). |
 | Otomatik kilit | Kararı Rust verir; WebView yalnızca geri sayımı gösterir ve kilidi açık tutamaz. **Boşta kalma:** sistem genelinde son klavye ya da fare girdisinden itibaren 5 dk (`GetLastInputInfo`). Debug derlemede `LAV_IDLE_SECS` ile kısaltılabilir, release derlemede bu değişken yok sayılır. **Windows olayları:** kendi gizli penceremiz şunları alır: Win+L, konsol ya da uzak bağlantının kesilmesi, oturum kapatma (`WM_WTSSESSION_CHANGE`) ve uyku (`PBT_APMSUSPEND`). Her durumda pano da temizlenir. `unsafe` kod `src/autolock.rs`'te. |
 | Yeni kasa | Kaydetme penceresini Rust açar; yol Rust'ta kalır, `.lav` uzantısı eklenir. Parola ve tekrarı Rust'ta karşılaştırılır, en az 8 karakter (çekirdeğin kuralı). **Var olan dosyanın üzerine asla yazılmaz:** önce varlık kontrolü yapılır; arada dosya oluşursa çekirdeğin `save_file` kilidi altındaki kontrolü reddeder. "Üzerine yaz" seçeneği bilinçli olarak yok. Varsayılan KDF: Argon2id 64 MiB, 3 geçiş. |
+| Son kasalar | `%LOCALAPPDATA%\com.alperen.lockalperen\recent.json`: en fazla 5 kayıt, yalnızca yol ve son açılma zamanı (ad, içerik ya da sır yok). Kasanın yanında ya da roaming profilde değil. Geçici dosya + rename ile yazılır; bozuk ya da 64 KiB'tan büyük dosya boş liste sayılır. WebView sıra numarası gönderir, yolu Rust çözer. "Listeden kaldır" dosyayı silmez. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 18 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 22 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
+- Son kasalar elle denendi: oluşturulan kasa listeye yazıldı; uygulama yeniden açılınca seçili
+  geldi ve parolayla açıldı.
 - Yeni kasa elle denendi: kaydetme penceresi, parolalar uyuşmayınca mesaj, oluşturunca boş kasa
   açılıyor ve dosya diskte. Testler: kaydet-aç-yeniden aç, ad/tekrar/uzunluk kontrolleri, var olan
   dosyanın baytlarının değişmemesi.
@@ -92,7 +95,6 @@ Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyl
   - kayıt ekleme, düzenleme ve kaydetme;
   - parola üretici;
   - TOTP;
-  - son kasalar (L2 ile yerel veri dizini);
   - yeni kasaya kayıt ekleme (kaydetme akışı henüz yok);
   - parola sağlığı;
   - KeePass içe aktarma;

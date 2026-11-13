@@ -189,6 +189,12 @@
           "markdownDescription": "Enables the create_vault command without any pre-configured scope."
         },
         {
+          "description": "Enables the forget_recent command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-forget-recent",
+          "markdownDescription": "Enables the forget_recent command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-entries",
@@ -219,10 +225,22 @@
           "markdownDescription": "Enables the pick_vault_file command without any pre-configured scope."
         },
         {
+          "description": "Enables the recent_vaults command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-recent-vaults",
+          "markdownDescription": "Enables the recent_vaults command without any pre-configured scope."
+        },
+        {
           "description": "Enables the reveal_password command without any pre-configured scope.",
           "type": "string",
           "const": "allow-reveal-password",
           "markdownDescription": "Enables the reveal_password command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the select_recent command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-select-recent",
+          "markdownDescription": "Enables the select_recent command without any pre-configured scope."
         },
         {
           "description": "Enables the unlock command without any pre-configured scope.",
@@ -241,6 +259,12 @@
           "type": "string",
           "const": "deny-create-vault",
           "markdownDescription": "Denies the create_vault command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the forget_recent command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-forget-recent",
+          "markdownDescription": "Denies the forget_recent command without any pre-configured scope."
         },
         {
           "description": "Denies the list_entries command without any pre-configured scope.",
@@ -273,10 +297,22 @@
           "markdownDescription": "Denies the pick_vault_file command without any pre-configured scope."
         },
         {
+          "description": "Denies the recent_vaults command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-recent-vaults",
+          "markdownDescription": "Denies the recent_vaults command without any pre-configured scope."
+        },
+        {
           "description": "Denies the reveal_password command without any pre-configured scope.",
           "type": "string",
           "const": "deny-reveal-password",
           "markdownDescription": "Denies the reveal_password command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the select_recent command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-select-recent",
+          "markdownDescription": "Denies the select_recent command without any pre-configured scope."
         },
         {
           "description": "Denies the unlock command without any pre-configured scope.",
