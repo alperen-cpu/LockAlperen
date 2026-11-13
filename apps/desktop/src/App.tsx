@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import * as api from "./api";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
+  CheckIcon,
+  CopyIcon,
   EyeIcon,
   EyeOffIcon,
   FileIcon,
@@ -259,6 +261,24 @@ function VaultScreen({ file, open, onLock }: { file: SelectedFile; open: Open; o
   }, [open.entries, query, group]);
 
   const current = open.entries.find((e) => e.id === selected) ?? null;
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  async function copy(field: api.CopyField) {
+    if (!current) return;
+    try {
+      const secs = await api.copyField(current.id, field);
+      const what = field === "password" ? "Parola" : "Kullanıcı adı";
+      setToast(`${what} kopyalandı · pano ${secs} sn sonra temizlenecek`);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
 
   return (
     <div className="app">
@@ -356,25 +376,99 @@ function VaultScreen({ file, open, onLock }: { file: SelectedFile; open: Open; o
               </div>
               <div className="card">
                 <div className="card-row">
-                  <div className="lbl">Kullanıcı adı</div>
-                  <div className="value">{current.username || "—"}</div>
+                  <div className="card-text">
+                    <div className="lbl">Kullanıcı adı</div>
+                    <div className="value ellipsis">{current.username || "—"}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Kullanıcı adını kopyala"
+                    title="Kopyala"
+                    disabled={!current.username}
+                    onClick={() => copy("username")}
+                  >
+                    <CopyIcon />
+                  </button>
                 </div>
+                {/* key: a new entry always starts hidden. */}
+                <PasswordRow key={current.id} id={current.id} onCopy={() => copy("password")} />
                 <div className="card-row">
-                  <div className="lbl">Parola</div>
-                  <div className="value mono dots">••••••••••••</div>
-                </div>
-                <div className="card-row">
-                  <div className="lbl">Web sitesi</div>
-                  {/* Plain text, not a link: opening URLs is not enabled yet. */}
-                  <div className="value ellipsis">{current.url || "—"}</div>
+                  <div className="card-text">
+                    <div className="lbl">Web sitesi</div>
+                    {/* Plain text, not a link: opening URLs is not enabled yet. */}
+                    <div className="value ellipsis">{current.url || "—"}</div>
+                  </div>
                 </div>
               </div>
             </>
           ) : (
             <p className="empty muted">Bir kayıt seçin.</p>
           )}
+          {toast && (
+            <div className="toast" role="status">
+              <CheckIcon />
+              {toast}
+            </div>
+          )}
         </main>
       </div>
+    </div>
+  );
+}
+
+/** Seconds a revealed password stays visible. */
+const REVEAL_SECONDS = 15;
+
+function PasswordRow({ id, onCopy }: { id: string; onCopy: () => void }) {
+  // Shown only on request, dropped from state after REVEAL_SECONDS and when
+  // the row unmounts (other entry selected, vault locked).
+  const [shown, setShown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (shown === null) return;
+    const t = window.setTimeout(() => setShown(null), REVEAL_SECONDS * 1000);
+    return () => window.clearTimeout(t);
+  }, [shown]);
+
+  async function toggle() {
+    if (shown !== null) {
+      setShown(null);
+      return;
+    }
+    try {
+      setShown(await api.revealPassword(id));
+    } catch {
+      setShown(null);
+    }
+  }
+
+  return (
+    <div className="card-row">
+      <div className="card-text">
+        <div className="lbl">Parola</div>
+        <div className={"value mono" + (shown === null ? " dots" : " revealed")}>
+          {shown ?? "••••••••••••"}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label={shown === null ? "Parolayı göster" : "Parolayı gizle"}
+        title={shown === null ? "Göster" : "Gizle"}
+        onClick={toggle}
+      >
+        {shown === null ? <EyeIcon /> : <EyeOffIcon />}
+      </button>
+      <button
+        type="button"
+        className="icon-btn accent"
+        aria-label="Parolayı kopyala"
+        title="Kopyala"
+        onClick={onCopy}
+      >
+        <CopyIcon />
+      </button>
     </div>
   );
 }

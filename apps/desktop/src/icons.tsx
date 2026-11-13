@@ -66,3 +66,16 @@ export const FolderIcon = () => (
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
   </Icon>
 );
+
+export const CopyIcon = () => (
+  <Icon>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+  </Icon>
+);
+
+export const CheckIcon = () => (
+  <Icon>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+);

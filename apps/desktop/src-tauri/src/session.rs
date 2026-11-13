@@ -13,7 +13,8 @@ use std::path::PathBuf;
 
 use lav_core::format::{HEADER_LEN, TAG_LEN};
 use lav_core::Vault;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 /// What the list view may show about an entry. Deliberately excludes every
 /// secret field of `lav_core::Entry`.
@@ -62,6 +63,16 @@ pub struct Session {
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
 pub const LOCKED: &str = "Kasa kilitli.";
+pub const NO_SUCH_ENTRY: &str = "Kayıt bulunamadı.";
+
+/// A field the user can copy. Only these two can leave the vault, and only
+/// on an explicit click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Field {
+    Username,
+    Password,
+}
 /// Turkish counterpart of `lav_core::error::UNLOCK_FAILED_MESSAGE`.
 pub const UNLOCK_FAILED: &str =
     "Kasa açılamadı: parola ya da anahtar dosyası yanlış, ya da dosya bozuk veya desteklenmiyor.";
@@ -124,6 +135,21 @@ impl Session {
     /// Drops the vault; `lav_core` wipes keys and contents on drop.
     pub fn lock(&mut self) {
         self.vault = None;
+    }
+
+    /// One field of one entry, in a buffer that wipes itself.
+    pub fn field(&self, id: &str, field: Field) -> Result<Zeroizing<String>, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        let e = vault
+            .data
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .ok_or(NO_SUCH_ENTRY)?;
+        Ok(Zeroizing::new(match field {
+            Field::Username => e.username.clone(),
+            Field::Password => e.password.expose().to_owned(),
+        }))
     }
 
     pub fn entries(&self) -> Result<Vec<EntrySummary>, String> {
@@ -302,6 +328,41 @@ mod tests {
         let other = s.select(dir.join("yok.lav"));
         assert_eq!(other.kdf, None, "unreadable file: no KDF shown");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn field_reads_one_value_and_needs_an_open_vault() {
+        let dir = temp_dir("field");
+        let mut s = Session::default();
+        s.select(make_vault(&dir));
+        assert_eq!(s.field("x", Field::Password), Err(LOCKED.to_owned()));
+        s.unlock(PASSWORD).unwrap();
+        let id = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap()
+            .id;
+        assert_eq!(s.field(&id, Field::Password).unwrap().as_str(), SECRET);
+        assert_eq!(
+            s.field(&id, Field::Username).unwrap().as_str(),
+            "me@example.com"
+        );
+        assert_eq!(
+            s.field("not-an-id", Field::Password),
+            Err(NO_SUCH_ENTRY.to_owned())
+        );
+        s.lock();
+        assert_eq!(s.field(&id, Field::Password), Err(LOCKED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn field_names_from_the_webview() {
+        let f: Field = serde_json::from_str("\"password\"").unwrap();
+        assert_eq!(f, Field::Password);
+        assert!(serde_json::from_str::<Field>("\"notes\"").is_err());
     }
 
     #[test]

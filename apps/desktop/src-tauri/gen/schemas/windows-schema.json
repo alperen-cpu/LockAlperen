@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the copy_field command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-copy-field",
+          "markdownDescription": "Enables the copy_field command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-entries",
@@ -195,10 +201,22 @@
           "markdownDescription": "Enables the pick_vault_file command without any pre-configured scope."
         },
         {
+          "description": "Enables the reveal_password command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reveal-password",
+          "markdownDescription": "Enables the reveal_password command without any pre-configured scope."
+        },
+        {
           "description": "Enables the unlock command without any pre-configured scope.",
           "type": "string",
           "const": "allow-unlock",
           "markdownDescription": "Enables the unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the copy_field command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-copy-field",
+          "markdownDescription": "Denies the copy_field command without any pre-configured scope."
         },
         {
           "description": "Denies the list_entries command without any pre-configured scope.",
@@ -217,6 +235,12 @@
           "type": "string",
           "const": "deny-pick-vault-file",
           "markdownDescription": "Denies the pick_vault_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reveal_password command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reveal-password",
+          "markdownDescription": "Denies the reveal_password command without any pre-configured scope."
         },
         {
           "description": "Denies the unlock command without any pre-configured scope.",

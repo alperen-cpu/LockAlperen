@@ -1,19 +1,37 @@
 //! LockAlperen desktop shell. The WebView only renders; every decision and
 //! every secret stays on the Rust side (`session`).
 
+mod clipboard;
 mod session;
 
 use std::sync::{Arc, Mutex};
 
-use session::{EntrySummary, SelectedFile, Session, VaultInfo};
+use std::time::Duration;
+
+use session::{EntrySummary, Field, SelectedFile, Session, VaultInfo};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 const INTERNAL: &str = "Beklenmeyen bir hata oluştu.";
 
+/// How long a copied secret stays on the clipboard.
+const CLIPBOARD_SECONDS: u64 = 12;
+
 #[derive(Default, Clone)]
 struct Shared(Arc<Mutex<Session>>);
+
+/// The last thing we put on the clipboard, so that locking can clear it.
+#[derive(Default, Clone)]
+struct LastCopy(Arc<Mutex<Option<clipboard::Copied>>>);
+
+impl LastCopy {
+    fn clear(&self) {
+        if let Some(c) = self.0.lock().ok().and_then(|mut g| g.take()) {
+            clipboard::clear_if_ours(c);
+        }
+    }
+}
 
 impl Shared {
     fn with<T>(&self, f: impl FnOnce(&mut Session) -> T) -> Result<T, String> {
@@ -57,8 +75,52 @@ async fn unlock(password: String, state: State<'_, Shared>) -> Result<VaultInfo,
 }
 
 #[tauri::command]
-fn lock(state: State<'_, Shared>) -> Result<(), String> {
+fn lock(state: State<'_, Shared>, last: State<'_, LastCopy>) -> Result<(), String> {
+    last.clear();
     state.with(Session::lock)
+}
+
+/// Copies a field in Rust: the value never passes through the WebView.
+/// Returns the number of seconds until the clipboard is cleared.
+#[tauri::command]
+async fn copy_field(
+    id: String,
+    field: Field,
+    state: State<'_, Shared>,
+    last: State<'_, LastCopy>,
+) -> Result<u64, String> {
+    let value = state.with(|s| s.field(&id, field)).and_then(|r| r)?;
+    let copied = clipboard::copy_secret(&value).map_err(|_| "Panoya kopyalanamadı.".to_owned())?;
+    drop(value);
+    if let Ok(mut g) = last.0.lock() {
+        *g = Some(copied);
+    }
+    let last = last.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        tokio_sleep(Duration::from_secs(CLIPBOARD_SECONDS)).await;
+        clipboard::clear_if_ours(copied);
+        if let Ok(mut g) = last.0.lock() {
+            if *g == Some(copied) {
+                *g = None;
+            }
+        }
+    });
+    Ok(CLIPBOARD_SECONDS)
+}
+
+/// Sends the password to the WebView for display. Only on an explicit
+/// "show" click; the UI hides it again after a few seconds.
+#[tauri::command]
+fn reveal_password(id: String, state: State<'_, Shared>) -> Result<String, String> {
+    state
+        .with(|s| s.field(&id, Field::Password))
+        .and_then(|r| r)
+        .map(|v| v.as_str().to_owned())
+}
+
+async fn tokio_sleep(d: Duration) {
+    // Tauri's runtime is tokio; a blocking sleep on a worker would stall it.
+    let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(d)).await;
 }
 
 #[tauri::command]
@@ -86,11 +148,14 @@ pub fn run() {
                 .build(),
         )
         .manage(Shared::default())
+        .manage(LastCopy::default())
         .invoke_handler(tauri::generate_handler![
             pick_vault_file,
             unlock,
             lock,
-            list_entries
+            list_entries,
+            copy_field,
+            reveal_password
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

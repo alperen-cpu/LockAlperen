@@ -1,7 +1,7 @@
 # LockAlperen masaüstü (Faz 2: iskelet)
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Bu ilk adımda yalnızca **kasa aç → listele → kilitle** çalışıyor.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster.
 
 ## Geliştirme
 
@@ -32,11 +32,17 @@ var.
 | Navigasyon | Uygulama dışındaki bir adrese (uzak site, `file:`) gezinme engellenir (`navigation_allowed`, test var). |
 | Geliştirici araçları | Tauri'nin `devtools` özelliği açık değil, bu yüzden inceleyici yalnızca debug derlemede var. **Release derlemede doğrulanmadı.** |
 | XSS | Bütün metinler React ile düz metin olarak basılır, `innerHTML` yok. `<script>` başlıklı bir kayıtla elle denendi. |
+| Pano | Kopyalamayı Rust yapar; değer WebView'e gitmez. Pano geçmişi (Win+V), bulut panosu ve izleyiciler için üç işaret (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory=0`, `CanUploadToCloudClipboard=0`) konur. 12 sn sonra ve kilitlenince pano temizlenir, ama **yalnızca hâlâ bizim içeriğimiz duruyorsa** (sıra numarası kontrolü). `unsafe` kod yalnızca `src/clipboard.rs`'te. |
+| Parolayı göster | Yalnızca tıklanınca Rust'tan istenir; 15 sn sonra, başka kayıt seçilince ya da kilitlenince ekrandan ve React state'inden düşer. Bu sırada parola WebView belleğindedir (silinemez). |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 9 test (Windows, GNU araç zinciri).
+- `cargo test`: 11 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+  (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
+  temizleniyor, sonradan kopyalanan içerik silinmiyor.
+- Pano elle de denendi: kopya → 13 sn sonra boş; araya kullanıcı kopyası girince korunuyor;
+  Ctrl+L panoyu hemen temizliyor.
 - `cargo clippy -D warnings` ve `fmt` temiz. `npm audit` 0 açık.
 - `cargo audit`: bilinen açık yok. İki uyarı var: `proc-macro-error` bakımsız, `glib` unsound. İkisi
   de yalnızca Linux GTK yolunda; `cargo tree` ile Windows hedefinde olmadıkları doğrulandı.
@@ -58,6 +64,9 @@ var.
 - **IPC tamponları:** parola JSON olarak WebView'den Rust'a gider. WebView/JS dizgileri ve
   Tauri'nin ara tamponları silinemez. Bu, SECURITY.md'de belirtilen bilinen sınır.
 - **Anahtar dosyası** desteklenmiyor. Kasa anahtar dosyası istiyorsa ekranda bir uyarı gösteriliyor.
+- **Pano:** Windows'un `EmptyClipboard` ile bıraktığı bellek bizim tarafımızdan silinmez; pano
+  açıkken başka bir program içeriği okuyabilir. Pano geçmişi işaretlerinin Win+V'de gerçekten
+  gizlendiği elle (Win+V açılarak) **kontrol edilmedi**; yalnızca işaretlerin konduğu doğrulandı.
 - **KDF satırı** ("Argon2id · 64 MiB · 3 geçiş") henüz doğrulanmamış header'dan okunuyor; yalnızca
   bilgi amaçlı.
 
@@ -65,8 +74,6 @@ var.
 
 Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyle birlikte yapılacak:
 
-- **Parolayı göster ve kopyala:** pano geçmişi ve bulut panosu dışında tutulacak, süre dolunca
-  temizlenecek.
 - **Otomatik kilit:** boşta kalınca, Windows kilitlenince, oturum değişince ve uyku moduna
   geçilince. Geri sayım göstergesi de bununla gelecek.
 - **Ekran yakalamadan hariç tutma** (`WDA_EXCLUDEFROMCAPTURE`), `VirtualLock`,

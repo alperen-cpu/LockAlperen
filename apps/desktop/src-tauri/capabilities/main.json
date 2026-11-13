@@ -7,6 +7,8 @@
     "allow-pick-vault-file",
     "allow-unlock",
     "allow-lock",
-    "allow-list-entries"
+    "allow-list-entries",
+    "allow-copy-field",
+    "allow-reveal-password"
   ]
 }

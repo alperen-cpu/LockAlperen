@@ -35,6 +35,16 @@ export const lock = () => invoke<void>("lock");
 
 export const listEntries = () => invoke<EntrySummary[]>("list_entries");
 
+export type CopyField = "username" | "password";
+
+/** Rust copies the value itself; it never comes to the WebView. Returns the
+ *  seconds until the clipboard is cleared. */
+export const copyField = (id: string, field: CopyField) =>
+  invoke<number>("copy_field", { id, field });
+
+/** Only on an explicit "show" click; the UI hides it again soon. */
+export const revealPassword = (id: string) => invoke<string>("reveal_password", { id });
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";
