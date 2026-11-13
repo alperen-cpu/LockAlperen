@@ -30,6 +30,9 @@ hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
 url = "2"
+# KeePass import (src/import.rs). Parsing only; the file is pre-checked by us
+# (version, size, KDF limits) before this crate sees it.
+keepass = { version = "=0.17.0", default-features = false }
 # Already in Tauri's tree at this version; used only by src/clipboard.rs
 # and src/autolock.rs (the only unsafe code in the app).
 windows-sys = { version = "=0.61.2", features = [
@@ -44,6 +47,12 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+
+[dev-dependencies]
+# Only to WRITE KDBX 4 fixtures in tests.
+keepass = { version = "=0.17.0", default-features = false, features = ["save_kdbx4"] }
+# keepass uses rust-argon2 (lib name `argon2`); only for KdfConfig in tests.
+kp_argon2 = { package = "rust-argon2", version = "3" }
 
 [profile.dev.package."*"]
 # Argon2 is extremely slow without optimizations.

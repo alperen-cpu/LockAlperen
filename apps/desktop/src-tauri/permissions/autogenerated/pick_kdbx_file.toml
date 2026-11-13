@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-kdbx-file"
+description = "Enables the pick_kdbx_file command without any pre-configured scope."
+commands.allow = ["pick_kdbx_file"]
+
+[[permission]]
+identifier = "deny-pick-kdbx-file"
+description = "Denies the pick_kdbx_file command without any pre-configured scope."
+commands.deny = ["pick_kdbx_file"]

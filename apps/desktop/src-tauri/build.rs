@@ -22,6 +22,8 @@ fn main() {
             "generate_password",
             "totp_code",
             "password_health",
+            "pick_kdbx_file",
+            "import_kdbx",
         ]),
     ))
     .expect("failed to run tauri-build");

@@ -213,6 +213,12 @@
           "markdownDescription": "Enables the generate_password command without any pre-configured scope."
         },
         {
+          "description": "Enables the import_kdbx command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-kdbx",
+          "markdownDescription": "Enables the import_kdbx command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-entries",
@@ -241,6 +247,12 @@
           "type": "string",
           "const": "allow-password-health",
           "markdownDescription": "Enables the password_health command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_kdbx_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-kdbx-file",
+          "markdownDescription": "Enables the pick_kdbx_file command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_new_vault_path command without any pre-configured scope.",
@@ -327,6 +339,12 @@
           "markdownDescription": "Denies the generate_password command without any pre-configured scope."
         },
         {
+          "description": "Denies the import_kdbx command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-kdbx",
+          "markdownDescription": "Denies the import_kdbx command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-entries",
@@ -355,6 +373,12 @@
           "type": "string",
           "const": "deny-password-health",
           "markdownDescription": "Denies the password_health command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_kdbx_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-kdbx-file",
+          "markdownDescription": "Denies the pick_kdbx_file command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_new_vault_path command without any pre-configured scope.",

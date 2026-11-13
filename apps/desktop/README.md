@@ -1,7 +1,7 @@
 # LockAlperen masaüstü (Faz 2: iskelet)
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, parola üretici, TOTP kodları, parola sağlığı.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma.
 
 ## Geliştirme
 
@@ -41,13 +41,19 @@ var.
 | Parola üretici | Çekirdeğin `OsRng` tabanlı üreticisi; WebView yalnızca ayarları gönderir. Gösterilen entropi yaklaşık değerdir (her kümeden en az bir karakter zorunluluğu hesaba katılmaz). |
 | TOTP | RFC 6238; SHA-1/256/512, 6–8 hane, 1–300 sn periyot; base32 anahtar ya da `otpauth://totp/` bağlantısı (HOTP desteklenmez). Gizli anahtar Rust'ta kalır; WebView'e yalnızca o anki kod ve kalan süre gider (listede yalnızca `hasTotp`). HMAC RustCrypto'dan (`hmac`, `sha1`, `sha2`); kendi kodumuz yalnızca RFC'nin kesme adımı ve base32 çözümü, ikisi de RFC test vektörleriyle sınanıyor. Düzenleyicide anahtar görünür (düzenleme için). Geçersiz anahtar kaydedilmez. |
 | Parola sağlığı | Rust'ta hesaplanır; WebView'e yalnızca sayılar ve kayıt başına etiket (zayıf/tekrar/süresi dolmuş) gider. Tekrar kontrolü parolaları kopyalamadan, ödünç alarak karşılaştırır. **Zayıflık tahmini basittir:** uzunluk × log2(kullanılan karakter türleri), 60 bitin altı ya da 10 karakterden kısa = zayıf. Sözlük kelimeleri ve kalıplar tanınmaz ("Password123!" zayıf sayılmaz); arayüz bunu söylüyor. Ağ kullanılmaz; sızıntı kontrolü yok. |
+| KeePass içe aktarma | Dosya güvenilmez kabul edilir. `keepass` crate'ine vermeden önce dış başlığı **kendimiz** okuruz: yalnızca KDBX 4, en fazla 64 MiB, KDF sınırları (Argon2 ≤ 1 GiB bellek, ≤ 100 iterasyon, ≤ 16 paralellik; AES-KDF ≤ 300 milyon tur). Crate bu parametreleri sınırlamıyor; sınır olmasa kötü niyetli bir dosya, parola denenmeden önce sınırsız bellek ya da süre harcatabilirdi. Çözüldükten sonra kayıt (50.000), klasör (10.000), derinlik (64), alan (1 MiB), ek (16 MiB, toplam 256 MiB) sınırları; KeePass Geri Dönüşüm Kutusu ve geçmiş aktarılmaz; sonuç `repair_structure`'dan geçer ve **yeni bir üst klasöre** eklenir. Hata durumunda kasa değişmez. KeePass dosyası değiştirilmez. Anahtar dosyası henüz desteklenmiyor. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 37 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 43 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
+- KeePass içe aktarma elle denendi: yanlış parolada genel mesaj; doğru parolayla 3 kayıt, 1 klasör,
+  1 TOTP aktarıldı, sağlık kartı güncellendi. Testler: gerçek KDBX 4 dosyası (crate'in kendi
+  yazıcısıyla, yalnızca testte), yanlış parola, KDBX 3.1 ve rastgele dosyanın reddi, **aşırı KDF
+  ayarlarının hiçbir hesaplama yapılmadan reddi**, 300 rastgele bozulmuş dosyada panik olmaması
+  (mutasyon testi; libFuzzer değil).
 - Parola sağlığı elle denendi: demo kasada aynı parolayı kullanan 4 kayıt "Tekrar" olarak
   işaretlendi, oran %0. Testler: tahmin sınırları, sayımlar, rapor JSON'unda parola olmaması.
 - TOTP elle denendi: uygulamadaki kod, Python'un `hmac` kütüphanesiyle bağımsız hesaplanan değerle
@@ -94,6 +100,10 @@ var.
   doğrulanmadı** (oturumu kilitlemek otomasyonla yapılmadı). Denemek için: kasayı aç, Win+L'ye
   bas, geri dön; kasa kilitli olmalı.
 - **Boşta kalma süresi** şimdilik sabit (5 dk), ayarı yok.
+- **KeePass:** başlık okuyucumuz için libFuzzer hedefi yok (masaüstü crate'i yalnızca Windows'ta
+  derleniyor, fuzz CI'ı Linux'ta); yerine mutasyon testi var. `keepass` crate'inin çözdüğü
+  verinin bellekte silinip silinmediği crate'e bağlı, doğrulanmadı. Geçmiş, otomatik yazma ve
+  özel ikonlar aktarılmıyor.
 - **KDF satırı** ("Argon2id · 64 MiB · 3 geçiş") henüz doğrulanmamış header'dan okunuyor; yalnızca
   bilgi amaçlı.
 
@@ -105,7 +115,6 @@ Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyl
   `SetDefaultDllDirectories`, süreç DACL'ı.
 - **Diğer ekranlar ve özellikler:**
   - özel alanlar, ekler ve geçmişi görüntüleme (düzenleyicide henüz yok);
-  - KeePass içe aktarma;
   - Windows Hello.
 - **Tasarımdaki iki ifade bilinçli olarak alınmadı:**
   - "Kasanız bu bilgisayardan hiç çıkmaz": kasa OneDrive'daysa doğru değil.

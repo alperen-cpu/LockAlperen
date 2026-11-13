@@ -140,6 +140,23 @@ export interface HealthReport {
 /** Counts and labels only; passwords never leave Rust. */
 export const passwordHealth = () => invoke<HealthReport>("password_health");
 
+export interface ImportSummary {
+  groups: number;
+  entries: number;
+  totp: number;
+  attachments: number;
+  customFields: number;
+  skippedRecycleBin: number;
+  skippedHistory: number;
+  folder: string;
+}
+
+/** KeePass file picker (Rust holds the path). Returns the file name or null. */
+export const pickKdbxFile = () => invoke<string | null>("pick_kdbx_file");
+
+export const importKdbx = (password: string) =>
+  invoke<{ summary: ImportSummary; entries: EntrySummary[] }>("import_kdbx", { password });
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";

@@ -9,11 +9,13 @@ import {
 } from "react";
 import * as api from "./api";
 import { Editor } from "./Editor";
+import { ImportDialog } from "./Import";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
   ClockIcon,
   CopyIcon,
+  DownloadIcon,
   EyeIcon,
   EyeOffIcon,
   FileIcon,
@@ -532,6 +534,17 @@ function VaultScreen({
   const [lockIn, setLockIn] = useState<number | null>(null);
   // undefined = not editing; null = new entry; string = entry id.
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function startImport() {
+    try {
+      const name = await api.pickKdbxFile();
+      if (name !== null) setImporting(name);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
 
   // Rust locks on its own (idle, Win+L, sleep); here we only notice it.
   useEffect(() => {
@@ -625,7 +638,6 @@ function VaultScreen({
   }, [open.entries, query, group, issuesOf]);
 
   const current = open.entries.find((e) => e.id === selected) ?? null;
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -654,6 +666,16 @@ function VaultScreen({
           <strong>{file.fileName}</strong>
         </div>
         <div className="topbar-right">
+          <button
+            type="button"
+            className="btn"
+            onClick={startImport}
+            disabled={editing !== undefined}
+            title="KeePass'ten içe aktar (KDBX 4)"
+          >
+            <DownloadIcon />
+            İçe aktar
+          </button>
           {lockIn !== null && (
             <span className="autolock muted" title="Klavye ya da fare kullanılınca sıfırlanır">
               <ClockIcon />
@@ -667,6 +689,13 @@ function VaultScreen({
         </div>
       </header>
 
+      {importing !== null && (
+        <ImportDialog
+          fileName={importing}
+          onDone={(entries) => onEntries(entries)}
+          onClose={() => setImporting(null)}
+        />
+      )}
       {editing !== undefined ? (
         <Editor
           id={editing}

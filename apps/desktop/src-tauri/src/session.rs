@@ -62,6 +62,8 @@ pub struct Session {
     vault: Option<Vault>,
     /// Where "Yeni kasa" will be written, chosen in the save dialog.
     new_path: Option<PathBuf>,
+    /// The KeePass file chosen for import.
+    import_path: Option<PathBuf>,
 }
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
@@ -444,6 +446,43 @@ impl Session {
             data.delete_entry(uuid)
                 .map_err(|_| NO_SUCH_ENTRY.to_owned())
         })
+    }
+
+    pub fn select_import(&mut self, path: PathBuf) -> String {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.import_path = Some(path);
+        name
+    }
+
+    /// Imports the chosen KeePass file into the open vault, under a new
+    /// top-level folder, and saves. Nothing changes if any step fails.
+    pub fn import_keepass(&mut self, password: &str) -> Result<crate::import::Summary, String> {
+        if self.vault.is_none() {
+            return Err(LOCKED.into());
+        }
+        let path = self.import_path.clone().ok_or(NO_FILE_SELECTED)?;
+        // Read at most one byte more than allowed, so size is checked without
+        // trusting the file system's length.
+        let mut bytes = Zeroizing::new(Vec::new());
+        std::fs::File::open(&path)
+            .and_then(|f| {
+                f.take(crate::import::MAX_KDBX_BYTES as u64 + 1)
+                    .read_to_end(&mut bytes)
+            })
+            .map_err(|_| READ_FAILED.to_owned())?;
+        let db = crate::import::open(&bytes, password).map_err(str::to_owned)?;
+        let stem = path
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let folder = format!("KeePass: {stem}");
+        let summary =
+            self.commit(|data| crate::import::convert(&db, data, &folder).map_err(str::to_owned))?;
+        self.import_path = None;
+        Ok(summary)
     }
 
     pub fn health(&self, now: i64) -> Result<crate::health::Report, String> {
@@ -906,6 +945,24 @@ mod tests {
         );
         let other = list.iter().find(|e| !e.has_totp).unwrap().id.clone();
         assert_eq!(s.totp_at(&other, 59), Err(NO_TOTP.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_needs_open_vault_and_file_and_keeps_vault_on_failure() {
+        let (dir, mut s) = opened("import");
+        assert_eq!(s.import_keepass("x"), Err(NO_FILE_SELECTED.to_owned()));
+        let junk = dir.join("junk.kdbx");
+        std::fs::write(&junk, b"not keepass").unwrap();
+        s.select_import(junk);
+        let before = s.entries().unwrap();
+        assert_eq!(
+            s.import_keepass("x"),
+            Err(crate::import::NOT_KDBX4.to_owned())
+        );
+        assert_eq!(s.entries().unwrap(), before);
+        s.lock();
+        assert_eq!(s.import_keepass("x"), Err(LOCKED.to_owned()));
         let _ = std::fs::remove_dir_all(dir);
     }
 

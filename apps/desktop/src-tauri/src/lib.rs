@@ -4,6 +4,7 @@
 mod autolock;
 mod clipboard;
 mod health;
+mod import;
 mod recent;
 mod session;
 mod totp;
@@ -154,6 +155,54 @@ async fn create_vault(
     .map(|(file, info)| Created { file, info })?;
     recent.record(&state);
     Ok(created)
+}
+
+/// File picker for a KeePass database (from Rust; the path stays here).
+#[tauri::command]
+async fn pick_kdbx_file(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("KeePass veritabanı", &["kdbx"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
+    state.with(|s| s.select_import(path)).map(Some)
+}
+
+#[derive(serde::Serialize)]
+struct Imported {
+    summary: import::Summary,
+    entries: Vec<EntrySummary>,
+}
+
+/// Decrypts the KeePass file (its KDF runs off the main thread) and adds it
+/// to the open vault.
+#[tauri::command]
+async fn import_kdbx(password: String, state: State<'_, Shared>) -> Result<Imported, String> {
+    let password = Zeroizing::new(password);
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| {
+                let summary = s.import_keepass(&password)?;
+                Ok(Imported {
+                    summary,
+                    entries: s.entries()?,
+                })
+            })
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
 }
 
 #[tauri::command]
@@ -422,7 +471,9 @@ pub fn run() {
             delete_entry,
             generate_password,
             totp_code,
-            password_health
+            password_health,
+            pick_kdbx_file,
+            import_kdbx
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");
