@@ -55,13 +55,22 @@
   - Files On-Demand davranışı test edilmedi.
 - **Ağ sürücüleri (SMB/NFS)** test edilmedi ve desteklenen bir yapılandırma değil.
 - **Güç kesintisi** fiziksel olarak test edilmedi.
-- **Bellek temizliği:** Yığın temizliği yalnızca Windows'ta (rustc 1.100, GNU araç zinciri)
-  ve release derlemesinde ölçüldü. Linux ve MSVC araç zinciri için ölçüm yok.
+- **Bellek temizliği:** Yığın temizliği yalnızca Windows'ta ölçüldü: release derlemesinde
+  GNU araç zinciriyle (yerel), debug derlemesinde MSVC ile (CI). MSVC release ve Linux için
+  ölçüm yok.
 - Ayrıntı: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) "Bilinen sınırlamalar".
 
 ### Test durumu
 
 - **Windows 10, rustc 1.100, GNU araç zinciri, yerel:** bütün workspace testleri geçti.
-- **Linux:** testler **çalıştırılmadı.** CI işi eklendi ama sonucu henüz görülmedi; yalnızca
-  derleme ve clippy denetimi yapıldı.
-- **CI'daki MSVC araç zinciri:** sonuç henüz görülmedi.
+- **CI, ubuntu-latest:** bütün workspace testleri geçti (135 geçti, 0 başarısız, 11 yok
+  sayıldı). Unix'e özel T2 (kilit kaybı → `LockLost`) dahil.
+- **CI, windows-latest (MSVC araç zinciri):** bütün workspace testleri geçti (140 geçti,
+  0 başarısız, 11 yok sayıldı). Windows'a özel T1 ve T8 dahil.
+- CI çalışmaları: [43474412721](https://github.com/alperen-cpu/LockAlperen/actions/runs/43474412721)
+  (push) ve [43479266434](https://github.com/alperen-cpu/LockAlperen/actions/runs/43479266434)
+  (PR #1), ikisi de commit `10f2272` üzerinde. Test sayıları push çalışmasından; iki çalışmada da
+  bütün işler (fuzz ve supply-chain dahil) geçti.
+- Bellek testleri (`lav-memtest`, 4 test) CI'da Windows/MSVC **debug** derlemesinde de geçti.
+  Release derlemesinde yalnızca yerelde Windows/GNU ile ölçüldü. Linux için bellek testi yok
+  (`lav-memtest` yalnızca Windows'ta derleniyor).
