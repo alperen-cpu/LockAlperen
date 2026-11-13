@@ -10,6 +10,13 @@ publish = false
 lav-core = { path = "../lav-core" }
 zeroize = "1.8"
 
+[dev-dependencies]
+# Independent recomputation of derived keys for the scan (PR-1, M1-M3).
+argon2 = "0.5"
+chacha20 = "0.9"
+hmac = "0.12"
+sha2 = "0.10"
+
 [target.'cfg(windows)'.dev-dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

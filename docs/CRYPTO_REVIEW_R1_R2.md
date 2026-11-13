@@ -1,6 +1,9 @@
 # Kriptografi ve Mimari İncelemesi: R1 (Rollback) ve R2 (Anahtar Bağlayıcılık)
 
-> **Durum:** Yalnızca analiz. Bu belgedeki hiçbir öneri **uygulanmadı**. Uygulama sizin onayınızı bekliyor.
+> **Durum (2026-11-13 güncellemesi):** 1. aşama sıkılaştırmaları ve R2 (format v2, key commitment)
+> **uygulandı**, bkz. `docs/FORMAT.md` ve `docs/IMPLEMENTATION_REPORT_2026-11.md`. R1 yalnızca
+> bağımsız bir prototip olarak var (`prototypes/r1-rollback`), üretim koduna alınmadı.
+> Aşağıdaki metin özgün analizdir.
 > **Yöntem:** Kendi analizim, önerilerimi görmeden çalışan bağımsız bir inceleme ajanının
 > analizi (bölüm 3) ve R2 için iki ayrı, çalışan kavram kanıtı (PoC). "Kanıtlandı" ifadesi yalnızca
 > kodla gösterilen şeyler için kullanılıyor.

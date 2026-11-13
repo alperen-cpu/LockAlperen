@@ -15,10 +15,10 @@ bir parola yöneticisidir.
 | `.lav` dosyası çalınır (bulut hesabı, kayıp disk, yedek) | Argon2id + XChaCha20-Poly1305. Güvenlik yalnızca ana parolanın gücüne bağlıdır |
 | Dosya kurcalanır (KDF'yi zayıflatma, içerik değiştirme) | Header AEAD ile doğrulanır, KDF parametrelerinin alt sınırı vardır |
 | Kötü niyetli dosya kaynak tüketir | KDF parametrelerinin üst sınırı vardır |
-| Kaydetme sırasında çökme ya da elektrik kesintisi | Atomik yazma ve `.bak` yedeği |
+| Kaydetme sırasında çökme ya da elektrik kesintisi | Atomik yazma; yedek ana dosyadan önce `fsync` edilir; dizin flush. Çökme her adımda test edildi; **gerçek güç kesintisi test edilmedi** |
 | Kopyalanan parola panoda kalır | Pano belirli bir süre sonra temizlenir *(uygulama katmanı)* |
 | Bilgisayar açık bırakılır | Boşta kalınca ve Windows kilitlenince kasa kilitlenir *(uygulama katmanı)* |
-| Bellek dökümünde sırların uzun süre kalması | Anahtarlar, kasa verisi ve ara tamponlar bırakılırken sıfırlanır (`zeroize`, `SecretString`) |
+| Bellek dökümünde sırların uzun süre kalması | Anahtarlar, kasa verisi ve ara tamponlar heap'te bırakılırken sıfırlanır (`zeroize`, `SecretString`). Kütüphanelerin yığında bıraktığı kopyalar için **en iyi çaba** yığın temizliği vardır: bir garanti değildir, yalnızca release derlemesinde ölçülmüştür |
 | Sırların log ya da hata mesajına düşmesi | `Debug` çıktısı gizli alanları `***` gösterir |
 | Açık bırakılan oturumda kasanın ele geçirilmesi | Ana parola değişimi mevcut parolayı zorunlu tutar |
 | Parola değiştikten sonra eski yedeğin açılması | Eski parolalı `.bak` silinir |
@@ -32,14 +32,61 @@ bir parola yöneticisidir.
   koruma sağlayamaz.
 - **Zayıf ana parola:** Argon2 kaba kuvvet saldırısını yavaşlatır ama engelleyemez.
 - **Fiziksel ya da donanım yan kanal saldırıları.**
-- **Bulut senkronu:** Dosyayı OneDrive gibi bir yere koymak kullanıcının tercihidir.
-  Dosya zaten şifreli olduğu için ek bir risk getirmez.
+- **Bulut senkronu ve ağ sürücüleri:** Dosya şifreli olduğu için gizlilik açısından ek risk
+  yoktur. Bütünlük ve eşzamanlılık açısından ise sınırlar vardır: aşağıdaki "Bilinen
+  sınırlamalar" bölümüne bakın.
+
+## Bilinen sınırlamalar: OneDrive ve ağ sürücüleri
+
+### OneDrive (ve benzeri senkron istemcileri)
+
+- **Geri alma (rollback) tespit edilmez.** Klasöre yazabilen biri ya da OneDrive sürüm geçmişi,
+  eski ama geçerli bir kasa sürümünü geri koyabilir. Bu sürüm sorunsuz açılır. Tespit tasarımı
+  yalnızca prototip aşamasındadır (`prototypes/r1-rollback`) ve üretimde **değildir**.
+- **Makineler arası kilit yoktur.** Kilit yalnızca aynı bilgisayardaki örnekleri dışlar. İki
+  bilgisayardaki düzenlemeler şöyle sonuçlanır:
+  - Değişiklik kayıttan önce diske ulaştıysa: `FileChangedOnDisk`.
+  - Ulaşmadıysa: OneDrive'ın çakışma kopyası (`kasa-PC2.lav` gibi).
+  - Birleştirme özelliği yoktur.
+- **Kilit dosyası (`<kasa>.lock`) senkron klasöründedir** ve OneDrive tarafından eşitlenir.
+  Tutulduğu sürece Windows'ta silinemez ve değiştirilemez. OneDrive'ın bu durumda senkron uyarısı
+  ya da çakışma kopyası üretip üretmediği **test edilmedi**.
+- **Kayıt sırasındaki pencere:** Dosya, son kontrol ile rename arasındaki çok kısa aralıkta
+  OneDrive tarafından değiştirilirse bu değişiklik ezilebilir. Kontrolden önceki değişiklikler
+  yakalanır.
+- **İsteğe bağlı dosyalar (Files On-Demand) / yer tutucular:** Dosya yerelde değilse okuma
+  indirmeyi tetikler. Çevrimdışı ya da `ERROR_CLOUD_*` durumları **test edilmedi** ve yeniden
+  denenmez.
+- **Başka makinenin geçici dosyaları:** `<kasa>.<16 hex>.tmp` biçimindeki dosyalar eşitlenirse
+  başarılı bir kayıttan sonra temizlenebilir. Bu durum TEORİKTİR.
+- **Sürüm geçmişi:** Eski parolayla şifrelenmiş eski sürümler bulutta kalabilir.
+
+### Ağ sürücüleri (SMB / NFS)
+
+- Kilit semantiği (`LockFileEx` ya da SMB üzerinden `flock`, NFS'te `flock` emülasyonu), rename
+  atomikliği ve `fsync` davranışı sunucuya bağlıdır ve **test edilmedi**.
+- **Dizin flush:**
+  - "Desteklenmiyor" hataları (Windows'ta 1 ve 50) yok sayılır, yani kalıcılık garantisi yoktur.
+  - Diğer hatalar (örneğin erişim reddi) kaydı başarısız yapar. Bu, bazı paylaşımlarda kaydı
+    engelleyebilir.
+- Aynı paylaşımı kullanan iki bilgisayar arasında kilit garantisi yoktur.
+- **Öneri:** Kasa yerel diskte tutulmalı. Ağ sürücüsü şu an **desteklenen bir yapılandırma
+  değildir.**
+
+### Güç kesintisi
+
+`fsync`, dizin flush ve NTFS rename'inin günlüğe yazılması fiziksel olarak test edilmedi.
+Windows'ta dizin `FlushFileBuffers`'ının rename'i kalıcı yaptığı belgelenmemiştir. Disk
+önbelleğinin "flush'ları yok say" ayarı bu garantileri boşa çıkarabilir. Ayrıntı:
+`docs/FIX_DESIGN_2026-11.md` §4.5.
 
 ## İlkeler
 
 1. Kendi kriptografi algoritmamızı yazmıyoruz; yalnızca RustCrypto kütüphanelerini kullanıyoruz.
 2. Çekirdekte `unsafe` kod yok (`#![forbid(unsafe_code)]`).
-3. Yanlış parola ile bozuk dosya aynı hatayı verir. Saldırgana ipucu vermeyiz.
+3. Yanlış parola ile bozuk dosya kullanıcıya aynı hatayı verir (`Error::user_message`). Saldırgana
+   ipucu vermeyiz. v2'den itibaren key commitment, bir dosyanın birden fazla parolayla doğrulanmasını
+   da engeller.
 4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı yerler yalnızca kullanıcının kapatabileceği
    site ikonu indirme ile ileride gelecek HIBP k-anonymity kontrolüdür (yalnızca SHA-1 özetinin
    ilk 5 karakteri gönderilir). Ayrıntı: [SECURITY.md](../SECURITY.md).

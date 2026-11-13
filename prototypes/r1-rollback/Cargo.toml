@@ -1,0 +1,10 @@
+[package]
+name = "r1-rollback-proto"
+description = "PROTOTYPE ONLY: R1 rollback / fork detection (version vectors + local device state). Not used by lav-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sha2 = "0.10"

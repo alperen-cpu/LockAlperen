@@ -9,6 +9,7 @@
 
 use std::io::{BufRead, Write};
 
+use lav_core::crypto::{self, CompositeKey};
 use lav_core::{generate_password, Entry, KdfParams, PasswordOptions, SecretString, Vault};
 use zeroize::Zeroizing;
 
@@ -25,6 +26,13 @@ fn emit(label: &str, secret: &str) {
         line.push(HEX[(m & 15) as usize] as char);
     }
     println!("{line}");
+}
+
+/// Public (non-secret) values the scanner needs to recompute derived keys.
+/// Labels start with PUBLIC_ and are never searched for.
+fn emit_public(label: &str, bytes: &[u8]) {
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    println!("{label}={hex}");
 }
 
 fn alnum(len: usize) -> Zeroizing<String> {
@@ -55,10 +63,44 @@ fn main() {
     // Control: a secret we deliberately leak, proving the scanner can see heap data.
     let canary = alnum(30);
     emit("CANARY", &canary);
-    std::mem::forget(String::from(canary.as_str()));
+    // black_box: in release (LTO) an unused, forgotten allocation is elided,
+    // which made the scanner's sanity check fail in release builds.
+    let leaked = String::from(canary.as_str());
+    std::hint::black_box(&leaked);
+    std::mem::forget(leaked);
     drop(canary);
 
-    if scenario == "unlock-last" {
+    if scenario == "kdf-last" {
+        // M1/M2: key derivation (Argon2id -> HKDF -> commitment HMAC) is the
+        // last thing before the dump. The scanner recomputes master key, PRK,
+        // payload key, commitment key and HMAC pads from MASTER + salt.
+        let salt = crypto::random_bytes::<32>();
+        emit_public("PUBLIC_SALT", &salt);
+        let keys = crypto::derive_keys(
+            &CompositeKey::new(&master, None),
+            &salt,
+            &KdfParams::default(),
+        )
+        .unwrap();
+        std::hint::black_box(keys.commitment(&[0u8; 78]));
+        drop(keys);
+    } else if scenario == "unlock-move-last" {
+        // M3: unlock, then MOVE the vault around (Box, Vec) before dropping it.
+        let sealed = Vault::create("mem", &master, None, KdfParams::default())
+            .unwrap()
+            .seal()
+            .unwrap();
+        let header = Vault::peek_header(&sealed).unwrap();
+        emit_public("PUBLIC_SALT", &header.salt);
+        emit_public("PUBLIC_NONCE", &header.nonce);
+        let vault = Vault::unlock(&sealed, &master, None).unwrap();
+        let boxed = Box::new(vault);
+        let mut moved = Vec::with_capacity(1);
+        moved.push(*boxed);
+        let vault = moved.pop().unwrap();
+        std::hint::black_box(&vault);
+        drop(vault);
+    } else if scenario == "unlock-last" {
         // Worst case for decode-path leaks: unlock is the LAST thing before the dump.
         let sealed = {
             let mut vault = Vault::create("mem", &master, None, KdfParams::default()).unwrap();

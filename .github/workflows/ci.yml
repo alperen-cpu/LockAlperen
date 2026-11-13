@@ -19,7 +19,14 @@ env:
 
 jobs:
   test:
-    runs-on: windows-latest
+    # Linux added 2026-11: flock/unlink/fsync semantics and the core's tests
+    # must be exercised on both platforms (the process memory scan in
+    # lav-memtest is Windows-only and is compiled out on Linux).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
