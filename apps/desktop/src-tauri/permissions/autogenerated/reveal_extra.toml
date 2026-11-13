@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reveal-extra"
+description = "Enables the reveal_extra command without any pre-configured scope."
+commands.allow = ["reveal_extra"]
+
+[[permission]]
+identifier = "deny-reveal-extra"
+description = "Denies the reveal_extra command without any pre-configured scope."
+commands.deny = ["reveal_extra"]

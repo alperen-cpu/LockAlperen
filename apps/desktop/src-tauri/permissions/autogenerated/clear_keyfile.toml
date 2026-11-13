@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-keyfile"
+description = "Enables the clear_keyfile command without any pre-configured scope."
+commands.allow = ["clear_keyfile"]
+
+[[permission]]
+identifier = "deny-clear-keyfile"
+description = "Denies the clear_keyfile command without any pre-configured scope."
+commands.deny = ["clear_keyfile"]

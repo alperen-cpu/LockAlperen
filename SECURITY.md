@@ -60,19 +60,19 @@ tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ## Uygulama katmanı: Faz 2'de zorunlu sıkılaştırmalar
 
-Bunlar masaüstü uygulaması yazılırken yapılacaklar ve sürüm çıkmadan önce kontrol edilecek:
+Durum 2026-11-14 itibarıyla. Ayrıntı ve doğrulamalar: [apps/desktop/README.md](apps/desktop/README.md).
 
-- [ ] **Pano:** Kopyalanan parolalar Windows pano geçmişine (Win+V) ve bulut panosuna düşmeyecek. Bunun için `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory=0` ve `CanUploadToCloudClipboard=0` biçimleri işaretlenecek. Pano süre dolunca temizlenecek, ama yalnızca hâlâ bizim koyduğumuz içerik duruyorsa.
-- [ ] **Ekran paylaşımı:** Pencereye `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` uygulanacak. Teams/Zoom ekran paylaşımında ve ekran görüntülerinde kasa görünmeyecek.
-- [ ] **Süreç belleğine erişim:** İşlem DACL'ı ile aynı kullanıcının diğer süreçlerinin belleğimizi okuması engellenecek (KeeFarce tipi saldırılara karşı).
-- [ ] **DLL ele geçirme:** Başlangıçta `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` çağrılacak.
-- [ ] **Ana parola girişi (CVE-2023-32784 dersi):** Parola arayüzde durum (state) olarak tutulmayacak, alındığı anda Rust tarafına gönderilip kutu temizlenecek. ⚠️ WebView/JavaScript dizgileri silinemez. Bu bilinen bir sınır ve süre en kısada tutulacak.
-- [ ] **Otomatik kilit:** Boşta kalınca, Windows kilitlenince, oturum değişince ve uyku moduna geçilince kasa kilitlenecek. Kilitte anahtar ve içerik bellekten silinecek.
-- [ ] **Hassas bellek sayfaları:** Anahtar sayfaları `VirtualLock` ile kilitlenip pagefile'a yazılmaları engellenecek.
-- [ ] **Dışa aktarma:** Her seferinde ana parola yeniden sorulacak. CSV hücreleri kaçışlanacak.
-- [ ] **Otomatik yazma (auto-type):** Yalnızca hedef pencere doğrulandıktan sonra yazılacak.
-- [ ] **Tauri yapılandırması:** Sıkı CSP olacak, uzak içerik yüklenmeyecek, yalnızca gerekli komutlar açık olacak, WebView'de geliştirici araçları kapalı olacak.
-- [ ] **Dağıtım:** `.exe` kod imzalı olacak ve yeniden üretilebilir derleme hedeflenecek.
+- [x] **Pano:** Kopyalamayı Rust yapar. `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory=0` ve `CanUploadToCloudClipboard=0` biçimleri konur. Pano 12 sn sonra ve kilitlenince temizlenir, ama yalnızca hâlâ bizim içeriğimiz duruyorsa (sıra numarası). *Doğrulandı:* gerçek panoda üç biçimin konduğu, temizlendiği ve kullanıcının sonraki kopyasının korunduğu. *Doğrulanmadı:* Win+V penceresinde gerçekten görünmediği (elle bakılmadı).
+- [x] **Ekran paylaşımı:** Pencereye `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` uygulanır (eski Windows'ta `WDA_MONITOR`, siyah görünür). *Doğrulandı:* ekran görüntüsünde pencere yok. Teams/Zoom ile ayrıca denenmedi.
+- [x] **Süreç belleğine erişim:** Süreç DACL'ı tek bir girişle değiştirilir: aynı kullanıcıya yalnızca sorgulama, bekleme ve sonlandırma. *Doğrulandı:* başka bir süreçten `OpenProcess(PROCESS_VM_READ)` ve `PROCESS_ALL_ACCESS` reddediliyor (hata 5), `taskkill` çalışıyor. **Sınır:** nesnenin sahibi (aynı kullanıcı) DACL'ı yeniden yazabilir; `SeDebugPrivilege` sahibi yöneticiler DACL'ı hiç görmez. Kararlı bir saldırganı durdurmaz, hazır araçların basit bellek okumasını engeller.
+- [x] **DLL ele geçirme:** Başlangıçta, hiçbir sır bellekte yokken `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` çağrılır. WebView2 tam yolla yüklendiği için çalışıyor (elle doğrulandı).
+- [x] **Ana parola girişi (CVE-2023-32784 dersi):** Kontrolsüz input; gönderilirken okunur, hemen temizlenir, React state'ine girmez; Rust'ta `Zeroizing`. ⚠️ WebView/JavaScript dizgileri ve IPC tamponları silinemez (bilinen sınır). Kayıt düzenleyici açıkken o kaydın parolası ve notları ister istemez WebView'dedir.
+- [x] **Otomatik kilit:** Kararı Rust verir: 5 dk sistem geneli boşta kalma, Win+L, bağlantı kesilmesi, oturum kapatma, uyku. Kilitte kasa bırakılır (anahtar ve içerik `lav-core` tarafından silinir) ve pano temizlenir. *Doğrulandı:* boşta kilit (elle) ve gizli pencereye gönderilen gerçek mesajlarla kilit (test). *Doğrulanmadı:* Windows'un Win+L/uyku mesajlarını gerçekten gönderdiği (elle denenmeli).
+- [x] **Hassas bellek sayfaları:** `lav-core`'daki türetilmiş anahtar ayırması `VirtualLock`/`mlock` ile kilitlenir (`region` crate'i; çekirdek `unsafe` içermemeye devam ediyor). *Doğrulandı:* Windows'ta kilit kabul ediliyor (test). **Sınır:** yalnızca anahtar sayfası; çözülmüş kasa içeriği kilitli değil. Uyku modu (hibernate) tüm belleği diske yazar. Sayfalar kilitli bırakılır (Windows'ta kilit sayaçsız olduğu için).
+- [ ] **Dışa aktarma:** Özellik **henüz yok.** Eklendiğinde her seferinde ana parola yeniden sorulacak, CSV hücreleri kaçışlanacak.
+- [ ] **Otomatik yazma (auto-type):** Özellik **henüz yok.** Eklendiğinde yalnızca hedef pencere doğrulandıktan sonra yazılacak.
+- [x] **Tauri yapılandırması:** Sıkı CSP (`default-src 'self'`, `frame-src 'none'`, `object-src 'none'`, `form-action 'none'`), uzak içerik ve web fontu yok, uygulama dışına gezinme engelli, WebView'e yalnızca uygulamanın kendi komutları açık (dosya sistemi, shell, diyalog yetkisi yok; dosya yolları Rust'ta kalır). Tauri'nin `devtools` özelliği açık değil, geliştirici araçları yalnızca debug derlemede var.
+- [ ] **Dağıtım:** Kod imzası **yapılmadı**: sertifika gerekiyor (proje sahibinin sağlaması lazım). Yeniden üretilebilir derleme hedefi henüz ele alınmadı.
 
 ## Kalan riskler (dürüstçe)
 

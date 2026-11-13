@@ -282,7 +282,14 @@ struct KeyPair {
 /// ```compile_fail,E0603
 /// let _ = lav_core::crypto::encrypt(&[0u8; 32], &[0u8; 24], b"", b"x");
 /// ```
-pub struct DerivedKeys(Box<KeyPair>);
+///
+/// The allocation's page is also locked in RAM (`VirtualLock` / `mlock`, via
+/// the `region` crate) so the keys are not written to the page file / swap.
+/// Best effort: if the OS refuses (lock quota), the keys still work and are
+/// still wiped. Pages are never unlocked: on Windows the lock is per page and
+/// not counted, so unlocking one allocation could unlock another key on the
+/// same page. Hibernation still writes all of RAM to disk.
+pub struct DerivedKeys(Box<KeyPair>, bool);
 
 /// A payload key whose commitment was verified. Only
 /// [`DerivedKeys::verified_payload_key`] creates one, and [`decrypt`] only
@@ -292,10 +299,20 @@ pub struct VerifiedKey<'a>(&'a [u8; KEY_LEN]);
 
 impl DerivedKeys {
     fn zeroed() -> Self {
-        Self(Box::new(KeyPair {
+        let pair = Box::new(KeyPair {
             payload: [0; KEY_LEN],
             commitment: [0; KEY_LEN],
-        }))
+        });
+        // Lock BEFORE any key byte is written into the allocation.
+        let locked = region::lock(&*pair as *const KeyPair, core::mem::size_of::<KeyPair>())
+            .map(core::mem::forget)
+            .is_ok();
+        Self(pair, locked)
+    }
+
+    /// Whether the OS accepted locking the key page in RAM (see the type docs).
+    pub fn pages_locked(&self) -> bool {
+        self.1
     }
 
     /// HKDF-SHA256 (no salt) from the Argon2id master key, one `info` per

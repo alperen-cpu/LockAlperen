@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-entry-form"
+description = "Enables the entry_form command without any pre-configured scope."
+commands.allow = ["entry_form"]
+
+[[permission]]
+identifier = "deny-entry-form"
+description = "Denies the entry_form command without any pre-configured scope."
+commands.deny = ["entry_form"]

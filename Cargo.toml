@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 members = ["crates/lav-core", "crates/lav-favicon", "crates/lav-memtest", "prototypes/r1-rollback"]
-exclude = ["fuzz"]
+# apps/desktop/src-tauri is its own workspace (Tauri deps stay out of the core lockfile).
+exclude = ["fuzz", "apps/desktop/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
