@@ -25,7 +25,7 @@ tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 | Açık | Ne oldu | LockAlperen'de durum |
 |---|---|---|
-| **CVE-2023-32784** (KeePass 2.x) | Parola kutusunun yazarken bıraktığı ara metinler yüzünden ana parola bellek dökümünden okunabiliyordu | ✅ Çekirdekte parola, anahtarlar, şifresiz içerik ve ara tamponlar işi bitince bellekten siliniyor (`zeroize`). Bellekte büyürken eski kopyasını geride bırakacak tamponlar önceden doğru boyutta açılıyor. ⚠️ Arayüz (WebView) tarafı için aşağıdaki "Uygulama katmanı" maddelerine bakın |
+| **CVE-2023-32784** (KeePass 2.x) | Parola kutusunun yazarken bıraktığı ara metinler yüzünden ana parola bellek dökümünden okunabiliyordu | ✅ Çekirdekte parola, anahtarlar, şifresiz içerik ve ara tamponlar heap'te işi bitince siliniyor (`zeroize`). Kütüphanelerin yığında bıraktığı kopyalar için en iyi çaba yığın temizliği var: garanti değil, yalnızca release derlemesinde ölçüldü. Bellekte büyürken eski kopyasını geride bırakacak tamponlar önceden doğru boyutta açılıyor. ⚠️ Arayüz (WebView) tarafı için aşağıdaki "Uygulama katmanı" maddelerine bakın |
 | **CVE-2023-24055** (KeePass 2.x) | Yapılandırma dosyasına yazabilen biri bir "tetikleyici" ekleyip kasayı sessizce düz metin olarak dışa aktarabiliyordu | ✅ Tasarım gereği tetikleyici ve eklenti sistemi yok. Güvenliği etkileyen ayarlar şifreli kasanın içinde tutulacak; düz metin config hiçbir dışa aktarmayı başlatamaz. Dışa aktarma her seferinde ana parolayı yeniden soracak |
 | **CVE-2016-5119** (KeePass ≤ 2.33) | Güncelleme kontrolü HTTP üzerindendi; araya giren biri (MITM) sahte güncelleme sunabiliyordu | ✅ Uygulama ağ üzerinden kendini güncellemez. İleride güncelleme gelirse yalnızca HTTPS ve imza doğrulamalı olacak |
 | **CVE-2022-0725** | Hassas bilgiler log dosyalarına düşüyordu | ✅ **Bu inceleme sırasında bizde de bulundu ve düzeltildi.** Kayıt yapıları `Debug` ile parolayı yazdırabiliyordu. Artık parola, notlar, TOTP, gizli alanlar ve ekler `SecretString`/`SecretBytes` tipinde; log ve hata çıktılarında yalnızca `***` görünür. Bunu doğrulayan testler var |
@@ -79,7 +79,8 @@ Bunlar masaüstü uygulaması yazılırken yapılacaklar ve sürüm çıkmadan �
 - **Ele geçirilmiş bilgisayar:** Keylogger ya da yönetici yetkili zararlı yazılım, kasa açıkken her yerel parola yöneticisini yener.
 - **Zayıf ana parola:** Argon2 kaba kuvveti yavaşlatır ama engelleyemez. Uzun bir parola cümlesi önerilir.
 - **Bulut sürüm geçmişi:** OneDrive gibi servisler dosyanın eski sürümlerini saklar. Eski parolayla şifrelenmiş eski bir sürüm orada kalabilir.
-- **Geri alma (rollback):** Dosyaya yazabilen biri, kendi doğrulamasından geçen **eski** bir kasa sürümünü geri koyabilir. İleride son açılan sürümü yerelde kaydedip uyarı vereceğiz.
+- **Geri alma (rollback):** Dosyaya yazabilen biri, kendi doğrulamasından geçen **eski** bir kasa sürümünü geri koyabilir. Tespit **yok**. Tasarım yalnızca prototip aşamasında (`prototypes/r1-rollback`) ve bağımsız denetimde 9 açık bulundu.
+- **Senkron klasörü ve ağ sürücüleri:** Makineler arası kilit yok, kilit dosyası senkron klasöründe, ağ sürücüleri test edilmedi. Ayrıntı: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) "Bilinen sınırlamalar".
 - **Bağımsız denetim:** Kod henüz bağımsız bir güvenlik denetiminden geçmedi.
 
 ## Açık bildirme

@@ -1,6 +1,9 @@
-//! Cryptographic primitives. Nothing here is hand-rolled: we only compose
+//! Cryptographic primitives. No cryptography is hand-rolled: we only compose
 //! audited RustCrypto crates (Argon2id, HKDF-SHA256, HMAC-SHA256,
-//! XChaCha20-Poly1305).
+//! XChaCha20-Poly1305). The only algorithmic code of our own is the UAX #15
+//! canonical ordering / composition step of the allocation-free password NFC
+//! (built on `unicode-normalization`'s tables, tested for equivalence with
+//! its `nfc()` over all scalar values).
 
 use argon2::{Algorithm, Argon2, Block, Params, Version};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
