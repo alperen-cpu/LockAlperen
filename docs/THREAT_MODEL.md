@@ -39,7 +39,9 @@ bir parola yöneticisidir.
 
 1. Kendi kriptografi algoritmamızı yazmıyoruz; yalnızca RustCrypto kütüphanelerini kullanıyoruz.
 2. Çekirdekte `unsafe` kod yok (`#![forbid(unsafe_code)]`).
-3. Yanlış parola ile bozuk dosya aynı hatayı verir. Saldırgana ipucu vermeyiz.
+3. Yanlış parola ile bozuk dosya kullanıcıya aynı hatayı verir (`Error::user_message`). Saldırgana
+   ipucu vermeyiz. v2'den itibaren key commitment, bir dosyanın birden fazla parolayla doğrulanmasını
+   da engeller.
 4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı yerler yalnızca kullanıcının kapatabileceği
    site ikonu indirme ile ileride gelecek HIBP k-anonymity kontrolüdür (yalnızca SHA-1 özetinin
    ilk 5 karakteri gönderilir). Ayrıntı: [SECURITY.md](../SECURITY.md).

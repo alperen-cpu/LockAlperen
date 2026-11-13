@@ -834,6 +834,8 @@ dependencies = [
  "chacha20poly1305",
  "ciborium",
  "hkdf",
+ "hmac",
+ "lav-core",
  "rand 0.8.8",
  "serde",
  "serde_bytes",
@@ -861,7 +863,11 @@ dependencies = [
 name = "lav-memtest"
 version = "0.1.0"
 dependencies = [
+ "argon2",
+ "chacha20 0.9.1",
+ "hmac",
  "lav-core",
+ "sha2",
  "windows-sys 0.59.0",
  "zeroize",
 ]
@@ -1280,6 +1286,13 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "r1-rollback-proto"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
 
 [[package]]
 name = "rand"

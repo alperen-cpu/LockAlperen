@@ -1,21 +1,28 @@
 //! Binary layout of the `.lav` file header. See `docs/FORMAT.md`.
 //!
-//! All integers are little-endian. The complete header is passed to the AEAD as
-//! associated data, so any change to it makes decryption fail.
+//! All integers are little-endian. Every header field before the commitment is
+//! bound by the key commitment (checked before decryption), and the complete
+//! header, commitment included, is the AEAD associated data.
 
-use crate::crypto::{KdfParams, NONCE_LEN, SALT_LEN};
+use crate::crypto::{KdfParams, COMMITMENT_LEN, NONCE_LEN, SALT_LEN};
 use crate::error::{Error, Result};
 
 pub const MAGIC: [u8; 4] = *b"LKAV";
-pub const FORMAT_VERSION: u16 = 1;
+/// Format 2 adds the key commitment. Format 1 is NOT readable: there is no
+/// fallback path that skips the commitment check (downgrade protection).
+pub const FORMAT_VERSION: u16 = 2;
 pub const CIPHER_XCHACHA20_POLY1305: u8 = 1;
 pub const KDF_ARGON2ID: u8 = 1;
 
 pub const FLAG_KEYFILE: u16 = 0x0001;
 const KNOWN_FLAGS: u16 = FLAG_KEYFILE;
 
-/// magic(4) version(2) cipher(1) kdf(1) flags(2) mem(4) iter(4) par(4) salt(32) nonce(24)
-pub const HEADER_LEN: usize = 4 + 2 + 1 + 1 + 2 + 4 + 4 + 4 + SALT_LEN + NONCE_LEN;
+/// magic(4) version(2) cipher(1) kdf(1) flags(2) mem(4) iter(4) par(4) salt(32) nonce(24):
+/// every byte the key commitment covers.
+pub const COMMITTED_LEN: usize = 4 + 2 + 1 + 1 + 2 + 4 + 4 + 4 + SALT_LEN + NONCE_LEN;
+
+/// Committed fields followed by the 32-byte commitment.
+pub const HEADER_LEN: usize = COMMITTED_LEN + COMMITMENT_LEN;
 
 /// AEAD tag length (Poly1305).
 pub const TAG_LEN: usize = 16;
@@ -26,6 +33,9 @@ pub struct Header {
     pub kdf: KdfParams,
     pub salt: [u8; SALT_LEN],
     pub nonce: [u8; NONCE_LEN],
+    /// `HMAC-SHA256(commitment key, label || committed_bytes())`, see
+    /// [`crate::crypto::DerivedKeys::commitment`].
+    pub commitment: [u8; COMMITMENT_LEN],
 }
 
 impl Header {
@@ -33,8 +43,10 @@ impl Header {
         self.flags & FLAG_KEYFILE != 0
     }
 
-    pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
-        let mut out = [0u8; HEADER_LEN];
+    /// The header fields covered by the key commitment (everything but the
+    /// commitment itself), exactly as they appear on disk.
+    pub fn committed_bytes(&self) -> [u8; COMMITTED_LEN] {
+        let mut out = [0u8; COMMITTED_LEN];
         let mut w = Writer {
             buf: &mut out,
             pos: 0,
@@ -49,7 +61,14 @@ impl Header {
         w.put(&self.kdf.parallelism.to_le_bytes());
         w.put(&self.salt);
         w.put(&self.nonce);
-        debug_assert_eq!(w.pos, HEADER_LEN);
+        debug_assert_eq!(w.pos, COMMITTED_LEN);
+        out
+    }
+
+    pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
+        let mut out = [0u8; HEADER_LEN];
+        out[..COMMITTED_LEN].copy_from_slice(&self.committed_bytes());
+        out[COMMITTED_LEN..].copy_from_slice(&self.commitment);
         out
     }
 
@@ -59,19 +78,24 @@ impl Header {
         if file.len() < MAGIC.len() || file[..MAGIC.len()] != MAGIC {
             return Err(Error::NotAVault);
         }
+        // Version first, so any other version (in particular v1, which has no
+        // commitment) is reported as such and never parsed further.
+        if file.len() < MAGIC.len() + 2 {
+            return Err(Error::Malformed);
+        }
+        let version = u16::from_le_bytes([file[4], file[5]]);
+        if version != FORMAT_VERSION {
+            return Err(Error::UnsupportedVersion(version));
+        }
         if file.len() < HEADER_LEN + TAG_LEN {
             return Err(Error::Malformed);
         }
         let (raw, ciphertext) = file.split_at(HEADER_LEN);
         let mut r = Reader {
             buf: raw,
-            pos: MAGIC.len(),
+            pos: MAGIC.len() + 2,
         };
 
-        let version = u16::from_le_bytes(r.take());
-        if version != FORMAT_VERSION {
-            return Err(Error::UnsupportedVersion(version));
-        }
         let [cipher] = r.take();
         if cipher != CIPHER_XCHACHA20_POLY1305 {
             return Err(Error::UnsupportedAlgorithm(cipher));
@@ -92,6 +116,7 @@ impl Header {
         kdf.validate()?;
         let salt = r.take();
         let nonce = r.take();
+        let commitment = r.take();
 
         Ok((
             Header {
@@ -99,6 +124,7 @@ impl Header {
                 kdf,
                 salt,
                 nonce,
+                commitment,
             },
             raw,
             ciphertext,
@@ -142,6 +168,7 @@ mod tests {
             kdf: KdfParams::default(),
             salt: [1; SALT_LEN],
             nonce: [2; NONCE_LEN],
+            commitment: [3; COMMITMENT_LEN],
         }
     }
 
@@ -166,6 +193,14 @@ mod tests {
     fn rejects_bad_input() {
         assert!(matches!(Header::parse(b"nope"), Err(Error::NotAVault)));
         assert!(matches!(Header::parse(b"LKAV"), Err(Error::Malformed)));
+        assert!(matches!(
+            Header::parse(b"LKAV\x02\x00"),
+            Err(Error::Malformed)
+        ));
+        assert!(matches!(
+            Header::parse(b"LKAV\x01\x00"),
+            Err(Error::UnsupportedVersion(1))
+        ));
 
         let mut bytes = sample().to_bytes();
         bytes[4] = 9; // version

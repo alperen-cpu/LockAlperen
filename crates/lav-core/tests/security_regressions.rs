@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use lav_core::crypto::{self, CompositeKey, KdfParams};
+use lav_core::crypto::{self, CompositeKey, KdfParams, COMMITMENT_LEN};
 use lav_core::format::Header;
 use lav_core::{Entry, Error, Group, SecretString, Vault, VaultData};
 
@@ -42,21 +42,31 @@ impl Drop for TempDir {
 /// Builds a correctly encrypted file around an arbitrary CBOR payload, as only
 /// the key holder (or a buggy/older app version) could.
 fn encrypt_raw_payload(password: &str, payload: &[u8]) -> Vec<u8> {
-    let header = Header {
+    let mut header = Header {
         flags: 0,
         kdf: kdf(),
         salt: crypto::random_bytes(),
         nonce: crypto::random_bytes(),
+        commitment: [0; COMMITMENT_LEN],
     };
-    let key = crypto::derive_payload_key(
+    let keys = crypto::derive_keys(
         &CompositeKey::new(password, None),
         &header.salt,
         &header.kdf,
     )
     .unwrap();
+    header.commitment = keys.commitment(&header.committed_bytes());
     let hb = header.to_bytes();
     let mut out = hb.to_vec();
-    out.extend(crypto::encrypt(&key, &header.nonce, &hb, payload).unwrap());
+    out.extend(
+        lav_core::testing::encrypt(
+            &lav_core::testing::payload_key(&keys),
+            &header.nonce,
+            &hb,
+            payload,
+        )
+        .unwrap(),
+    );
     out
 }
 
