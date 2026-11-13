@@ -404,7 +404,7 @@ pub fn find_icon_links(html: &str, base: &Url) -> Vec<Url> {
         found.push((score.min(256), url));
     }
     // Stable sort: larger (sharper) icons first, document order as tie-break.
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     let mut urls: Vec<Url> = found.into_iter().map(|(_, u)| u).collect();
     dedup(&mut urls);
     urls
@@ -552,6 +552,24 @@ mod tests {
                 "https://example.com/favicon-16.png",
             ]
         );
+    }
+
+    #[test]
+    fn equal_sized_icons_keep_document_order() {
+        // Guards the (stable) sort: same score -> first in the page wins.
+        let base = Url::parse("https://example.com/").unwrap();
+        let html = r#"<html><head>
+            <link rel="icon" href="/a.png" sizes="32x32">
+            <link rel="icon" href="/big.png" sizes="64x64">
+            <link rel="icon" href="/b.png" sizes="32x32">
+            <link rel="icon" href="/c.png">
+            <link rel="icon" href="/d.png" sizes="32x32">
+        </head></html>"#;
+        let got: Vec<String> = find_icon_links(html, &base)
+            .into_iter()
+            .map(|u| u.path().to_owned())
+            .collect();
+        assert_eq!(got, ["/big.png", "/a.png", "/b.png", "/c.png", "/d.png"]);
     }
 
     #[test]
