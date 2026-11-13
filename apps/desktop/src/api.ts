@@ -24,6 +24,7 @@ export interface EntrySummary {
   url: string;
   groupId: string;
   group: string;
+  hasTotp: boolean;
 }
 
 /** Opens the native file picker. Returns null if the user cancelled. */
@@ -35,7 +36,7 @@ export const lock = () => invoke<void>("lock");
 
 export const listEntries = () => invoke<EntrySummary[]>("list_entries");
 
-export type CopyField = "username" | "password";
+export type CopyField = "username" | "password" | "totp";
 
 /** Rust copies the value itself; it never comes to the WebView. Returns the
  *  seconds until the clipboard is cleared. */
@@ -89,6 +90,8 @@ export interface EntryForm {
   url: string;
   notes: string;
   tags: string[];
+  /** Base32 secret or otpauth:// URI; "" = none. */
+  totp: string;
 }
 
 export interface GenOptions {
@@ -113,6 +116,15 @@ export const deleteEntry = (id: string) => invoke<EntrySummary[]>("delete_entry"
 
 export const generatePassword = (options: GenOptions) =>
   invoke<string>("generate_password", { options });
+
+export interface TotpCode {
+  code: string;
+  secondsLeft: number;
+  period: number;
+}
+
+/** Current code only; the TOTP secret never leaves Rust here. */
+export const totpCode = (id: string) => invoke<TotpCode>("totp_code", { id });
 
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {

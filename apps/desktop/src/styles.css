@@ -877,6 +877,19 @@ input[type="range"] {
   font-size: 14px;
 }
 
+.totp-code {
+  font-size: 20px;
+  letter-spacing: 3px;
+  color: var(--accent-soft);
+}
+
+.totp-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
 .dots {
   letter-spacing: 2px;
 }

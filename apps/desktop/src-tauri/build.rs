@@ -20,6 +20,7 @@ fn main() {
             "save_entry",
             "delete_entry",
             "generate_password",
+            "totp_code",
         ]),
     ))
     .expect("failed to run tauri-build");

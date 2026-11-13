@@ -65,6 +65,7 @@ export function Editor(props: {
                 url: "",
                 notes: "",
                 tags: [],
+                totp: "",
               };
         if (!alive) return;
         setGroups(gs);
@@ -268,6 +269,21 @@ export function Editor(props: {
                 <RefreshIcon />
               </button>
             </div>
+          </div>
+
+          <div className="field">
+            <label className="lbl" htmlFor="e-totp">
+              TOTP (iki adımlı doğrulama)
+            </label>
+            <input
+              id="e-totp"
+              className="text-input mono"
+              placeholder="Base32 anahtar ya da otpauth://totp/… bağlantısı"
+              value={form.totp}
+              onChange={(e) => set({ totp: e.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
           </div>
 
           <div className="field">

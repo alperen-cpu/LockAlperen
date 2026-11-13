@@ -1,7 +1,7 @@
 # LockAlperen masaüstü (Faz 2: iskelet)
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, parola üretici.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, parola üretici, TOTP kodları.
 
 ## Geliştirme
 
@@ -39,13 +39,17 @@ var.
 | Son kasalar | `%LOCALAPPDATA%\com.alperen.lockalperen\recent.json`: en fazla 5 kayıt, yalnızca yol ve son açılma zamanı (ad, içerik ya da sır yok). Kasanın yanında ya da roaming profilde değil. Geçici dosya + rename ile yazılır; bozuk ya da 64 KiB'tan büyük dosya boş liste sayılır. WebView sıra numarası gönderir, yolu Rust çözer. "Listeden kaldır" dosyayı silmez. |
 | Kayıt düzenleme | Değişiklik önce verinin **kopyasına** uygulanır ve diske kaydedilir; kayıt başarısız olursa bellek eski hâline döner (ekranda diske yazılmamış değişiklik görünmez). Dosya başka yerde değiştirildiyse (`FileChangedOnDisk`) üzerine yazılmaz. Düzenleyici açıkken parola ve notlar WebView'dedir (düzenlemenin doğası); Rust tarafındaki `EntryForm` bırakılırken silinir ve `Debug` çıktısında gizlidir. Önceki sürüm çekirdeğin geçmişine (son 20) girer. Silme iki adımlı onay ister. |
 | Parola üretici | Çekirdeğin `OsRng` tabanlı üreticisi; WebView yalnızca ayarları gönderir. Gösterilen entropi yaklaşık değerdir (her kümeden en az bir karakter zorunluluğu hesaba katılmaz). |
+| TOTP | RFC 6238; SHA-1/256/512, 6–8 hane, 1–300 sn periyot; base32 anahtar ya da `otpauth://totp/` bağlantısı (HOTP desteklenmez). Gizli anahtar Rust'ta kalır; WebView'e yalnızca o anki kod ve kalan süre gider (listede yalnızca `hasTotp`). HMAC RustCrypto'dan (`hmac`, `sha1`, `sha2`); kendi kodumuz yalnızca RFC'nin kesme adımı ve base32 çözümü, ikisi de RFC test vektörleriyle sınanıyor. Düzenleyicide anahtar görünür (düzenleme için). Geçersiz anahtar kaydedilmez. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 29 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 34 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
+- TOTP elle denendi: uygulamadaki kod, Python'un `hmac` kütüphanesiyle bağımsız hesaplanan değerle
+  aynı (810016, aynı saniye). RFC 6238 Ek B vektörlerinin hepsi (SHA-1/256/512, 6 zaman) ve RFC
+  4648 base32 vektörleri testte.
 - Düzenleyici elle denendi: Ctrl+N, alanlar, Ctrl+S; kayıt listeye ve diske geldi. Testler: ekle
   ve yeniden aç, düzenle/sil, **başka biri dosyayı değiştirdiyse bellek ve disk değişmiyor**, başlık,
   klasör ve kimlik kontrolleri, üretici ayarları, `Debug` gizliliği.
@@ -98,7 +102,6 @@ Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyl
   `SetDefaultDllDirectories`, süreç DACL'ı.
 - **Diğer ekranlar ve özellikler:**
   - özel alanlar, ekler ve geçmişi görüntüleme (düzenleyicide henüz yok);
-  - TOTP;
   - parola sağlığı;
   - KeePass içe aktarma;
   - Windows Hello.

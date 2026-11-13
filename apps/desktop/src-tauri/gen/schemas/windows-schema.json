@@ -273,6 +273,12 @@
           "markdownDescription": "Enables the select_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the totp_code command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-totp-code",
+          "markdownDescription": "Enables the totp_code command without any pre-configured scope."
+        },
+        {
           "description": "Enables the unlock command without any pre-configured scope.",
           "type": "string",
           "const": "allow-unlock",
@@ -373,6 +379,12 @@
           "type": "string",
           "const": "deny-select-recent",
           "markdownDescription": "Denies the select_recent command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the totp_code command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-totp-code",
+          "markdownDescription": "Denies the totp_code command without any pre-configured scope."
         },
         {
           "description": "Denies the unlock command without any pre-configured scope.",

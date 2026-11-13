@@ -5,13 +5,15 @@ mod autolock;
 mod clipboard;
 mod recent;
 mod session;
+mod totp;
 
 use std::sync::{Arc, Mutex};
 
 use std::time::Duration;
 
 use session::{
-    EntryForm, EntrySummary, Field, GenOptions, GroupView, SelectedFile, Session, VaultInfo,
+    EntryForm, EntrySummary, Field, GenOptions, GroupView, SelectedFile, Session, TotpCode,
+    VaultInfo,
 };
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
@@ -202,6 +204,14 @@ async fn delete_entry(id: String, state: State<'_, Shared>) -> Result<Vec<EntryS
     })
     .await
     .map_err(|_| INTERNAL.to_owned())?
+}
+
+/// The current code and its countdown; the TOTP secret stays in Rust.
+#[tauri::command]
+fn totp_code(id: String, state: State<'_, Shared>) -> Result<TotpCode, String> {
+    state
+        .with(|s| s.totp_at(&id, recent::now()))
+        .and_then(|r| r)
 }
 
 #[tauri::command]
@@ -401,7 +411,8 @@ pub fn run() {
             entry_form,
             save_entry,
             delete_entry,
-            generate_password
+            generate_password,
+            totp_code
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

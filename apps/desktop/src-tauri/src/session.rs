@@ -27,6 +27,7 @@ pub struct EntrySummary {
     pub url: String,
     pub group_id: String,
     pub group: String,
+    pub has_totp: bool,
 }
 
 /// What the unlock screen shows about the chosen file. The KDF values come
@@ -80,6 +81,18 @@ pub const CHANGED_ON_DISK: &str = "Kasa dosyası başka bir yerde değiştirilmi
 pub const EMPTY_TITLE: &str = "Başlık boş olamaz.";
 pub const NO_SUCH_GROUP: &str = "Klasör bulunamadı.";
 pub const BAD_GENERATOR: &str = "Bu ayarlarla parola üretilemez.";
+pub const TOTP_INVALID: &str =
+    "TOTP anahtarı geçersiz. Base32 anahtar ya da otpauth://totp/… bağlantısı girin.";
+pub const NO_TOTP: &str = "Bu kayıtta TOTP yok.";
+
+/// The current one-time code; the secret stays in Rust.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpCode {
+    pub code: String,
+    pub seconds_left: u64,
+    pub period: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +115,9 @@ pub struct EntryForm {
     pub url: String,
     pub notes: String,
     pub tags: Vec<String>,
+    /// Base32 secret or otpauth:// URI; empty = none.
+    #[serde(default)]
+    pub totp: String,
 }
 
 impl std::fmt::Debug for EntryForm {
@@ -111,6 +127,7 @@ impl std::fmt::Debug for EntryForm {
             .field("title", &self.title)
             .field("password", &"<redacted>")
             .field("notes", &"<redacted>")
+            .field("totp", &"<redacted>")
             .finish_non_exhaustive()
     }
 }
@@ -119,6 +136,7 @@ impl Drop for EntryForm {
     fn drop(&mut self) {
         self.password.zeroize();
         self.notes.zeroize();
+        self.totp.zeroize();
     }
 }
 
@@ -163,6 +181,8 @@ fn tidy_tags(tags: &[String]) -> Vec<String> {
 pub enum Field {
     Username,
     Password,
+    /// The current one-time code (never the TOTP secret).
+    Totp,
 }
 /// Turkish counterpart of `lav_core::error::UNLOCK_FAILED_MESSAGE`.
 pub const UNLOCK_FAILED: &str =
@@ -331,6 +351,11 @@ impl Session {
             url: e.url.clone(),
             notes: e.notes.expose().to_owned(),
             tags: e.tags.clone(),
+            totp: e
+                .totp
+                .as_ref()
+                .map(|t| t.expose().to_owned())
+                .unwrap_or_default(),
         })
     }
 
@@ -363,6 +388,11 @@ impl Session {
             return Err(EMPTY_TITLE.into());
         }
         let tags = tidy_tags(&form.tags);
+        let totp = form.totp.trim();
+        if !totp.is_empty() && crate::totp::Totp::parse(totp).is_none() {
+            return Err(TOTP_INVALID.into());
+        }
+        let totp = (!totp.is_empty()).then(|| lav_core::SecretString::new(totp));
         self.commit(|data| {
             let group = data
                 .groups
@@ -378,6 +408,7 @@ impl Session {
                 e.url = form.url.trim().to_owned();
                 e.notes = form.notes.as_str().into();
                 e.tags = tags.clone();
+                e.totp = totp.clone();
             };
             match &form.id {
                 None => {
@@ -415,6 +446,28 @@ impl Session {
         })
     }
 
+    /// The entry's current TOTP code at Unix time `now`.
+    pub fn totp_at(&self, id: &str, now: u64) -> Result<TotpCode, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        let e = vault
+            .data
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .ok_or(NO_SUCH_ENTRY)?;
+        let t = e
+            .totp
+            .as_ref()
+            .and_then(|s| crate::totp::Totp::parse(s.expose()))
+            .ok_or(NO_TOTP)?;
+        let (code, seconds_left) = t.code_at(now);
+        Ok(TotpCode {
+            code,
+            seconds_left,
+            period: t.period,
+        })
+    }
+
     /// One field of one entry, in a buffer that wipes itself.
     pub fn field(&self, id: &str, field: Field) -> Result<Zeroizing<String>, String> {
         let vault = self.vault.as_ref().ok_or(LOCKED)?;
@@ -427,6 +480,11 @@ impl Session {
         Ok(Zeroizing::new(match field {
             Field::Username => e.username.clone(),
             Field::Password => e.password.expose().to_owned(),
+            Field::Totp => {
+                return self
+                    .totp_at(id, crate::recent::now())
+                    .map(|c| Zeroizing::new(c.code))
+            }
         }))
     }
 
@@ -439,6 +497,7 @@ impl Session {
             .map(|e| EntrySummary {
                 id: e.id.to_string(),
                 group_id: e.group.to_string(),
+                has_totp: e.totp.is_some(),
                 title: e.title.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
@@ -640,6 +699,8 @@ mod tests {
     fn field_names_from_the_webview() {
         let f: Field = serde_json::from_str("\"password\"").unwrap();
         assert_eq!(f, Field::Password);
+        let f: Field = serde_json::from_str("\"totp\"").unwrap();
+        assert_eq!(f, Field::Totp);
         assert!(serde_json::from_str::<Field>("\"notes\"").is_err());
     }
 
@@ -721,6 +782,7 @@ mod tests {
             url: " https://ornek.com ".into(),
             notes: "not".into(),
             tags: vec!["iş".into(), " ".into(), "İŞ".into(), "dev".into()],
+            totp: String::new(),
         }
     }
 
@@ -811,6 +873,34 @@ mod tests {
         let f = form(&s, None, "x");
         let d = format!("{f:?}");
         assert!(!d.contains("yeni-gizli-parola") && !d.contains("not\""));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn totp_is_saved_validated_and_never_listed() {
+        let (dir, mut s) = opened("totp");
+        let mut f = form(&s, None, "2FA");
+        f.totp = "not base32!".into();
+        assert_eq!(s.save_entry(&f), Err(TOTP_INVALID.to_owned()));
+        // RFC 6238 SHA1 seed, base32.
+        f.totp = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".into();
+        let id = s.save_entry(&f).unwrap();
+
+        let list = s.entries().unwrap();
+        assert!(list.iter().find(|e| e.id == id).unwrap().has_totp);
+        let json = serde_json::to_string(&list).unwrap();
+        assert!(!json.contains("GEZDGNBV"), "secret never in the list");
+
+        assert_eq!(
+            s.totp_at(&id, 59).unwrap(),
+            TotpCode {
+                code: "287082".into(),
+                seconds_left: 1,
+                period: 30
+            }
+        );
+        let other = list.iter().find(|e| !e.has_totp).unwrap().id.clone();
+        assert_eq!(s.totp_at(&other, 59), Err(NO_TOTP.to_owned()));
         let _ = std::fs::remove_dir_all(dir);
     }
 

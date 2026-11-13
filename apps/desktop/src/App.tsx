@@ -23,6 +23,7 @@ import {
   PencilIcon,
   PlusIcon,
   SearchIcon,
+  ShieldIcon,
   XIcon,
 } from "./icons";
 
@@ -548,6 +549,7 @@ function VaultScreen({
   }, [onAutoLocked]);
 
   const [query, setQuery] = useState("");
+  // null = all; "totp" = entries with TOTP; otherwise a group id.
   const [group, setGroup] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(open.entries[0]?.id ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -594,7 +596,7 @@ function VaultScreen({
     const q = query.trim().toLocaleLowerCase("tr");
     return open.entries.filter(
       (e) =>
-        (group === null || e.groupId === group) &&
+        (group === null || (group === "totp" ? e.hasTotp : e.groupId === group)) &&
         (!q || [e.title, e.username, e.url].some((f) => f.toLocaleLowerCase("tr").includes(q))),
     );
   }, [open.entries, query, group]);
@@ -612,7 +614,8 @@ function VaultScreen({
     if (!current) return;
     try {
       const secs = await api.copyField(current.id, field);
-      const what = field === "password" ? "Parola" : "Kullanıcı adı";
+      const what =
+        field === "password" ? "Parola" : field === "totp" ? "Kod" : "Kullanıcı adı";
       setToast(`${what} kopyalandı · pano ${secs} sn sonra temizlenecek`);
     } catch (e) {
       setToast(api.errorText(e));
@@ -668,6 +671,15 @@ function VaultScreen({
           >
             <ListIcon />
             Tüm kayıtlar<span className="count">{open.entries.length}</span>
+          </button>
+          <button
+            type="button"
+            className={"nav" + (group === "totp" ? " active" : "")}
+            onClick={() => setGroup("totp")}
+          >
+            <ShieldIcon />
+            TOTP kodları
+            <span className="count">{open.entries.filter((e) => e.hasTotp).length}</span>
           </button>
           {groups.length > 0 && <div className="lbl section">Klasörler</div>}
           {groups.map(([id, g]) => (
@@ -768,6 +780,9 @@ function VaultScreen({
                 </div>
                 {/* key: a new entry always starts hidden. */}
                 <PasswordRow key={current.id} id={current.id} onCopy={() => copy("password")} />
+                {current.hasTotp && (
+                  <TotpRow key={`t-${current.id}`} id={current.id} onCopy={() => copy("totp")} />
+                )}
                 <div className="card-row">
                   <div className="card-text">
                     <div className="lbl">Web sitesi</div>
@@ -789,6 +804,58 @@ function VaultScreen({
         </main>
       </div>
       )}
+    </div>
+  );
+}
+
+function TotpRow({ id, onCopy }: { id: string; onCopy: () => void }) {
+  const [code, setCode] = useState<api.TotpCode | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const c = await api.totpCode(id);
+        if (alive) {
+          setCode(c);
+          setFailed(false);
+        }
+      } catch {
+        if (alive) setFailed(true);
+      }
+    };
+    void tick();
+    const t = window.setInterval(tick, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [id]);
+
+  const pretty = code ? code.code.replace(/^(\d{3,4})(\d{3,4})$/, "$1 $2") : "";
+  return (
+    <div className="card-row">
+      <div className="card-text">
+        <div className="lbl">Tek kullanımlık kod (TOTP)</div>
+        <div className="value mono totp-code">{failed ? "Kod üretilemedi" : pretty || "…"}</div>
+      </div>
+      {code && (
+        <span className="muted small totp-left" aria-label={`${code.secondsLeft} saniye kaldı`}>
+          <ClockIcon />
+          {code.secondsLeft} sn
+        </span>
+      )}
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Kodu kopyala"
+        title="Kopyala"
+        disabled={!code}
+        onClick={onCopy}
+      >
+        <CopyIcon />
+      </button>
     </div>
   );
 }
