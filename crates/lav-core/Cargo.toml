@@ -19,6 +19,8 @@ unicode-normalization = "0.1"
 sha2 = "0.10"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
+# VirtualLock / mlock for the key pages (safe API; this crate stays unsafe-free).
+region = "4"
 zeroize = { version = "1.8", features = ["derive"] }
 
 [features]

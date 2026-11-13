@@ -25,9 +25,6 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_OVERLAPPED,
 };
 
-/// Default idle time before locking.
-pub const IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-
 /// The idle timeout in effect. Debug builds accept `LAV_IDLE_SECS` so the
 /// idle lock can be tried without waiting; release builds ignore it.
 pub fn idle_timeout() -> Duration {
@@ -39,7 +36,7 @@ pub fn idle_timeout() -> Duration {
             return Duration::from_secs(secs.max(1));
         }
     }
-    IDLE_TIMEOUT
+    Duration::from_secs(u64::from(crate::settings::idle_minutes()) * 60)
 }
 
 // wParam values of WM_WTSSESSION_CHANGE (WinUser.h).

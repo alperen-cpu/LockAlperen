@@ -10,6 +10,8 @@ import {
 import * as api from "./api";
 import { Editor } from "./Editor";
 import { ImportDialog } from "./Import";
+import { ExtrasView } from "./Extras";
+import { SettingsDialog } from "./Settings";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
@@ -17,6 +19,7 @@ import {
   CopyIcon,
   DownloadIcon,
   EyeIcon,
+  GearIcon,
   EyeOffIcon,
   FileIcon,
   FolderIcon,
@@ -375,6 +378,32 @@ function UnlockScreen(props: {
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
   const [caps, setCaps] = useState(false);
+  // Key file chosen for this vault (name only; Rust holds the path).
+  const [keyName, setKeyName] = useState<string | null>(null);
+  const [useKey, setUseKey] = useState(false);
+
+  // New file selected: Rust dropped the key file; follow the header's hint.
+  useEffect(() => {
+    setKeyName(null);
+    setUseKey(file?.keyfileRequired ?? false);
+  }, [file]);
+
+  async function toggleKey(on: boolean) {
+    setUseKey(on);
+    if (!on) {
+      setKeyName(null);
+      await api.clearKeyfile().catch(() => undefined);
+    }
+  }
+
+  async function chooseKey() {
+    try {
+      const name = await api.pickKeyfile();
+      if (name !== null) setKeyName(name);
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
   // The master password is NEVER React state (CVE-2023-32784 lesson): the
   // input is uncontrolled, read once on submit and cleared at once.
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -457,10 +486,23 @@ function UnlockScreen(props: {
             {caps && <div className="warn">Caps Lock açık</div>}
           </div>
 
-          {file?.keyfileRequired && (
-            <p className="warn">
-              Bu kasa bir anahtar dosyası istiyor. Anahtar dosyası desteği bu sürümde henüz yok.
-            </p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={useKey}
+              disabled={!file || busy}
+              onChange={(e) => void toggleKey(e.target.checked)}
+            />
+            Anahtar dosyası kullan
+          </label>
+          {useKey && (
+            <button type="button" className="btn btn-left" onClick={chooseKey} disabled={busy}>
+              <FileIcon />
+              <span className="ellipsis">{keyName ?? "Anahtar dosyası seç…"}</span>
+            </button>
+          )}
+          {file?.keyfileRequired && !keyName && (
+            <p className="warn">Bu kasa bir anahtar dosyası istiyor.</p>
           )}
 
           <button type="submit" className="btn btn-accent wide" disabled={!file || busy}>
@@ -536,6 +578,7 @@ function VaultScreen({
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
   const [importing, setImporting] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   async function startImport() {
     try {
@@ -682,6 +725,15 @@ function VaultScreen({
               Otomatik kilit {formatClock(lockIn)}
             </span>
           )}
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Ayarlar"
+            title="Ayarlar"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <GearIcon />
+          </button>
           <button type="button" className="btn" onClick={onLock}>
             <LockIcon />
             Kilitle <span className="kbd">Ctrl+L</span>
@@ -689,6 +741,7 @@ function VaultScreen({
         </div>
       </header>
 
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {importing !== null && (
         <ImportDialog
           fileName={importing}
@@ -868,6 +921,7 @@ function VaultScreen({
                   </div>
                 </div>
               </div>
+              <ExtrasView id={current.id} version={open.entries} onToast={setToast} />
             </>
           ) : (
             <p className="empty muted">Bir kayıt seçin.</p>

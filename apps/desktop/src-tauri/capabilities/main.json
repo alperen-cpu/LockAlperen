@@ -24,6 +24,14 @@
     "allow-totp-code",
     "allow-password-health",
     "allow-pick-kdbx-file",
-    "allow-import-kdbx"
+    "allow-import-kdbx",
+    "allow-pick-keyfile",
+    "allow-clear-keyfile",
+    "allow-entry-extras",
+    "allow-reveal-extra",
+    "allow-copy-extra",
+    "allow-save-attachment",
+    "allow-get-settings",
+    "allow-set-settings"
   ]
 }

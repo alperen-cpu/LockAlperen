@@ -42,11 +42,16 @@ var.
 | TOTP | RFC 6238; SHA-1/256/512, 6–8 hane, 1–300 sn periyot; base32 anahtar ya da `otpauth://totp/` bağlantısı (HOTP desteklenmez). Gizli anahtar Rust'ta kalır; WebView'e yalnızca o anki kod ve kalan süre gider (listede yalnızca `hasTotp`). HMAC RustCrypto'dan (`hmac`, `sha1`, `sha2`); kendi kodumuz yalnızca RFC'nin kesme adımı ve base32 çözümü, ikisi de RFC test vektörleriyle sınanıyor. Düzenleyicide anahtar görünür (düzenleme için). Geçersiz anahtar kaydedilmez. |
 | Parola sağlığı | Rust'ta hesaplanır; WebView'e yalnızca sayılar ve kayıt başına etiket (zayıf/tekrar/süresi dolmuş) gider. Tekrar kontrolü parolaları kopyalamadan, ödünç alarak karşılaştırır. **Zayıflık tahmini basittir:** uzunluk × log2(kullanılan karakter türleri), 60 bitin altı ya da 10 karakterden kısa = zayıf. Sözlük kelimeleri ve kalıplar tanınmaz ("Password123!" zayıf sayılmaz); arayüz bunu söylüyor. Ağ kullanılmaz; sızıntı kontrolü yok. |
 | KeePass içe aktarma | Dosya güvenilmez kabul edilir. `keepass` crate'ine vermeden önce dış başlığı **kendimiz** okuruz: yalnızca KDBX 4, en fazla 64 MiB, KDF sınırları (Argon2 ≤ 1 GiB bellek, ≤ 100 iterasyon, ≤ 16 paralellik; AES-KDF ≤ 300 milyon tur). Crate bu parametreleri sınırlamıyor; sınır olmasa kötü niyetli bir dosya, parola denenmeden önce sınırsız bellek ya da süre harcatabilirdi. Çözüldükten sonra kayıt (50.000), klasör (10.000), derinlik (64), alan (1 MiB), ek (16 MiB, toplam 256 MiB) sınırları; KeePass Geri Dönüşüm Kutusu ve geçmiş aktarılmaz; sonuç `repair_structure`'dan geçer ve **yeni bir üst klasöre** eklenir. Hata durumunda kasa değişmez. KeePass dosyası değiştirilmez. Anahtar dosyası henüz desteklenmiyor. |
+| Süreç sertleştirme | Başlangıçta, hiçbir sır yokken: `SetDefaultDllDirectories(SYSTEM32)`; süreç DACL'ı yalnızca sorgula/bekle/sonlandır (bellek okuma yok). Pencere `WDA_EXCLUDEFROMCAPTURE` ile ekran görüntüsü ve paylaşımdan hariç (debug derlemede `LAV_ALLOW_CAPTURE=1` ile kapatılabilir; release'te yok sayılır). `unsafe` kod `src/hardening.rs`'te. *Doğrulandı:* başka süreçten `OpenProcess(VM_READ)` ve `ALL_ACCESS` reddediliyor (hata 5), `taskkill` çalışıyor, ekran görüntüsünde pencere yok; debug ve release derlemede. **Sınır:** aynı kullanıcı DACL'ı yeniden yazabilir, yöneticiler (`SeDebugPrivilege`) atlar. |
+| Anahtar sayfaları | `lav-core` türetilmiş anahtar ayırmasını `VirtualLock`/`mlock` ile RAM'de kilitler (`region` crate'i; çekirdekte `unsafe` yok). Yalnızca anahtar sayfası; çözülmüş içerik kilitli değil, hibernate tüm belleği yazar. |
+| Anahtar dosyası | Kilit açmada isteğe bağlı; dosya Rust'taki pencereyle seçilir, yolu Rust'ta kalır. Başka kasa seçilince unutulur. Gereksiz anahtar dosyası da aynı genel hatayı verir. |
+| Özel alanlar, ekler, geçmiş | Ayrıntıda gizli alan değerleri ve notlar gönderilmez; tıklanınca tek tek istenir, 15 sn sonra düşer. Kopyalama Rust'ta (pano kuralları aynı). Ekler "Kaydet…" ile diske **şifresiz** yazılır (arayüz söylüyor). Geçmiş yalnızca üst veri gösterir. Düzenleyicide özel alan ekle/sil; `fields` gönderilmezse mevcut alanlar korunur. |
+| Ayarlar | `%LOCALAPPDATA%\...\settings.json`: yalnızca otomatik kilit süresi; geçersiz değer varsayılana (5 dk) düşer. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
 
-- `cargo test`: 43 test (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 50 test (masaüstü) + çekirdekte sayfa kilidi testi (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
 - KeePass içe aktarma elle denendi: yanlış parolada genel mesaj; doğru parolayla 3 kayıt, 1 klasör,
@@ -54,6 +59,9 @@ var.
   yazıcısıyla, yalnızca testte), yanlış parola, KDBX 3.1 ve rastgele dosyanın reddi, **aşırı KDF
   ayarlarının hiçbir hesaplama yapılmadan reddi**, 300 rastgele bozulmuş dosyada panik olmaması
   (mutasyon testi; libFuzzer değil).
+- Sertleştirme, özel alan, gizli değer gösterme, geçmiş ve ayarlar elle denendi (ekran görüntüleri
+  ile). Anahtar dosyası birim testlerle (gerekli/yanlış/taşınmama) sınandı, arayüzde elle
+  denenmedi.
 - Parola sağlığı elle denendi: demo kasada aynı parolayı kullanan 4 kayıt "Tekrar" olarak
   işaretlendi, oran %0. Testler: tahmin sınırları, sayımlar, rapor JSON'unda parola olmaması.
 - TOTP elle denendi: uygulamadaki kod, Python'un `hmac` kütüphanesiyle bağımsız hesaplanan değerle
@@ -85,21 +93,21 @@ var.
 
 ## Doğrulanmayanlar / bilinen sınırlar
 
-- **Release derleme ve MSVC:** yerelde yalnızca debug ve GNU ile derlendi. MSVC sonucunu CI işi
-  gösterecek.
+- **MSVC:** yerelde GNU ile derlendi. Release derlemesi (GNU, LTO) yerelde derlendi ve çalıştırıldı:
+  konsol penceresi yok, sertleştirme etkin. MSVC sonucunu CI işi gösterir.
 - **GNU bağlayıcı uyarısı:** "multiple non-default manifests". Dosya seçme penceresi çalıştı;
   release ya da MSVC'de bu uyarı beklenmiyor ama doğrulanmadı.
 - **Caps Lock uyarısı:** otomasyonla denenemedi, elle denenmeli.
 - **IPC tamponları:** parola JSON olarak WebView'den Rust'a gider. WebView/JS dizgileri ve
   Tauri'nin ara tamponları silinemez. Bu, SECURITY.md'de belirtilen bilinen sınır.
-- **Anahtar dosyası** desteklenmiyor. Kasa anahtar dosyası istiyorsa ekranda bir uyarı gösteriliyor.
+- **Anahtar dosyası:** kilit açmada destekleniyor; yeni kasa oluştururken ve KeePass içe aktarmada henüz yok.
 - **Pano:** Windows'un `EmptyClipboard` ile bıraktığı bellek bizim tarafımızdan silinmez; pano
   açıkken başka bir program içeriği okuyabilir. Pano geçmişi işaretlerinin Win+V'de gerçekten
   gizlendiği elle (Win+V açılarak) **kontrol edilmedi**; yalnızca işaretlerin konduğu doğrulandı.
 - **Win+L ve uyku:** Windows'un bu mesajları gizli pencereye gerçekten gönderdiği **elle
   doğrulanmadı** (oturumu kilitlemek otomasyonla yapılmadı). Denemek için: kasayı aç, Win+L'ye
   bas, geri dön; kasa kilitli olmalı.
-- **Boşta kalma süresi** şimdilik sabit (5 dk), ayarı yok.
+- **Boşta kalma süresi** Ayarlar'dan seçilir (1–60 dk; "asla" bilinçli olarak yok).
 - **KeePass:** başlık okuyucumuz için libFuzzer hedefi yok (masaüstü crate'i yalnızca Windows'ta
   derleniyor, fuzz CI'ı Linux'ta); yerine mutasyon testi var. `keepass` crate'inin çözdüğü
   verinin bellekte silinip silinmediği crate'e bağlı, doğrulanmadı. Geçmiş, otomatik yazma ve
@@ -107,15 +115,13 @@ var.
 - **KDF satırı** ("Argon2id · 64 MiB · 3 geçiş") henüz doğrulanmamış header'dan okunuyor; yalnızca
   bilgi amaçlı.
 
-## Tasarımda olup henüz yapılmayanlar
+## Henüz yapılmayanlar
 
-Sırayla ele alınacak. Her biri SECURITY.md "Faz 2" listesindeki ilgili maddeyle birlikte yapılacak:
-
-- **Ekran yakalamadan hariç tutma** (`WDA_EXCLUDEFROMCAPTURE`), `VirtualLock`,
-  `SetDefaultDllDirectories`, süreç DACL'ı.
-- **Diğer ekranlar ve özellikler:**
-  - özel alanlar, ekler ve geçmişi görüntüleme (düzenleyicide henüz yok);
-  - Windows Hello.
+- **Windows Hello:** proje sahibinin kararıyla yapılmıyor.
+- **Dışa aktarma ve otomatik yazma (auto-type):** özellik yok; eklenirse SECURITY.md'deki şartlar geçerli.
+- **Kod imzası:** sertifika gerekiyor.
+- **Geçmişten geri yükleme:** geçmiş yalnızca görüntüleniyor (tarih, başlık, kullanıcı adı, parolanın farklı olup olmadığı).
+- **Ek ekleme:** ekler görüntülenip diske kaydedilebiliyor; düzenleyiciden yeni ek eklenemiyor.
 - **Tasarımdaki iki ifade bilinçli olarak alınmadı:**
   - "Kasanız bu bilgisayardan hiç çıkmaz": kasa OneDrive'daysa doğru değil.
   - "Sızıntılarda bulunmadı": ağ erişimi gerektiriyor ve bu özellik henüz yok.

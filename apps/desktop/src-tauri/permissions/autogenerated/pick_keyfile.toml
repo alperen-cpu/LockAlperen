@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-keyfile"
+description = "Enables the pick_keyfile command without any pre-configured scope."
+commands.allow = ["pick_keyfile"]
+
+[[permission]]
+identifier = "deny-pick-keyfile"
+description = "Denies the pick_keyfile command without any pre-configured scope."
+commands.deny = ["pick_keyfile"]

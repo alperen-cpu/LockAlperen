@@ -6,8 +6,8 @@
 // (documented limit in SECURITY.md).
 import { useEffect, useState, type FormEvent } from "react";
 import * as api from "./api";
-import type { EntryForm, EntrySummary, GenOptions, GroupView } from "./api";
-import { EyeIcon, EyeOffIcon, KeyIcon, RefreshIcon } from "./icons";
+import type { EntryForm, EntrySummary, FormField, GenOptions, GroupView } from "./api";
+import { EyeIcon, EyeOffIcon, KeyIcon, PlusIcon, RefreshIcon, XIcon } from "./icons";
 
 const DEFAULT_GEN: GenOptions = {
   length: 20,
@@ -66,6 +66,7 @@ export function Editor(props: {
                 notes: "",
                 tags: [],
                 totp: "",
+                fields: [],
               };
         if (!alive) return;
         setGroups(gs);
@@ -284,6 +285,63 @@ export function Editor(props: {
               autoComplete="off"
               spellCheck={false}
             />
+          </div>
+
+          <div className="field">
+            <span className="lbl">Özel alanlar</span>
+            {(form.fields ?? []).map((f, i) => {
+              const update = (patch: Partial<FormField>) =>
+                set({
+                  fields: (form.fields ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                });
+              return (
+                <div className="field-row" key={i}>
+                  <input
+                    className="text-input"
+                    placeholder="Alan adı"
+                    aria-label="Alan adı"
+                    value={f.name}
+                    onChange={(e) => update({ name: e.target.value })}
+                  />
+                  <input
+                    className="text-input mono"
+                    placeholder="Değer"
+                    aria-label="Alan değeri"
+                    type={f.protected ? "password" : "text"}
+                    value={f.value}
+                    onChange={(e) => update({ value: e.target.value })}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={f.protected}
+                      onChange={(e) => update({ protected: e.target.checked })}
+                    />
+                    Gizli
+                  </label>
+                  <button
+                    type="button"
+                    className="ghost-icon"
+                    aria-label="Alanı kaldır"
+                    onClick={() => set({ fields: (form.fields ?? []).filter((_, j) => j !== i) })}
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="btn add-field"
+              onClick={() =>
+                set({ fields: [...(form.fields ?? []), { name: "", value: "", protected: true }] })
+              }
+            >
+              <PlusIcon />
+              Alan ekle
+            </button>
           </div>
 
           <div className="field">

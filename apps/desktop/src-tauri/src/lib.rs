@@ -3,10 +3,12 @@
 
 mod autolock;
 mod clipboard;
+mod hardening;
 mod health;
 mod import;
 mod recent;
 mod session;
+mod settings;
 mod totp;
 
 use std::sync::{Arc, Mutex};
@@ -22,6 +24,31 @@ use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 const INTERNAL: &str = "Beklenmeyen bir hata oluştu.";
+
+/// Where settings.json lives (set at startup).
+#[derive(Default, Clone)]
+struct SettingsFile(Arc<Mutex<Option<std::path::PathBuf>>>);
+
+#[tauri::command]
+fn get_settings() -> settings::Settings {
+    settings::Settings {
+        idle_minutes: settings::idle_minutes(),
+    }
+}
+
+/// Applies at once (the auto-lock thread reads it every second) and saves.
+#[tauri::command]
+fn set_settings(
+    value: settings::Settings,
+    file: State<'_, SettingsFile>,
+) -> Result<settings::Settings, String> {
+    let value = value.sanitized();
+    settings::apply(value);
+    if let Some(path) = file.0.lock().ok().and_then(|g| g.clone()) {
+        settings::save(&path, value).map_err(|_| "Ayarlar kaydedilemedi.".to_owned())?;
+    }
+    Ok(value)
+}
 
 /// "Son kasalar": the list and the file it lives in (set at startup).
 #[derive(Default, Clone)]
@@ -104,6 +131,87 @@ async fn pick_vault_file(
     };
     let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
     state.with(|s| s.select(path)).map(Some)
+}
+
+#[tauri::command]
+fn entry_extras(id: String, state: State<'_, Shared>) -> Result<session::EntryExtras, String> {
+    state.with(|s| s.extras(&id)).and_then(|r| r)
+}
+
+/// Notes or a custom field value, only on an explicit "show" click.
+#[tauri::command]
+fn reveal_extra(
+    id: String,
+    what: session::Extra,
+    state: State<'_, Shared>,
+) -> Result<String, String> {
+    state
+        .with(|s| s.extra(&id, what))
+        .and_then(|r| r)
+        .map(|v| v.as_str().to_owned())
+}
+
+/// Copies notes or a custom field in Rust (same clipboard rules as passwords).
+#[tauri::command]
+async fn copy_extra(
+    id: String,
+    what: session::Extra,
+    state: State<'_, Shared>,
+    last: State<'_, LastCopy>,
+) -> Result<u64, String> {
+    let value = state.with(|s| s.extra(&id, what)).and_then(|r| r)?;
+    copy_and_schedule_clear(&value, &last)
+}
+
+/// Writes an attachment where the user chooses (Rust save dialog). The file
+/// on disk is NOT encrypted; the UI says so.
+#[tauri::command]
+async fn save_attachment(
+    id: String,
+    index: usize,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<bool, String> {
+    let (name, bytes) = state.with(|s| s.attachment(&id, index)).and_then(|r| r)?;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_file_name(&name)
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    let Some(picked) = picked else {
+        return Ok(false);
+    };
+    let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
+    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    Ok(true)
+}
+
+/// Key file picker (Rust; the path stays here). Returns the file name.
+#[tauri::command]
+async fn pick_keyfile(app: AppHandle, state: State<'_, Shared>) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Anahtar dosyası seç")
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
+    state.with(|s| s.set_keyfile(Some(path)))
+}
+
+#[tauri::command]
+fn clear_keyfile(state: State<'_, Shared>) -> Result<(), String> {
+    state.with(|s| {
+        s.set_keyfile(None);
+    })
 }
 
 /// Save dialog for a new vault (from Rust, like the open dialog). Returns
@@ -332,12 +440,17 @@ async fn copy_field(
     last: State<'_, LastCopy>,
 ) -> Result<u64, String> {
     let value = state.with(|s| s.field(&id, field)).and_then(|r| r)?;
-    let copied = clipboard::copy_secret(&value).map_err(|_| "Panoya kopyalanamadı.".to_owned())?;
-    drop(value);
+    copy_and_schedule_clear(&value, &last)
+}
+
+/// Puts `value` on the clipboard (marked private) and clears it after
+/// CLIPBOARD_SECONDS if it is still ours.
+fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> {
+    let copied = clipboard::copy_secret(value).map_err(|_| "Panoya kopyalanamadı.".to_owned())?;
     if let Ok(mut g) = last.0.lock() {
         *g = Some(copied);
     }
-    let last = last.inner().clone();
+    let last = last.clone();
     tauri::async_runtime::spawn(async move {
         tokio_sleep(Duration::from_secs(CLIPBOARD_SECONDS)).await;
         clipboard::clear_if_ours(copied);
@@ -428,6 +541,13 @@ fn start_autolock(shared: Shared, last: LastCopy) {
 }
 
 pub fn run() {
+    // Before anything else loads a DLL or holds a secret.
+    if !hardening::restrict_dll_search() {
+        eprintln!("LockAlperen: SetDefaultDllDirectories failed");
+    }
+    if !hardening::protect_process() {
+        eprintln!("LockAlperen: process DACL could not be set");
+    }
     let shared = Shared::default();
     let last = LastCopy::default();
     start_autolock(shared.clone(), last.clone());
@@ -441,9 +561,28 @@ pub fn run() {
         .manage(shared)
         .manage(last)
         .manage(Recent::default())
+        .manage(SettingsFile::default())
         .setup(|app| {
             use tauri::Manager;
+            // Keep the window out of screenshots and screen sharing. Debug
+            // builds may opt out with LAV_ALLOW_CAPTURE=1 (for UI testing).
+            let allow = cfg!(debug_assertions) && std::env::var_os("LAV_ALLOW_CAPTURE").is_some();
+            if !allow {
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = w.hwnd() {
+                        let r = hardening::exclude_from_capture(hwnd.0 as _);
+                        if r == hardening::Capture::Failed {
+                            eprintln!("LockAlperen: window could not be excluded from capture");
+                        }
+                    }
+                }
+            }
             if let Ok(dir) = app.path().app_local_data_dir() {
+                let sfile = dir.join("settings.json");
+                settings::apply(settings::load(&sfile));
+                if let Ok(mut g) = app.state::<SettingsFile>().0.lock() {
+                    *g = Some(sfile);
+                }
                 let file = dir.join("recent.json");
                 let list = recent::load(&file);
                 if let Ok(mut g) = app.state::<Recent>().0.lock() {
@@ -473,7 +612,15 @@ pub fn run() {
             totp_code,
             password_health,
             pick_kdbx_file,
-            import_kdbx
+            import_kdbx,
+            pick_keyfile,
+            clear_keyfile,
+            entry_extras,
+            reveal_extra,
+            copy_extra,
+            save_attachment,
+            get_settings,
+            set_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

@@ -24,6 +24,14 @@ fn main() {
             "password_health",
             "pick_kdbx_file",
             "import_kdbx",
+            "pick_keyfile",
+            "clear_keyfile",
+            "entry_extras",
+            "reveal_extra",
+            "copy_extra",
+            "save_attachment",
+            "get_settings",
+            "set_settings",
         ]),
     ))
     .expect("failed to run tauri-build");

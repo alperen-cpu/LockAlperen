@@ -92,6 +92,14 @@ export interface EntryForm {
   tags: string[];
   /** Base32 secret or otpauth:// URI; "" = none. */
   totp: string;
+  /** Custom fields; null/absent = keep unchanged. */
+  fields?: FormField[] | null;
+}
+
+export interface FormField {
+  name: string;
+  value: string;
+  protected: boolean;
 }
 
 export interface GenOptions {
@@ -156,6 +164,44 @@ export const pickKdbxFile = () => invoke<string | null>("pick_kdbx_file");
 
 export const importKdbx = (password: string) =>
   invoke<{ summary: ImportSummary; entries: EntrySummary[] }>("import_kdbx", { password });
+
+/** Key file picker (Rust holds the path). Returns the file name or null. */
+export const pickKeyfile = () => invoke<string | null>("pick_keyfile");
+
+export const clearKeyfile = () => invoke<void>("clear_keyfile");
+
+export interface EntryExtras {
+  fields: { name: string; value: string | null; protected: boolean }[];
+  attachments: { name: string; size: number }[];
+  history: { modified: number; title: string; username: string; passwordDiffers: boolean }[];
+  tags: string[];
+  hasNotes: boolean;
+  created: number;
+  modified: number;
+}
+
+export type Extra = { kind: "notes" } | { kind: "custom"; index: number };
+
+/** Metadata only: protected values and notes are not included. */
+export const entryExtras = (id: string) => invoke<EntryExtras>("entry_extras", { id });
+
+export const revealExtra = (id: string, what: Extra) => invoke<string>("reveal_extra", { id, what });
+
+export const copyExtra = (id: string, what: Extra) => invoke<number>("copy_extra", { id, what });
+
+/** Save dialog in Rust; returns false if cancelled. The file is NOT encrypted. */
+export const saveAttachment = (id: string, index: number) =>
+  invoke<boolean>("save_attachment", { id, index });
+
+export interface Settings {
+  idleMinutes: number;
+}
+
+export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
+
+export const getSettings = () => invoke<Settings>("get_settings");
+
+export const setSettings = (value: Settings) => invoke<Settings>("set_settings", { value });
 
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {

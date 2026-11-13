@@ -903,6 +903,110 @@ input[type="range"] {
   color: var(--muted);
 }
 
+.extras-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.card.pad {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kv {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.kv > .muted.ellipsis {
+  flex: 0 1 40%;
+}
+
+.kv > .value {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.small-btn {
+  width: 30px;
+  height: 30px;
+}
+
+.small-text {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--selected);
+  color: #b7ccff;
+}
+
+.meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-soft);
+  cursor: pointer;
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+}
+
+.history li {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.add-field {
+  align-self: flex-start;
+  height: 32px;
+  color: var(--muted);
+}
+
 .detail-pane {
   flex: 1 1 400px;
   min-width: 0;

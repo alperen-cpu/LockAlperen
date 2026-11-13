@@ -64,11 +64,16 @@ pub struct Session {
     new_path: Option<PathBuf>,
     /// The KeePass file chosen for import.
     import_path: Option<PathBuf>,
+    /// Key file to use with the next unlock (chosen in Rust's dialog).
+    keyfile: Option<PathBuf>,
 }
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
 pub const LOCKED: &str = "Kasa kilitli.";
 pub const NO_SUCH_ENTRY: &str = "Kayıt bulunamadı.";
+pub const NO_SUCH_ITEM: &str = "Öğe bulunamadı.";
+pub const BAD_FIELD: &str = "Özel alanın adı boş olamaz (en fazla 256 alan).";
+pub const KEYFILE_READ_FAILED: &str = "Anahtar dosyası okunamadı (en fazla 16 MiB).";
 pub const NO_NEW_PATH: &str = "Önce yeni kasanın kaydedileceği yeri seçin.";
 pub const PASSWORDS_DIFFER: &str = "Parolalar aynı değil.";
 pub const EMPTY_NAME: &str = "Kasa adı boş olamaz.";
@@ -120,6 +125,9 @@ pub struct EntryForm {
     /// Base32 secret or otpauth:// URI; empty = none.
     #[serde(default)]
     pub totp: String,
+    /// Custom fields; None = keep the entry's fields unchanged.
+    #[serde(default)]
+    pub fields: Option<Vec<FormField>>,
 }
 
 impl std::fmt::Debug for EntryForm {
@@ -140,6 +148,70 @@ impl Drop for EntryForm {
         self.notes.zeroize();
         self.totp.zeroize();
     }
+}
+
+/// A custom field as the editor sends it. The value is wiped on drop.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormField {
+    pub name: String,
+    pub value: String,
+    pub protected: bool,
+}
+
+impl Drop for FormField {
+    fn drop(&mut self) {
+        self.value.zeroize();
+    }
+}
+
+/// What the detail view shows besides the summary. Protected values and
+/// notes are NOT included; they are revealed one at a time on click.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryExtras {
+    pub fields: Vec<FieldView>,
+    pub attachments: Vec<AttachmentView>,
+    pub history: Vec<VersionView>,
+    pub tags: Vec<String>,
+    pub has_notes: bool,
+    pub created: i64,
+    pub modified: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldView {
+    pub name: String,
+    /// None for protected fields.
+    pub value: Option<String>,
+    pub protected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentView {
+    pub name: String,
+    pub size: usize,
+}
+
+/// One older version: metadata only, never its secrets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionView {
+    pub modified: i64,
+    pub title: String,
+    pub username: String,
+    /// The password of that version differs from the current one.
+    pub password_differs: bool,
+}
+
+/// A secret the user can reveal or copy besides username/password/TOTP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "kind", content = "index")]
+pub enum Extra {
+    Notes,
+    Custom(usize),
 }
 
 /// Generator settings as the UI sends them.
@@ -206,6 +278,8 @@ impl Session {
     /// first: an open vault must never be shown under another file's name.
     pub fn select(&mut self, path: PathBuf) -> SelectedFile {
         self.lock();
+        // A key file belongs to one vault; never carry it over silently.
+        self.keyfile = None;
         let header = read_header(&path);
         let info = SelectedFile {
             file_name: path
@@ -225,6 +299,16 @@ impl Session {
         };
         self.path = Some(path);
         info
+    }
+
+    /// Sets (Some) or clears (None) the key file for the next unlock.
+    /// Returns the file name to display.
+    pub fn set_keyfile(&mut self, path: Option<PathBuf>) -> Option<String> {
+        self.keyfile = path;
+        self.keyfile
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
     }
 
     /// Remembers where a new vault will go. Always adds the `.lav` extension.
@@ -308,7 +392,12 @@ impl Session {
         // A new attempt always starts from the locked state.
         self.lock();
         let path = self.path.as_deref().ok_or(NO_FILE_SELECTED)?;
-        let vault = Vault::open_file(path, password, None).map_err(|e| unlock_error(&e))?;
+        let keyfile = match &self.keyfile {
+            Some(k) => Some(Vault::read_keyfile(k).map_err(|_| KEYFILE_READ_FAILED.to_owned())?),
+            None => None,
+        };
+        let vault = Vault::open_file(path, password, keyfile.as_deref().map(|k| k.as_slice()))
+            .map_err(|e| unlock_error(&e))?;
         let info = VaultInfo {
             name: vault.data.name.clone(),
             entry_count: vault.data.entries.len(),
@@ -358,6 +447,16 @@ impl Session {
                 .as_ref()
                 .map(|t| t.expose().to_owned())
                 .unwrap_or_default(),
+            fields: Some(
+                e.fields
+                    .iter()
+                    .map(|f| FormField {
+                        name: f.name.clone(),
+                        value: f.value.expose().to_owned(),
+                        protected: f.protected,
+                    })
+                    .collect(),
+            ),
         })
     }
 
@@ -395,6 +494,23 @@ impl Session {
             return Err(TOTP_INVALID.into());
         }
         let totp = (!totp.is_empty()).then(|| lav_core::SecretString::new(totp));
+        let fields: Option<Vec<lav_core::CustomField>> = match &form.fields {
+            None => None,
+            Some(fs) => {
+                if fs.len() > 256 || fs.iter().any(|f| f.name.trim().is_empty()) {
+                    return Err(BAD_FIELD.into());
+                }
+                Some(
+                    fs.iter()
+                        .map(|f| lav_core::CustomField {
+                            name: f.name.trim().to_owned(),
+                            value: lav_core::SecretString::new(f.value.as_str()),
+                            protected: f.protected,
+                        })
+                        .collect(),
+                )
+            }
+        };
         self.commit(|data| {
             let group = data
                 .groups
@@ -411,6 +527,9 @@ impl Session {
                 e.notes = form.notes.as_str().into();
                 e.tags = tags.clone();
                 e.totp = totp.clone();
+                if let Some(fs) = &fields {
+                    e.fields = fs.clone();
+                }
             };
             match &form.id {
                 None => {
@@ -488,6 +607,79 @@ impl Session {
     pub fn health(&self, now: i64) -> Result<crate::health::Report, String> {
         let vault = self.vault.as_ref().ok_or(LOCKED)?;
         Ok(crate::health::check(&vault.data.entries, now))
+    }
+
+    fn entry_ref(&self, id: &str) -> Result<&Entry, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        vault
+            .data
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .ok_or_else(|| NO_SUCH_ENTRY.to_owned())
+    }
+
+    pub fn extras(&self, id: &str) -> Result<EntryExtras, String> {
+        let e = self.entry_ref(id)?;
+        let mut history: Vec<VersionView> = e
+            .history
+            .iter()
+            .map(|v| VersionView {
+                modified: v.modified,
+                title: v.title.clone(),
+                username: v.username.clone(),
+                password_differs: v.password.expose() != e.password.expose(),
+            })
+            .collect();
+        history.reverse(); // newest first
+        Ok(EntryExtras {
+            fields: e
+                .fields
+                .iter()
+                .map(|f| FieldView {
+                    name: f.name.clone(),
+                    value: (!f.protected).then(|| f.value.expose().to_owned()),
+                    protected: f.protected,
+                })
+                .collect(),
+            attachments: e
+                .attachments
+                .iter()
+                .map(|a| AttachmentView {
+                    name: a.name.clone(),
+                    size: a.data.len(),
+                })
+                .collect(),
+            history,
+            tags: e.tags.clone(),
+            has_notes: !e.notes.is_empty(),
+            created: e.created,
+            modified: e.modified,
+        })
+    }
+
+    /// Notes or one custom field value, in a self-wiping buffer.
+    pub fn extra(&self, id: &str, what: Extra) -> Result<Zeroizing<String>, String> {
+        let e = self.entry_ref(id)?;
+        match what {
+            Extra::Notes => Ok(Zeroizing::new(e.notes.expose().to_owned())),
+            Extra::Custom(i) => e
+                .fields
+                .get(i)
+                .map(|f| Zeroizing::new(f.value.expose().to_owned()))
+                .ok_or_else(|| NO_SUCH_ITEM.to_owned()),
+        }
+    }
+
+    /// An attachment's name and bytes (for "Kaydet").
+    pub fn attachment(
+        &self,
+        id: &str,
+        index: usize,
+    ) -> Result<(String, Zeroizing<Vec<u8>>), String> {
+        let e = self.entry_ref(id)?;
+        let a = e.attachments.get(index).ok_or(NO_SUCH_ITEM)?;
+        Ok((a.name.clone(), Zeroizing::new(a.data.expose().to_vec())))
     }
 
     /// The entry's current TOTP code at Unix time `now`.
@@ -827,6 +1019,18 @@ mod tests {
             notes: "not".into(),
             tags: vec!["iş".into(), " ".into(), "İŞ".into(), "dev".into()],
             totp: String::new(),
+            fields: Some(vec![
+                FormField {
+                    name: "PIN".into(),
+                    value: "4321".into(),
+                    protected: true,
+                },
+                FormField {
+                    name: "Hesap tipi".into(),
+                    value: "Pro".into(),
+                    protected: false,
+                },
+            ]),
         }
     }
 
@@ -964,6 +1168,90 @@ mod tests {
         s.lock();
         assert_eq!(s.import_keepass("x"), Err(LOCKED.to_owned()));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn key_file_is_required_used_and_never_carried_over() {
+        let dir = temp_dir("keyfile");
+        let key = dir.join("anahtar.bin");
+        std::fs::write(&key, b"keyfile-bytes-0123456789").unwrap();
+        let path = dir.join("kf.lav");
+        let mut v = Vault::create(
+            "KF",
+            PASSWORD,
+            Some(b"keyfile-bytes-0123456789"),
+            fast_kdf(),
+        )
+        .unwrap();
+        v.save_file(&path).unwrap();
+
+        let mut s = Session::default();
+        let info = s.select(path.clone());
+        assert!(info.keyfile_required);
+        assert_eq!(
+            s.unlock(PASSWORD),
+            Err(UNLOCK_FAILED.to_owned()),
+            "no key file"
+        );
+        assert_eq!(
+            s.set_keyfile(Some(key.clone())).as_deref(),
+            Some("anahtar.bin")
+        );
+        assert_eq!(s.unlock(PASSWORD).unwrap().name, "KF");
+
+        // Selecting a vault drops the key file; a key file for a vault that
+        // has none is refused with the same generic message.
+        let plain = make_vault(&dir);
+        s.select(plain);
+        s.set_keyfile(Some(key));
+        assert_eq!(s.unlock(PASSWORD), Err(UNLOCK_FAILED.to_owned()));
+        s.set_keyfile(None);
+        assert!(s.unlock(PASSWORD).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn custom_fields_history_and_extras() {
+        let (dir, mut s) = opened("extras");
+        let id = s.save_entry(&form(&s, None, "Alanlı")).unwrap();
+        let x = s.extras(&id).unwrap();
+        assert_eq!(x.fields.len(), 2);
+        assert_eq!(x.fields[0].value, None, "protected value not sent");
+        assert_eq!(x.fields[1].value.as_deref(), Some("Pro"));
+        assert!(x.has_notes);
+        assert!(x.history.is_empty());
+        let json = serde_json::to_string(&x).unwrap();
+        assert!(!json.contains("4321") && !json.contains("yeni-gizli-parola"));
+        assert_eq!(s.extra(&id, Extra::Custom(0)).unwrap().as_str(), "4321");
+        assert_eq!(s.extra(&id, Extra::Notes).unwrap().as_str(), "not");
+        assert_eq!(s.extra(&id, Extra::Custom(9)), Err(NO_SUCH_ITEM.to_owned()));
+
+        // Editing creates a version; fields None keeps the fields.
+        let mut f = s.entry_form(&id).unwrap();
+        f.password = "baska".into();
+        f.fields = None;
+        s.save_entry(&f).unwrap();
+        let x = s.extras(&id).unwrap();
+        assert_eq!(x.fields.len(), 2, "kept");
+        assert_eq!(x.history.len(), 1);
+        assert!(x.history[0].password_differs);
+
+        let mut f = s.entry_form(&id).unwrap();
+        f.fields = Some(vec![FormField {
+            name: " ".into(),
+            value: "x".into(),
+            protected: false,
+        }]);
+        assert_eq!(s.save_entry(&f), Err(BAD_FIELD.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn extra_names_from_the_webview() {
+        let n: Extra = serde_json::from_str(r#"{"kind":"notes"}"#).unwrap();
+        assert_eq!(n, Extra::Notes);
+        let c: Extra = serde_json::from_str(r#"{"kind":"custom","index":3}"#).unwrap();
+        assert_eq!(c, Extra::Custom(3));
     }
 
     #[test]

@@ -177,6 +177,18 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the clear_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clear-keyfile",
+          "markdownDescription": "Enables the clear_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the copy_extra command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-copy-extra",
+          "markdownDescription": "Enables the copy_extra command without any pre-configured scope."
+        },
+        {
           "description": "Enables the copy_field command without any pre-configured scope.",
           "type": "string",
           "const": "allow-copy-field",
@@ -195,6 +207,12 @@
           "markdownDescription": "Enables the delete_entry command without any pre-configured scope."
         },
         {
+          "description": "Enables the entry_extras command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-entry-extras",
+          "markdownDescription": "Enables the entry_extras command without any pre-configured scope."
+        },
+        {
           "description": "Enables the entry_form command without any pre-configured scope.",
           "type": "string",
           "const": "allow-entry-form",
@@ -211,6 +229,12 @@
           "type": "string",
           "const": "allow-generate-password",
           "markdownDescription": "Enables the generate_password command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-settings",
+          "markdownDescription": "Enables the get_settings command without any pre-configured scope."
         },
         {
           "description": "Enables the import_kdbx command without any pre-configured scope.",
@@ -255,6 +279,12 @@
           "markdownDescription": "Enables the pick_kdbx_file command without any pre-configured scope."
         },
         {
+          "description": "Enables the pick_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-keyfile",
+          "markdownDescription": "Enables the pick_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_new_vault_path command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-new-vault-path",
@@ -273,10 +303,22 @@
           "markdownDescription": "Enables the recent_vaults command without any pre-configured scope."
         },
         {
+          "description": "Enables the reveal_extra command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reveal-extra",
+          "markdownDescription": "Enables the reveal_extra command without any pre-configured scope."
+        },
+        {
           "description": "Enables the reveal_password command without any pre-configured scope.",
           "type": "string",
           "const": "allow-reveal-password",
           "markdownDescription": "Enables the reveal_password command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-attachment",
+          "markdownDescription": "Enables the save_attachment command without any pre-configured scope."
         },
         {
           "description": "Enables the save_entry command without any pre-configured scope.",
@@ -291,6 +333,12 @@
           "markdownDescription": "Enables the select_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-settings",
+          "markdownDescription": "Enables the set_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the totp_code command without any pre-configured scope.",
           "type": "string",
           "const": "allow-totp-code",
@@ -301,6 +349,18 @@
           "type": "string",
           "const": "allow-unlock",
           "markdownDescription": "Enables the unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clear_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clear-keyfile",
+          "markdownDescription": "Denies the clear_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the copy_extra command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-copy-extra",
+          "markdownDescription": "Denies the copy_extra command without any pre-configured scope."
         },
         {
           "description": "Denies the copy_field command without any pre-configured scope.",
@@ -321,6 +381,12 @@
           "markdownDescription": "Denies the delete_entry command without any pre-configured scope."
         },
         {
+          "description": "Denies the entry_extras command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-entry-extras",
+          "markdownDescription": "Denies the entry_extras command without any pre-configured scope."
+        },
+        {
           "description": "Denies the entry_form command without any pre-configured scope.",
           "type": "string",
           "const": "deny-entry-form",
@@ -337,6 +403,12 @@
           "type": "string",
           "const": "deny-generate-password",
           "markdownDescription": "Denies the generate_password command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-settings",
+          "markdownDescription": "Denies the get_settings command without any pre-configured scope."
         },
         {
           "description": "Denies the import_kdbx command without any pre-configured scope.",
@@ -381,6 +453,12 @@
           "markdownDescription": "Denies the pick_kdbx_file command without any pre-configured scope."
         },
         {
+          "description": "Denies the pick_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-keyfile",
+          "markdownDescription": "Denies the pick_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pick_new_vault_path command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pick-new-vault-path",
@@ -399,10 +477,22 @@
           "markdownDescription": "Denies the recent_vaults command without any pre-configured scope."
         },
         {
+          "description": "Denies the reveal_extra command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reveal-extra",
+          "markdownDescription": "Denies the reveal_extra command without any pre-configured scope."
+        },
+        {
           "description": "Denies the reveal_password command without any pre-configured scope.",
           "type": "string",
           "const": "deny-reveal-password",
           "markdownDescription": "Denies the reveal_password command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-attachment",
+          "markdownDescription": "Denies the save_attachment command without any pre-configured scope."
         },
         {
           "description": "Denies the save_entry command without any pre-configured scope.",
@@ -415,6 +505,12 @@
           "type": "string",
           "const": "deny-select-recent",
           "markdownDescription": "Denies the select_recent command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-settings",
+          "markdownDescription": "Denies the set_settings command without any pre-configured scope."
         },
         {
           "description": "Denies the totp_code command without any pre-configured scope.",
