@@ -379,3 +379,27 @@ risk olarak kalıyor.
 - **Makineler arası kilit yok.** Makineler arası çakışmaları ancak R1 yakalar.
 - **Maliyet:** Kayıt başına ek olarak yedek dosyası `fsync`'i, iki dizin flush'ı ve bir yeniden
   okuma var. 512 MiB'lık bir dosyada yedek kopyası belirgin süre ekler (ölçülmedi).
+
+---
+
+## Ek: CI sonuçları (2026-11-13)
+
+Yukarıdaki "Linux'ta çalıştırılmadı" ve "MSVC sonucu görülmedi" ifadeleri yazıldıkları anki
+durumu anlatıyor. Dal push edildikten sonra CI, commit `10f2272` üzerinde iki kez çalıştı:
+[43474412721](https://github.com/alperen-cpu/LockAlperen/actions/runs/43474412721) (push) ve
+[43479266434](https://github.com/alperen-cpu/LockAlperen/actions/runs/43479266434) (PR #1).
+
+Test sayıları push çalışmasından; PR çalışmasında da bütün işler geçti.
+
+| İş | Sonuç |
+|---|---|
+| test (ubuntu-latest) | Geçti: 135 geçti, 0 başarısız, 11 yok sayıldı. `vault::save_tests::t2_lock_lost_before_commit_aborts_the_save ... ok`; T3–T7 de geçti |
+| test (windows-latest, MSVC) | Geçti: 140 geçti, 0 başarısız, 11 yok sayıldı. T1 ve T8 dahil |
+| fuzz (5 hedef), supply-chain | Geçti |
+
+Böylece T2, Unix inode kontrolü ve dizin `fsync` yolu Linux'ta **çalıştırıldı**. Değişmeyenler:
+
+- Bellek testleri (`lav-memtest`, 4/4) CI'da Windows/MSVC **debug** derlemesinde de geçti.
+  Release ölçümü yalnızca yerelde Windows/GNU ile yapıldı; MSVC release ve Linux için ölçüm yok.
+- Gerçek güç kesintisi, OneDrive ve ağ sürücüleri hâlâ test edilmedi.
+- PR #1, merge commit `d22967c` ile `main`'e birleştirildi.
