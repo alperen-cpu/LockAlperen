@@ -15,6 +15,11 @@ fn main() {
             "recent_vaults",
             "select_recent",
             "forget_recent",
+            "list_groups",
+            "entry_form",
+            "save_entry",
+            "delete_entry",
+            "generate_password",
         ]),
     ))
     .expect("failed to run tauri-build");

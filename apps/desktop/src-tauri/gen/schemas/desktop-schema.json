@@ -189,16 +189,40 @@
           "markdownDescription": "Enables the create_vault command without any pre-configured scope."
         },
         {
+          "description": "Enables the delete_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-entry",
+          "markdownDescription": "Enables the delete_entry command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the entry_form command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-entry-form",
+          "markdownDescription": "Enables the entry_form command without any pre-configured scope."
+        },
+        {
           "description": "Enables the forget_recent command without any pre-configured scope.",
           "type": "string",
           "const": "allow-forget-recent",
           "markdownDescription": "Enables the forget_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the generate_password command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-generate-password",
+          "markdownDescription": "Enables the generate_password command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-entries",
           "markdownDescription": "Enables the list_entries command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-groups",
+          "markdownDescription": "Enables the list_groups command without any pre-configured scope."
         },
         {
           "description": "Enables the lock command without any pre-configured scope.",
@@ -237,6 +261,12 @@
           "markdownDescription": "Enables the reveal_password command without any pre-configured scope."
         },
         {
+          "description": "Enables the save_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-entry",
+          "markdownDescription": "Enables the save_entry command without any pre-configured scope."
+        },
+        {
           "description": "Enables the select_recent command without any pre-configured scope.",
           "type": "string",
           "const": "allow-select-recent",
@@ -261,16 +291,40 @@
           "markdownDescription": "Denies the create_vault command without any pre-configured scope."
         },
         {
+          "description": "Denies the delete_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-delete-entry",
+          "markdownDescription": "Denies the delete_entry command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the entry_form command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-entry-form",
+          "markdownDescription": "Denies the entry_form command without any pre-configured scope."
+        },
+        {
           "description": "Denies the forget_recent command without any pre-configured scope.",
           "type": "string",
           "const": "deny-forget-recent",
           "markdownDescription": "Denies the forget_recent command without any pre-configured scope."
         },
         {
+          "description": "Denies the generate_password command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-generate-password",
+          "markdownDescription": "Denies the generate_password command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_entries command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-entries",
           "markdownDescription": "Denies the list_entries command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-groups",
+          "markdownDescription": "Denies the list_groups command without any pre-configured scope."
         },
         {
           "description": "Denies the lock command without any pre-configured scope.",
@@ -307,6 +361,12 @@
           "type": "string",
           "const": "deny-reveal-password",
           "markdownDescription": "Denies the reveal_password command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-entry",
+          "markdownDescription": "Denies the save_entry command without any pre-configured scope."
         },
         {
           "description": "Denies the select_recent command without any pre-configured scope.",

@@ -610,6 +610,164 @@ h1 {
   color: var(--on-accent);
 }
 
+.list-tools {
+  display: flex;
+  gap: 8px;
+}
+
+.list-tools .search {
+  flex: 1;
+}
+
+.detail-title {
+  flex: 1;
+}
+
+/* Editor */
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.editor-head h1 {
+  font-size: 17px;
+}
+
+.editor-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.editor-error {
+  padding: 10px 24px 0;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 24px;
+  align-items: flex-start;
+}
+
+.editor-form {
+  flex: 999 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+select.text-input {
+  appearance: auto;
+}
+
+.textarea {
+  height: 90px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.generator {
+  flex: 1 1 300px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gen-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-soft);
+}
+
+.gen-title h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--fg);
+}
+
+.gen-out {
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-size: 16px;
+  line-height: 1.5;
+  word-break: break-all;
+  text-align: center;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+}
+
+.checks {
+  gap: 10px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.check input,
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.gen-note {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.accent-text {
+  color: var(--accent-soft);
+}
+
+.btn.danger {
+  color: var(--error);
+}
+
 .detail-pane {
   flex: 1 1 400px;
   min-width: 0;

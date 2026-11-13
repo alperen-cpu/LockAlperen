@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "./api";
+import { Editor } from "./Editor";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
@@ -19,6 +20,7 @@ import {
   FolderIcon,
   ListIcon,
   LockIcon,
+  PencilIcon,
   PlusIcon,
   SearchIcon,
   XIcon,
@@ -126,7 +128,15 @@ export function App() {
   }
 
   if (open && file) {
-    return <VaultScreen file={file} open={open} onLock={doLock} onAutoLocked={autoLocked} />;
+    return (
+      <VaultScreen
+        file={file}
+        open={open}
+        onLock={doLock}
+        onAutoLocked={autoLocked}
+        onEntries={(entries) => setOpen((o) => (o ? { ...o, entries } : o))}
+      />
+    );
   }
   if (newName !== null) {
     return (
@@ -504,13 +514,17 @@ function VaultScreen({
   open,
   onLock,
   onAutoLocked,
+  onEntries,
 }: {
   file: SelectedFile;
   open: Open;
   onLock: () => void;
   onAutoLocked: () => void;
+  onEntries: (entries: EntrySummary[]) => void;
 }) {
   const [lockIn, setLockIn] = useState<number | null>(null);
+  // undefined = not editing; null = new entry; string = entry id.
+  const [editing, setEditing] = useState<string | null | undefined>(undefined);
 
   // Rust locks on its own (idle, Win+L, sleep); here we only notice it.
   useEffect(() => {
@@ -553,6 +567,18 @@ function VaultScreen({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onLock]);
+
+  // Ctrl+N: new entry.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "n" && editing === undefined) {
+        e.preventDefault();
+        setEditing(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing]);
 
   const groups = useMemo(() => {
     const m = new Map<string, { name: string; count: number }>();
@@ -615,6 +641,24 @@ function VaultScreen({
         </div>
       </header>
 
+      {editing !== undefined ? (
+        <Editor
+          id={editing}
+          defaultGroupId={group}
+          onClose={(saved) => {
+            if (saved) {
+              onEntries(saved.entries);
+              setSelected(saved.id);
+            }
+            setEditing(undefined);
+          }}
+          onDeleted={(entries) => {
+            onEntries(entries);
+            setSelected(entries[0]?.id ?? null);
+            setEditing(undefined);
+          }}
+        />
+      ) : (
       <div className="panes">
         <nav className="nav-pane" aria-label="Klasörler">
           <button
@@ -655,6 +699,10 @@ function VaultScreen({
                 autoComplete="off"
               />
             </label>
+            <button type="button" className="btn btn-accent" onClick={() => setEditing(null)}>
+              <PlusIcon />
+              Yeni
+            </button>
           </div>
           <div className="list-meta muted">{shown.length} kayıt</div>
           {shown.length === 0 ? (
@@ -692,6 +740,14 @@ function VaultScreen({
                   <h1 className="ellipsis">{current.title || "(başlıksız)"}</h1>
                   <div className="muted">{current.group}</div>
                 </div>
+                <button
+                  type="button"
+                  className="btn btn-accent"
+                  onClick={() => setEditing(current.id)}
+                >
+                  <PencilIcon />
+                  Düzenle
+                </button>
               </div>
               <div className="card">
                 <div className="card-row">
@@ -732,6 +788,7 @@ function VaultScreen({
           )}
         </main>
       </div>
+      )}
     </div>
   );
 }

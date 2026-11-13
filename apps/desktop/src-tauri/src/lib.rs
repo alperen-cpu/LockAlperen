@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use std::time::Duration;
 
-use session::{EntrySummary, Field, SelectedFile, Session, VaultInfo};
+use session::{
+    EntryForm, EntrySummary, Field, GenOptions, GroupView, SelectedFile, Session, VaultInfo,
+};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
@@ -149,6 +151,62 @@ async fn create_vault(
     .map(|(file, info)| Created { file, info })?;
     recent.record(&state);
     Ok(created)
+}
+
+#[tauri::command]
+fn list_groups(state: State<'_, Shared>) -> Result<Vec<GroupView>, String> {
+    state.with(|s| s.groups()).and_then(|r| r)
+}
+
+/// Sends an entry's secrets to the WebView: only when the editor opens.
+#[tauri::command]
+fn entry_form(id: String, state: State<'_, Shared>) -> Result<EntryForm, String> {
+    state.with(|s| s.entry_form(&id)).and_then(|r| r)
+}
+
+/// Saves (add or update) and returns the new list and the entry's id.
+#[tauri::command]
+async fn save_entry(form: EntryForm, state: State<'_, Shared>) -> Result<Saved, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| {
+                let id = s.save_entry(&form)?;
+                Ok(Saved {
+                    id,
+                    entries: s.entries()?,
+                })
+            })
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
+#[derive(serde::Serialize)]
+struct Saved {
+    id: String,
+    entries: Vec<EntrySummary>,
+}
+
+#[tauri::command]
+async fn delete_entry(id: String, state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| {
+                s.delete_entry(&id)?;
+                s.entries()
+            })
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
+#[tauri::command]
+fn generate_password(options: GenOptions) -> Result<String, String> {
+    session::generate(&options).map(|p| p.as_str().to_owned())
 }
 
 #[tauri::command]
@@ -338,7 +396,12 @@ pub fn run() {
             create_vault,
             recent_vaults,
             select_recent,
-            forget_recent
+            forget_recent,
+            list_groups,
+            entry_form,
+            save_entry,
+            delete_entry,
+            generate_password
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

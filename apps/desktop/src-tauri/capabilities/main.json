@@ -15,6 +15,11 @@
     "allow-create-vault",
     "allow-recent-vaults",
     "allow-select-recent",
-    "allow-forget-recent"
+    "allow-forget-recent",
+    "allow-list-groups",
+    "allow-entry-form",
+    "allow-save-entry",
+    "allow-delete-entry",
+    "allow-generate-password"
   ]
 }

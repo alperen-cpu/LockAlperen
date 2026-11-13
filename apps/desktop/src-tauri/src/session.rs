@@ -12,9 +12,9 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use lav_core::format::{HEADER_LEN, TAG_LEN};
-use lav_core::{Error as CoreError, KdfParams, Vault};
+use lav_core::{Entry, Error as CoreError, KdfParams, PasswordOptions, Vault, VaultData};
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// What the list view may show about an entry. Deliberately excludes every
 /// secret field of `lav_core::Entry`.
@@ -74,6 +74,87 @@ pub const FILE_EXISTS: &str =
     "Bu adda bir dosya zaten var. Var olan bir dosyanın üzerine yazılmaz; başka bir ad seçin.";
 pub const CREATE_FAILED: &str = "Kasa oluşturulamadı.";
 pub const SAVE_FAILED: &str = "Kasa kaydedilemedi.";
+pub const CHANGED_ON_DISK: &str = "Kasa dosyası başka bir yerde değiştirilmiş (başka bir pencere, \
+     OneDrive ya da başka bir program). Üzerine yazılmadı; değişikliğiniz kaydedilmedi. Kasayı \
+     kilitleyip yeniden açın.";
+pub const EMPTY_TITLE: &str = "Başlık boş olamaz.";
+pub const NO_SUCH_GROUP: &str = "Klasör bulunamadı.";
+pub const BAD_GENERATOR: &str = "Bu ayarlarla parola üretilemez.";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupView {
+    pub id: String,
+    pub name: String,
+}
+
+/// What the editor works on. Holds secrets (password, notes): wiped on drop
+/// and never printed by `Debug`.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryForm {
+    /// None = new entry.
+    pub id: Option<String>,
+    pub group_id: String,
+    pub title: String,
+    pub username: String,
+    pub password: String,
+    pub url: String,
+    pub notes: String,
+    pub tags: Vec<String>,
+}
+
+impl std::fmt::Debug for EntryForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EntryForm")
+            .field("id", &self.id)
+            .field("title", &self.title)
+            .field("password", &"<redacted>")
+            .field("notes", &"<redacted>")
+            .finish_non_exhaustive()
+    }
+}
+
+impl Drop for EntryForm {
+    fn drop(&mut self) {
+        self.password.zeroize();
+        self.notes.zeroize();
+    }
+}
+
+/// Generator settings as the UI sends them.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenOptions {
+    pub length: usize,
+    pub lowercase: bool,
+    pub uppercase: bool,
+    pub digits: bool,
+    pub symbols: bool,
+    pub exclude_ambiguous: bool,
+}
+
+pub fn generate(o: &GenOptions) -> Result<Zeroizing<String>, String> {
+    lav_core::generate_password(&PasswordOptions {
+        length: o.length,
+        lowercase: o.lowercase,
+        uppercase: o.uppercase,
+        digits: o.digits,
+        symbols: o.symbols,
+        exclude_ambiguous: o.exclude_ambiguous,
+    })
+    .map_err(|_| BAD_GENERATOR.to_owned())
+}
+
+fn tidy_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(t)) {
+            out.push(t.to_owned());
+        }
+    }
+    out
+}
 
 /// A field the user can copy. Only these two can leave the vault, and only
 /// on an explicit click.
@@ -217,6 +298,121 @@ impl Session {
     /// Drops the vault; `lav_core` wipes keys and contents on drop.
     pub fn lock(&mut self) {
         self.vault = None;
+    }
+
+    pub fn groups(&self) -> Result<Vec<GroupView>, String> {
+        let data = &self.vault.as_ref().ok_or(LOCKED)?.data;
+        let mut list: Vec<GroupView> = data
+            .groups
+            .iter()
+            .map(|g| GroupView {
+                id: g.id.to_string(),
+                name: g.name.clone(),
+            })
+            .collect();
+        list.sort_by_cached_key(|g| g.name.to_lowercase());
+        Ok(list)
+    }
+
+    /// Everything the editor shows, including secrets. Only for "Düzenle".
+    pub fn entry_form(&self, id: &str) -> Result<EntryForm, String> {
+        let data = &self.vault.as_ref().ok_or(LOCKED)?.data;
+        let e = data
+            .entries
+            .iter()
+            .find(|e| e.id.to_string() == id)
+            .ok_or(NO_SUCH_ENTRY)?;
+        Ok(EntryForm {
+            id: Some(id.to_owned()),
+            group_id: e.group.to_string(),
+            title: e.title.clone(),
+            username: e.username.clone(),
+            password: e.password.expose().to_owned(),
+            url: e.url.clone(),
+            notes: e.notes.expose().to_owned(),
+            tags: e.tags.clone(),
+        })
+    }
+
+    /// Applies `change` to a COPY of the data and saves it. Only if the save
+    /// succeeds does the copy replace the data in memory, so the screen never
+    /// shows a change that is not on disk.
+    fn commit<T>(
+        &mut self,
+        change: impl FnOnce(&mut VaultData) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let path = self.path.clone().ok_or(NO_FILE_SELECTED)?;
+        let vault = self.vault.as_mut().ok_or(LOCKED)?;
+        let mut data = vault.data.clone();
+        let out = change(&mut data)?;
+        let old = std::mem::replace(&mut vault.data, data);
+        if let Err(e) = vault.save_file(&path) {
+            vault.data = old;
+            return Err(match e {
+                CoreError::FileChangedOnDisk => CHANGED_ON_DISK.to_owned(),
+                _ => SAVE_FAILED.to_owned(),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Adds (id None) or updates an entry, then saves. Returns its id.
+    pub fn save_entry(&mut self, form: &EntryForm) -> Result<String, String> {
+        let title = form.title.trim().to_owned();
+        if title.is_empty() {
+            return Err(EMPTY_TITLE.into());
+        }
+        let tags = tidy_tags(&form.tags);
+        self.commit(|data| {
+            let group = data
+                .groups
+                .iter()
+                .find(|g| g.id.to_string() == form.group_id)
+                .map(|g| g.id)
+                .ok_or(NO_SUCH_GROUP)?;
+            let fill = |e: &mut Entry| {
+                e.group = group;
+                e.title = title.clone();
+                e.username = form.username.clone();
+                e.password = form.password.as_str().into();
+                e.url = form.url.trim().to_owned();
+                e.notes = form.notes.as_str().into();
+                e.tags = tags.clone();
+            };
+            match &form.id {
+                None => {
+                    let mut e = Entry::new(group, title.clone());
+                    fill(&mut e);
+                    data.add_entry(e)
+                        .map(|id| id.to_string())
+                        .map_err(|_| NO_SUCH_GROUP.to_owned())
+                }
+                Some(id) => {
+                    let uuid = data
+                        .entries
+                        .iter()
+                        .find(|e| e.id.to_string() == *id)
+                        .map(|e| e.id)
+                        .ok_or(NO_SUCH_ENTRY)?;
+                    data.update_entry(uuid, fill)
+                        .map(|()| id.clone())
+                        .map_err(|_| NO_SUCH_ENTRY.to_owned())
+                }
+            }
+        })
+    }
+
+    pub fn delete_entry(&mut self, id: &str) -> Result<(), String> {
+        self.commit(|data| {
+            let uuid = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .map(|e| e.id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            data.delete_entry(uuid)
+                .map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
     }
 
     /// One field of one entry, in a buffer that wipes itself.
@@ -505,6 +701,134 @@ mod tests {
         assert_eq!(std::fs::read(&existing).unwrap(), before);
         assert!(!s.is_unlocked());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn opened(name: &str) -> (PathBuf, Session) {
+        let dir = temp_dir(name);
+        let mut s = Session::default();
+        s.select(make_vault(&dir));
+        s.unlock(PASSWORD).unwrap();
+        (dir, s)
+    }
+
+    fn form(s: &Session, id: Option<String>, title: &str) -> EntryForm {
+        EntryForm {
+            id,
+            group_id: s.groups().unwrap()[0].id.clone(),
+            title: title.into(),
+            username: "kullanici".into(),
+            password: "yeni-gizli-parola".into(),
+            url: " https://ornek.com ".into(),
+            notes: "not".into(),
+            tags: vec!["iş".into(), " ".into(), "İŞ".into(), "dev".into()],
+        }
+    }
+
+    #[test]
+    fn add_entry_is_saved_to_disk() {
+        let (dir, mut s) = opened("add");
+        let id = s.save_entry(&form(&s, None, "Yeni kayıt")).unwrap();
+        // Re-open from disk: the entry is there with its secret.
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        let f = s.entry_form(&id).unwrap();
+        assert_eq!(f.title, "Yeni kayıt");
+        assert_eq!(f.password, "yeni-gizli-parola");
+        assert_eq!(f.url, "https://ornek.com", "trimmed");
+        assert_eq!(
+            f.tags.len(),
+            3,
+            "empty tag dropped; 'iş'/'İŞ' kept apart only by non-ASCII case"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn edit_and_delete_are_saved() {
+        let (dir, mut s) = opened("edit");
+        let id = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap()
+            .id;
+        let mut f = s.entry_form(&id).unwrap();
+        f.title = "zeta 2".into();
+        s.save_entry(&f).unwrap();
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entry_form(&id).unwrap().title, "zeta 2");
+
+        s.delete_entry(&id).unwrap();
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entry_form(&id), Err(NO_SUCH_ENTRY.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_failed_save_leaves_memory_and_disk_unchanged() {
+        let (dir, mut s) = opened("conflict");
+        let path = dir.join("kasa.lav");
+        // Someone else writes the file (another window, a sync client).
+        let mut other = Vault::open_file(&path, PASSWORD, None).unwrap();
+        other
+            .data
+            .add_entry(Entry::new(other.data.root, "başkası"))
+            .unwrap();
+        other.save_file(&path).unwrap();
+        let on_disk = std::fs::read(&path).unwrap();
+
+        let before = s.entries().unwrap();
+        assert_eq!(
+            s.save_entry(&form(&s, None, "benim")),
+            Err(CHANGED_ON_DISK.to_owned())
+        );
+        assert_eq!(s.entries().unwrap(), before, "memory rolled back");
+        assert_eq!(std::fs::read(&path).unwrap(), on_disk, "disk untouched");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn save_checks_title_group_and_id() {
+        let (dir, mut s) = opened("checks");
+        assert_eq!(
+            s.save_entry(&form(&s, None, "  ")),
+            Err(EMPTY_TITLE.to_owned())
+        );
+        let mut f = form(&s, None, "x");
+        f.group_id = "yok".into();
+        assert_eq!(s.save_entry(&f), Err(NO_SUCH_GROUP.to_owned()));
+        let f = form(&s, Some("yok".into()), "x");
+        assert_eq!(s.save_entry(&f), Err(NO_SUCH_ENTRY.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn entry_form_debug_hides_secrets() {
+        let (dir, s) = opened("debug");
+        let f = form(&s, None, "x");
+        let d = format!("{f:?}");
+        assert!(!d.contains("yeni-gizli-parola") && !d.contains("not\""));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn generator_follows_options() {
+        let o = GenOptions {
+            length: 24,
+            lowercase: false,
+            uppercase: false,
+            digits: true,
+            symbols: false,
+            exclude_ambiguous: false,
+        };
+        let p = generate(&o).unwrap();
+        assert_eq!(p.chars().count(), 24);
+        assert!(p.chars().all(|c| c.is_ascii_digit()));
+        let none = GenOptions { digits: false, ..o };
+        assert_eq!(generate(&none), Err(BAD_GENERATOR.to_owned()));
     }
 
     #[test]

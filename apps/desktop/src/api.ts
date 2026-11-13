@@ -74,6 +74,46 @@ export const selectRecent = (index: number) => invoke<SelectedFile>("select_rece
 
 export const forgetRecent = (index: number) => invoke<RecentVault[]>("forget_recent", { index });
 
+export interface GroupView {
+  id: string;
+  name: string;
+}
+
+/** Holds secrets while the editor is open. */
+export interface EntryForm {
+  id: string | null;
+  groupId: string;
+  title: string;
+  username: string;
+  password: string;
+  url: string;
+  notes: string;
+  tags: string[];
+}
+
+export interface GenOptions {
+  length: number;
+  lowercase: boolean;
+  uppercase: boolean;
+  digits: boolean;
+  symbols: boolean;
+  excludeAmbiguous: boolean;
+}
+
+export const listGroups = () => invoke<GroupView[]>("list_groups");
+
+/** Sends the entry's secrets: only when the editor opens. */
+export const entryForm = (id: string) => invoke<EntryForm>("entry_form", { id });
+
+/** Saves to disk; nothing changes on screen if the save fails. */
+export const saveEntry = (form: EntryForm) =>
+  invoke<{ id: string; entries: EntrySummary[] }>("save_entry", { form });
+
+export const deleteEntry = (id: string) => invoke<EntrySummary[]>("delete_entry", { id });
+
+export const generatePassword = (options: GenOptions) =>
+  invoke<string>("generate_password", { options });
+
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";
