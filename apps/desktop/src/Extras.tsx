@@ -3,8 +3,8 @@
 // only when the user clicks "show", and dropped again after 15 s.
 import { useEffect, useState } from "react";
 import * as api from "./api";
-import type { EntryExtras, Extra } from "./api";
-import { CopyIcon, EyeIcon, EyeOffIcon, FileIcon } from "./icons";
+import type { EntryExtras, EntrySummary, Extra } from "./api";
+import { CopyIcon, EyeIcon, EyeOffIcon, FileIcon, PlusIcon, XIcon } from "./icons";
 
 const REVEAL_MS = 15_000;
 
@@ -80,7 +80,10 @@ export function ExtrasView(props: {
   /** Changes when the entry is saved, to refetch. */
   version: unknown;
   onToast: (msg: string) => void;
+  onEntries: (entries: EntrySummary[]) => void;
 }) {
+  const [tick, setTick] = useState(0);
+  const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
   const [x, setX] = useState<EntryExtras | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -95,9 +98,43 @@ export function ExtrasView(props: {
     return () => {
       alive = false;
     };
-  }, [props.id, props.version]);
+  }, [props.id, props.version, tick]);
 
   if (!x) return null;
+
+  async function addAttachment() {
+    try {
+      if (await api.addAttachment(props.id)) {
+        props.onToast("Ek kasaya eklendi (şifreli).");
+        setTick((t) => t + 1);
+      }
+    } catch (e) {
+      props.onToast(api.errorText(e));
+    }
+  }
+
+  async function removeAttachment(i: number) {
+    try {
+      await api.removeAttachment(props.id, i);
+      setTick((t) => t + 1);
+    } catch (e) {
+      props.onToast(api.errorText(e));
+    }
+  }
+
+  async function restore(i: number) {
+    if (confirmRestore !== i) {
+      setConfirmRestore(i);
+      return;
+    }
+    try {
+      props.onEntries(await api.restoreVersion(props.id, i));
+      props.onToast("Eski sürüm geri yüklendi; şimdiki hâli geçmişe eklendi.");
+      setConfirmRestore(null);
+    } catch (e) {
+      props.onToast(api.errorText(e));
+    }
+  }
 
   async function saveAttachment(i: number) {
     try {
@@ -109,7 +146,7 @@ export function ExtrasView(props: {
     }
   }
 
-  const hasBoxes = x.fields.length > 0 || x.tags.length > 0 || x.hasNotes || x.attachments.length > 0;
+  const hasBoxes = true;
 
   return (
     <>
@@ -157,7 +194,7 @@ export function ExtrasView(props: {
               )}
             </div>
           )}
-          {(x.hasNotes || x.attachments.length > 0) && (
+          {
             <div className="card pad">
               {x.hasNotes && (
                 <>
@@ -181,10 +218,23 @@ export function ExtrasView(props: {
                   >
                     Kaydet…
                   </button>
+                  <button
+                    type="button"
+                    className="ghost-icon tiny"
+                    aria-label={`${a.name} ekini kaldır`}
+                    title="Eki kaldır"
+                    onClick={() => removeAttachment(i)}
+                  >
+                    <XIcon />
+                  </button>
                 </div>
               ))}
+              <button type="button" className="btn small-text add-att" onClick={addAttachment}>
+                <PlusIcon />
+                Ek ekle
+              </button>
             </div>
-          )}
+          }
         </div>
       )}
 
@@ -205,6 +255,9 @@ export function ExtrasView(props: {
               <span className="ellipsis">{v.title}</span>
               <span className="muted ellipsis">{v.username}</span>
               {v.passwordDiffers && <span className="badge">Farklı parola</span>}
+              <button type="button" className="btn small-text" onClick={() => restore(i)}>
+                {confirmRestore === i ? "Emin misiniz?" : "Geri yükle"}
+              </button>
             </li>
           ))}
         </ul>

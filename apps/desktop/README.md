@@ -47,6 +47,12 @@ var.
 | Anahtar dosyası | Kilit açmada isteğe bağlı; dosya Rust'taki pencereyle seçilir, yolu Rust'ta kalır. Başka kasa seçilince unutulur. Gereksiz anahtar dosyası da aynı genel hatayı verir. |
 | Özel alanlar, ekler, geçmiş | Ayrıntıda gizli alan değerleri ve notlar gönderilmez; tıklanınca tek tek istenir, 15 sn sonra düşer. Kopyalama Rust'ta (pano kuralları aynı). Ekler "Kaydet…" ile diske **şifresiz** yazılır (arayüz söylüyor). Geçmiş yalnızca üst veri gösterir. Düzenleyicide özel alan ekle/sil; `fields` gönderilmezse mevcut alanlar korunur. |
 | Ayarlar | `%LOCALAPPDATA%\...\settings.json`: yalnızca otomatik kilit süresi; geçersiz değer varsayılana (5 dk) düşer. |
+| Klasörler | Oluştur, yeniden adlandır, sil. Silme klasörü, alt klasörlerini **ve içindeki kayıtları** siler: arayüz sayıyı gösterir, iki kez onay ister. Ana klasör silinemez. |
+| Ana parola değiştirme | Mevcut parola yeniden istenir (KeePassXC CVE-2023-35866 dersi). Yeni tuz ve anahtar; eski `.bak` silinir. Kayıt başarısız olursa eski parola geri konur (bellek ve disk aynı kalır). Anahtar dosyası varsa korunur. |
+| Dışa aktarma | CSV; ana parola yeniden doğrulanır; hücreler kaçışlanır ve formül olarak çalışmaz; dosya şifresizdir (arayüz söyler). |
+| Otomatik yazma | Hedef pencere doğrulanmadan yazmaz (başka süreç + başlıkta kayıt adı ya da site). Pencere değişirse durur. `unsafe` kod `src/autotype.rs`'te. |
+| Site ikonları | **Varsayılan kapalı** (Ayarlar). Açıkken `lav-favicon` ile doğrudan siteden (üçüncü taraf yok), yalnızca açık internet adresleri, boyut/süre sınırlı; resim yeniden kodlanmış PNG olarak kasada şifreli saklanır. CSP'ye yalnızca `img-src data:` eklendi (kendi ürettiğimiz PNG'ler için). |
+| Geçmiş ve ekler | Eski sürüm iki onayla geri yüklenir; şimdiki hâl geçmişe eklenir (kayıp yok). Ek ekleme: dosya Rust'taki pencereyle seçilir, en fazla 16 MiB, kasada şifreli. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
 ## Doğrulananlar
@@ -100,7 +106,7 @@ var.
 - **Caps Lock uyarısı:** otomasyonla denenemedi, elle denenmeli.
 - **IPC tamponları:** parola JSON olarak WebView'den Rust'a gider. WebView/JS dizgileri ve
   Tauri'nin ara tamponları silinemez. Bu, SECURITY.md'de belirtilen bilinen sınır.
-- **Anahtar dosyası:** kilit açmada destekleniyor; yeni kasa oluştururken ve KeePass içe aktarmada henüz yok.
+- **Anahtar dosyası:** kilit açma, yeni kasa ve KeePass içe aktarmada destekleniyor (içe aktarmanın anahtar dosyası kasanınkinden ayrı tutulur).
 - **Pano:** Windows'un `EmptyClipboard` ile bıraktığı bellek bizim tarafımızdan silinmez; pano
   açıkken başka bir program içeriği okuyabilir. Pano geçmişi işaretlerinin Win+V'de gerçekten
   gizlendiği elle (Win+V açılarak) **kontrol edilmedi**; yalnızca işaretlerin konduğu doğrulandı.
@@ -118,10 +124,8 @@ var.
 ## Henüz yapılmayanlar
 
 - **Windows Hello:** proje sahibinin kararıyla yapılmıyor.
-- **Dışa aktarma ve otomatik yazma (auto-type):** özellik yok; eklenirse SECURITY.md'deki şartlar geçerli.
-- **Kod imzası:** sertifika gerekiyor.
-- **Geçmişten geri yükleme:** geçmiş yalnızca görüntüleniyor (tarih, başlık, kullanıcı adı, parolanın farklı olup olmadığı).
-- **Ek ekleme:** ekler görüntülenip diske kaydedilebiliyor; düzenleyiciden yeni ek eklenemiyor.
+- **Kod imzası:** sertifika gerekiyor. Kurulum dosyası (NSIS) imzasız.
+- **Klasör taşıma:** klasörler oluşturulup yeniden adlandırılıp silinebiliyor; başka klasörün altına taşınamıyor (kayıtlar düzenleyiciden taşınabiliyor).
 - **Tasarımdaki iki ifade bilinçli olarak alınmadı:**
   - "Kasanız bu bilgisayardan hiç çıkmaz": kasa OneDrive'daysa doğru değil.
   - "Sızıntılarda bulunmadı": ağ erişimi gerektiriyor ve bu özellik henüz yok.

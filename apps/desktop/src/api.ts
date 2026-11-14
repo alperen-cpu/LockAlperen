@@ -25,6 +25,8 @@ export interface EntrySummary {
   groupId: string;
   group: string;
   hasTotp: boolean;
+  /** data: URL of a sanitized PNG, or null. */
+  icon: string | null;
 }
 
 /** Opens the native file picker. Returns null if the user cancelled. */
@@ -78,6 +80,9 @@ export const forgetRecent = (index: number) => invoke<RecentVault[]>("forget_rec
 export interface GroupView {
   id: string;
   name: string;
+  parent: string | null;
+  entries: number;
+  totalEntries: number;
 }
 
 /** Holds secrets while the editor is open. */
@@ -195,6 +200,7 @@ export const saveAttachment = (id: string, index: number) =>
 
 export interface Settings {
   idleMinutes: number;
+  fetchIcons: boolean;
 }
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
@@ -202,6 +208,28 @@ export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
 export const getSettings = () => invoke<Settings>("get_settings");
 
 export const setSettings = (value: Settings) => invoke<Settings>("set_settings", { value });
+
+export const addGroup = (parent: string | null, name: string) =>
+  invoke<string>("add_group", { parent, name });
+export const renameGroup = (id: string, name: string) =>
+  invoke<EntrySummary[]>("rename_group", { id, name });
+/** Deletes the folder, its subfolders AND their entries. */
+export const deleteGroup = (id: string) => invoke<EntrySummary[]>("delete_group", { id });
+export const restoreVersion = (id: string, index: number) =>
+  invoke<EntrySummary[]>("restore_version", { id, index });
+/** File picker in Rust; returns false if cancelled. */
+export const addAttachment = (id: string) => invoke<boolean>("add_attachment", { id });
+export const removeAttachment = (id: string, index: number) =>
+  invoke<void>("remove_attachment", { id, index });
+export const changeMaster = (current: string, newPassword: string, confirm: string) =>
+  invoke<void>("change_master", { current, new: newPassword, confirm });
+/** Re-checks the master password; writes a PLAIN-TEXT CSV. */
+export const exportCsv = (current: string) => invoke<boolean>("export_csv", { current });
+export const pickImportKeyfile = () => invoke<string | null>("pick_import_keyfile");
+export const fetchIcons = () =>
+  invoke<{ fetched: number; failed: number; entries: EntrySummary[] }>("fetch_icons");
+/** Minimizes the app; types into the verified window the user switches to. */
+export const autoType = (id: string) => invoke<void>("auto_type", { id });
 
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {

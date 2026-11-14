@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-auto-type"
+description = "Enables the auto_type command without any pre-configured scope."
+commands.allow = ["auto_type"]
+
+[[permission]]
+identifier = "deny-auto-type"
+description = "Denies the auto_type command without any pre-configured scope."
+commands.deny = ["auto_type"]
