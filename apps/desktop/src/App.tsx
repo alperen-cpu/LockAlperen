@@ -619,12 +619,20 @@ function VaultScreen({
   const [iconTick, setIconTick] = useState(0);
   useEffect(() => {
     let alive = true;
-    api.fetchIcons().then(
-      (r) => {
-        if (alive && r.fetched > 0) onEntries(r.entries);
-      },
-      () => undefined,
-    );
+    (async () => {
+      // One batch per call; icons show up batch by batch.
+      for (let round = 0; alive && round < 100; round++) {
+        let r;
+        try {
+          r = await api.fetchIcons();
+        } catch {
+          return; // locked or save failed: try again next time
+        }
+        if (!alive) return;
+        if (r.fetched > 0) onEntries(r.entries);
+        if (r.remaining === 0) return;
+      }
+    })();
     return () => {
       alive = false;
     };
