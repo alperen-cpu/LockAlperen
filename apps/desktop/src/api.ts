@@ -200,7 +200,6 @@ export const saveAttachment = (id: string, index: number) =>
 
 export interface Settings {
   idleMinutes: number;
-  fetchIcons: boolean;
 }
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
@@ -226,6 +225,7 @@ export const changeMaster = (current: string, newPassword: string, confirm: stri
 /** Re-checks the master password; writes a PLAIN-TEXT CSV. */
 export const exportCsv = (current: string) => invoke<boolean>("export_csv", { current });
 export const pickImportKeyfile = () => invoke<string | null>("pick_import_keyfile");
+/** Downloads missing site icons (automatic; each entry tried once per run). */
 export const fetchIcons = () =>
   invoke<{ fetched: number; failed: number; entries: EntrySummary[] }>("fetch_icons");
 /** Minimizes the app; types into the verified window the user switches to. */
