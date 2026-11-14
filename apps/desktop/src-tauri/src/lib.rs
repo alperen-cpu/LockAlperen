@@ -302,6 +302,8 @@ async fn pick_import_keyfile(
 struct IconsResult {
     fetched: usize,
     failed: usize,
+    /// Entries still waiting; the UI calls again until this is 0.
+    remaining: usize,
     entries: Vec<EntrySummary>,
 }
 
@@ -310,21 +312,41 @@ struct IconsResult {
 static ICON_TRIED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
 
-/// Downloads missing site icons automatically (after unlock and save). Each
-/// icon goes through lav-favicon: direct to the site (no third-party
-/// service), public addresses only, size/time limits, re-encoded PNG.
+/// Icons fetched at the same time per call.
+const ICON_BATCH: usize = 12;
+
+/// Downloads missing site icons automatically (after unlock and save), one
+/// batch per call, the batch in parallel, saved once per batch so icons
+/// appear as they arrive. Each icon goes through lav-favicon: direct to the
+/// site (no third-party service), public addresses only, size/time limits,
+/// re-encoded PNG.
 #[tauri::command]
 async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
-    let mut todo = state.with(|s| s.missing_icons(300)).and_then(|r| r)?;
-    if let Ok(mut tried) = ICON_TRIED.lock() {
-        todo.retain(|(id, _)| tried.insert(id.clone()));
+    let mut todo = state
+        .with(|s| s.missing_icons(usize::MAX))
+        .and_then(|r| r)?;
+    if let Ok(tried) = ICON_TRIED.lock() {
+        todo.retain(|(id, _)| !tried.contains(id));
     }
-    let opts = lav_favicon::Options::default();
+    let remaining = todo.len().saturating_sub(ICON_BATCH);
+    todo.truncate(ICON_BATCH);
+    if let Ok(mut tried) = ICON_TRIED.lock() {
+        tried.extend(todo.iter().map(|(id, _)| id.clone()));
+    }
+    let handles: Vec<_> = todo
+        .into_iter()
+        .map(|(id, url)| {
+            tauri::async_runtime::spawn(async move {
+                let opts = lav_favicon::Options::default();
+                (id, lav_favicon::fetch(&url, &opts).await)
+            })
+        })
+        .collect();
     let (mut got, mut failed) = (Vec::new(), 0usize);
-    for (id, url) in todo {
-        match lav_favicon::fetch(&url, &opts).await {
-            Ok(icon) => got.push((id, icon.png)),
-            Err(_) => failed += 1,
+    for h in handles {
+        match h.await {
+            Ok((id, Ok(icon))) => got.push((id, icon.png)),
+            _ => failed += 1,
         }
     }
     let fetched = got.len();
@@ -332,6 +354,7 @@ async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
     Ok(IconsResult {
         fetched,
         failed,
+        remaining,
         entries,
     })
 }

@@ -227,7 +227,9 @@ export const exportCsv = (current: string) => invoke<boolean>("export_csv", { cu
 export const pickImportKeyfile = () => invoke<string | null>("pick_import_keyfile");
 /** Downloads missing site icons (automatic; each entry tried once per run). */
 export const fetchIcons = () =>
-  invoke<{ fetched: number; failed: number; entries: EntrySummary[] }>("fetch_icons");
+  invoke<{ fetched: number; failed: number; remaining: number; entries: EntrySummary[] }>(
+    "fetch_icons",
+  );
 /** Minimizes the app; types into the verified window the user switches to. */
 export const autoType = (id: string) => invoke<void>("auto_type", { id });
 
