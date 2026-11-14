@@ -205,10 +205,13 @@ pub fn precheck(file: &[u8]) -> Result<(), &'static str> {
 }
 
 /// Decrypts a KDBX 4 file after `precheck`.
-pub fn open(file: &[u8], password: &str) -> Result<Database, &'static str> {
+pub fn open(file: &[u8], password: &str, keyfile: Option<&[u8]>) -> Result<Database, &'static str> {
     precheck(file)?;
-    let db = Database::parse(file, DatabaseKey::new().with_password(password))
-        .map_err(|_| OPEN_FAILED)?;
+    let mut key = DatabaseKey::new().with_password(password);
+    if let Some(mut k) = keyfile {
+        key = key.with_keyfile(&mut k).map_err(|_| OPEN_FAILED)?;
+    }
+    let db = Database::parse(file, key).map_err(|_| OPEN_FAILED)?;
     if db.num_entries() > MAX_ENTRIES || db.num_groups() > MAX_GROUPS {
         return Err(TOO_MUCH);
     }
@@ -389,7 +392,7 @@ mod tests {
     #[test]
     fn imports_entries_groups_totp_and_custom_fields() {
         let file = fixture(cheap());
-        let db = open(&file, PW).unwrap();
+        let db = open(&file, PW, None).unwrap();
         let mut data = VaultData::new("Hedef");
         let before_groups = data.groups.len();
         let s = convert(&db, &mut data, "KeePass").unwrap();
@@ -409,7 +412,7 @@ mod tests {
     #[test]
     fn wrong_password_is_one_generic_error() {
         let file = fixture(cheap());
-        assert_eq!(open(&file, "yanlis").err(), Some(OPEN_FAILED));
+        assert_eq!(open(&file, "yanlis", None).err(), Some(OPEN_FAILED));
     }
 
     #[test]
@@ -465,7 +468,7 @@ mod tests {
                 let cut = (rnd() % f.len() as u64) as usize;
                 f.truncate(cut);
             }
-            if let Ok(db) = open(&f, PW) {
+            if let Ok(db) = open(&f, PW, None) {
                 let mut data = VaultData::new("x");
                 let _ = convert(&db, &mut data, "k");
             }

@@ -15,8 +15,8 @@ use windows_sys::Win32::System::LibraryLoader::{
     SetDefaultDllDirectories, LOAD_LIBRARY_SEARCH_SYSTEM32,
 };
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
-    PROCESS_TERMINATE,
+    GetCurrentProcess, OpenProcessToken, PROCESS_QUERY_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_MONITOR,
@@ -30,11 +30,16 @@ pub fn restrict_dll_search() -> bool {
 }
 
 /// Rights other processes of the same user keep on ours: see that it runs,
-/// wait for it, end it (Task Manager). No PROCESS_VM_READ / VM_WRITE /
+/// wait for it, end it. PROCESS_QUERY_INFORMATION is needed because
+/// `taskkill /F` and Task Manager ask for it together with TERMINATE (found
+/// by testing: without it a hung app could not be force-closed). It does not
+/// allow reading memory. No PROCESS_VM_READ / VM_WRITE /
 /// CREATE_THREAD / DUP_HANDLE, so a non-admin program cannot read our memory
 /// (the KeeFarce class of attack) through the normal API.
-pub const ALLOWED_TO_USER: u32 =
-    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE | PROCESS_TERMINATE;
+pub const ALLOWED_TO_USER: u32 = PROCESS_QUERY_LIMITED_INFORMATION
+    | PROCESS_QUERY_INFORMATION
+    | PROCESS_SYNCHRONIZE
+    | PROCESS_TERMINATE;
 
 /// Replaces our process DACL with one entry: the current user gets only
 /// [`ALLOWED_TO_USER`]. Limits: the object owner (the same user) can still
@@ -124,13 +129,47 @@ mod tests {
         }
     }
 
+    /// Whether this process runs elevated (administrator). Administrators
+    /// hold SeDebugPrivilege and bypass process DACLs: the documented limit.
+    fn elevated() -> bool {
+        use windows_sys::Win32::Security::{TokenElevation, TOKEN_ELEVATION};
+        // SAFETY: token handle closed; out-buffer sized for TOKEN_ELEVATION.
+        unsafe {
+            let mut token: HANDLE = std::ptr::null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return false;
+            }
+            let mut e = TOKEN_ELEVATION { TokenIsElevated: 0 };
+            let mut len = 0u32;
+            let ok = GetTokenInformation(
+                token,
+                TokenElevation,
+                (&mut e as *mut TOKEN_ELEVATION).cast(),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut len,
+            );
+            CloseHandle(token);
+            ok != 0 && e.TokenIsElevated != 0
+        }
+    }
+
     /// Changes the DACL of the TEST process (harmless) and checks that a
-    /// same-user OpenProcess for memory reading is now refused.
+    /// same-user OpenProcess for memory reading is now refused. CI runners
+    /// run elevated, where the DACL is bypassed by design; there only the
+    /// rest is checked.
     #[test]
     fn dacl_blocks_memory_reads_but_not_basic_queries() {
         assert!(protect_process());
-        assert!(!can_open(PROCESS_VM_READ), "memory read must be denied");
+        if elevated() {
+            eprintln!(
+                "elevated (administrator): DACL is bypassed by design; VM_READ check skipped"
+            );
+        } else {
+            assert!(!can_open(PROCESS_VM_READ), "memory read must be denied");
+        }
         assert!(can_open(PROCESS_QUERY_LIMITED_INFORMATION));
+        // What `taskkill /F` asks for: a hung app must stay killable.
+        assert!(can_open(PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION));
     }
 
     #[test]

@@ -988,7 +988,7 @@ input[type="range"] {
 
 .history li {
   display: grid;
-  grid-template-columns: auto 1fr 1fr auto;
+  grid-template-columns: auto 1fr 1fr auto auto;
   gap: 12px;
   align-items: center;
   font-size: 13px;
@@ -1007,6 +1007,81 @@ input[type="range"] {
   color: var(--muted);
 }
 
+.avatar.img {
+  object-fit: contain;
+  background: #fff;
+  padding: 3px;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.nav-item.active {
+  background: var(--selected);
+}
+
+.nav-item .nav {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-item.active .nav {
+  background: transparent;
+  color: var(--fg);
+}
+
+.nav-tools {
+  display: flex;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.ghost-icon.tiny {
+  width: 26px;
+  height: 26px;
+}
+
+.danger-bg {
+  color: var(--error);
+}
+
+.nav-form {
+  padding: 2px 0;
+}
+
+.small-input {
+  height: 34px;
+  width: 100%;
+  font-size: 13px;
+}
+
+.muted-nav {
+  color: var(--muted);
+}
+
+.del-warn {
+  padding: 0 10px;
+}
+
+.add-att {
+  align-self: flex-start;
+}
+
+.history li .btn {
+  justify-self: end;
+}
+
+.modal .field form,
+.modal form.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .detail-pane {
   flex: 1 1 400px;
   min-width: 0;
@@ -1019,8 +1094,17 @@ input[type="range"] {
 
 .detail-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
+}
+
+.detail-head .detail-title {
+  flex: 1 1 160px;
+}
+
+.detail-head .btn {
+  white-space: nowrap;
 }
 
 .detail-head .avatar {

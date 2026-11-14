@@ -177,6 +177,30 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the add_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-add-attachment",
+          "markdownDescription": "Enables the add_attachment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the add_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-add-group",
+          "markdownDescription": "Enables the add_group command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the auto_type command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-auto-type",
+          "markdownDescription": "Enables the auto_type command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the change_master command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-change-master",
+          "markdownDescription": "Enables the change_master command without any pre-configured scope."
+        },
+        {
           "description": "Enables the clear_keyfile command without any pre-configured scope.",
           "type": "string",
           "const": "allow-clear-keyfile",
@@ -207,6 +231,12 @@
           "markdownDescription": "Enables the delete_entry command without any pre-configured scope."
         },
         {
+          "description": "Enables the delete_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-group",
+          "markdownDescription": "Enables the delete_group command without any pre-configured scope."
+        },
+        {
           "description": "Enables the entry_extras command without any pre-configured scope.",
           "type": "string",
           "const": "allow-entry-extras",
@@ -217,6 +247,18 @@
           "type": "string",
           "const": "allow-entry-form",
           "markdownDescription": "Enables the entry_form command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_csv command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-csv",
+          "markdownDescription": "Enables the export_csv command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the fetch_icons command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fetch-icons",
+          "markdownDescription": "Enables the fetch_icons command without any pre-configured scope."
         },
         {
           "description": "Enables the forget_recent command without any pre-configured scope.",
@@ -273,6 +315,12 @@
           "markdownDescription": "Enables the password_health command without any pre-configured scope."
         },
         {
+          "description": "Enables the pick_import_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-import-keyfile",
+          "markdownDescription": "Enables the pick_import_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_kdbx_file command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-kdbx-file",
@@ -301,6 +349,24 @@
           "type": "string",
           "const": "allow-recent-vaults",
           "markdownDescription": "Enables the recent_vaults command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-attachment",
+          "markdownDescription": "Enables the remove_attachment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the rename_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-rename-group",
+          "markdownDescription": "Enables the rename_group command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the restore_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore-version",
+          "markdownDescription": "Enables the restore_version command without any pre-configured scope."
         },
         {
           "description": "Enables the reveal_extra command without any pre-configured scope.",
@@ -351,6 +417,30 @@
           "markdownDescription": "Enables the unlock command without any pre-configured scope."
         },
         {
+          "description": "Denies the add_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-add-attachment",
+          "markdownDescription": "Denies the add_attachment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the add_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-add-group",
+          "markdownDescription": "Denies the add_group command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the auto_type command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-auto-type",
+          "markdownDescription": "Denies the auto_type command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the change_master command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-change-master",
+          "markdownDescription": "Denies the change_master command without any pre-configured scope."
+        },
+        {
           "description": "Denies the clear_keyfile command without any pre-configured scope.",
           "type": "string",
           "const": "deny-clear-keyfile",
@@ -381,6 +471,12 @@
           "markdownDescription": "Denies the delete_entry command without any pre-configured scope."
         },
         {
+          "description": "Denies the delete_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-delete-group",
+          "markdownDescription": "Denies the delete_group command without any pre-configured scope."
+        },
+        {
           "description": "Denies the entry_extras command without any pre-configured scope.",
           "type": "string",
           "const": "deny-entry-extras",
@@ -391,6 +487,18 @@
           "type": "string",
           "const": "deny-entry-form",
           "markdownDescription": "Denies the entry_form command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_csv command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-csv",
+          "markdownDescription": "Denies the export_csv command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the fetch_icons command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fetch-icons",
+          "markdownDescription": "Denies the fetch_icons command without any pre-configured scope."
         },
         {
           "description": "Denies the forget_recent command without any pre-configured scope.",
@@ -447,6 +555,12 @@
           "markdownDescription": "Denies the password_health command without any pre-configured scope."
         },
         {
+          "description": "Denies the pick_import_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-import-keyfile",
+          "markdownDescription": "Denies the pick_import_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pick_kdbx_file command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pick-kdbx-file",
@@ -475,6 +589,24 @@
           "type": "string",
           "const": "deny-recent-vaults",
           "markdownDescription": "Denies the recent_vaults command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_attachment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-attachment",
+          "markdownDescription": "Denies the remove_attachment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the rename_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-rename-group",
+          "markdownDescription": "Denies the rename_group command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore-version",
+          "markdownDescription": "Denies the restore_version command without any pre-configured scope."
         },
         {
           "description": "Denies the reveal_extra command without any pre-configured scope.",

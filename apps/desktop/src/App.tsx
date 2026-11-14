@@ -258,6 +258,7 @@ function CreateScreen(props: {
   // Both passwords are uncontrolled and cleared on submit, never React state.
   const pwRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const [keyName, setKeyName] = useState<string | null>(null);
 
   async function submit(ev: FormEvent) {
     ev.preventDefault();
@@ -332,6 +333,24 @@ function CreateScreen(props: {
               readOnly={busy}
             />
           </div>
+          <button
+            type="button"
+            className="btn btn-left"
+            disabled={busy}
+            onClick={async () => {
+              try {
+                const n = keyName ? (await api.clearKeyfile(), null) : await api.pickKeyfile();
+                setKeyName(n);
+              } catch (e) {
+                setError(api.errorText(e));
+              }
+            }}
+          >
+            <FileIcon />
+            <span className="ellipsis">
+              {keyName ? `Anahtar dosyası: ${keyName} (kaldır)` : "Anahtar dosyası ekle (isteğe bağlı)…"}
+            </span>
+          </button>
           {error ? (
             <p className="error" role="alert">
               {error}
@@ -535,8 +554,14 @@ function avatarColor(s: string) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-function Avatar({ title, size }: { title: string; size: number }) {
+function Avatar({ title, size, icon }: { title: string; size: number; icon?: string | null }) {
   const initial = Array.from(title.trim())[0]?.toLocaleUpperCase("tr") ?? "?";
+  if (icon) {
+    // A PNG we re-encoded ourselves (lav-favicon), never the downloaded bytes.
+    return (
+      <img className="avatar img" src={icon} width={size} height={size} alt="" aria-hidden="true" />
+    );
+  }
   return (
     <span
       className="avatar"
@@ -656,15 +681,70 @@ function VaultScreen({
     return () => window.removeEventListener("keydown", onKey);
   }, [editing]);
 
-  const groups = useMemo(() => {
-    const m = new Map<string, { name: string; count: number }>();
-    for (const e of open.entries) {
-      const g = m.get(e.groupId) ?? { name: e.group, count: 0 };
-      g.count++;
-      m.set(e.groupId, g);
+  // All folders (also empty ones), refreshed whenever the list changes.
+  const [allGroups, setAllGroups] = useState<api.GroupView[]>([]);
+  const [groupTick, setGroupTick] = useState(0);
+  useEffect(() => {
+    api.listGroups().then(setAllGroups, () => setAllGroups([]));
+  }, [open.entries, groupTick]);
+  const groups = useMemo(
+    () =>
+      allGroups
+        .map((g) => [g.id, { name: g.name, count: g.entries, total: g.totalEntries, root: g.parent === null }] as const)
+        .sort((a, b) => (a[1].root ? -1 : b[1].root ? 1 : a[1].name.localeCompare(b[1].name, "tr"))),
+    [allGroups],
+  );
+  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+
+  async function createFolder(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (newFolder === null) return;
+    try {
+      await api.addGroup(null, newFolder);
+      setNewFolder(null);
+      setGroupTick((t) => t + 1);
+    } catch (e) {
+      setToast(api.errorText(e));
     }
-    return [...m.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "tr"));
-  }, [open.entries]);
+  }
+
+  async function saveRename(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!renaming) return;
+    try {
+      onEntries(await api.renameGroup(renaming.id, renaming.name));
+      setRenaming(null);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
+
+  async function removeFolder(id: string) {
+    if (confirmDel !== id) {
+      setConfirmDel(id);
+      return;
+    }
+    try {
+      onEntries(await api.deleteGroup(id));
+      setConfirmDel(null);
+      setGroup(null);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
+
+  async function autoType() {
+    if (!current) return;
+    setToast("Hedef pencereye geçin (10 sn). Pencere başlığı doğrulanınca yazılacak.");
+    try {
+      await api.autoType(current.id);
+      setToast("Otomatik yazma tamamlandı.");
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
 
   const shown = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr");
@@ -741,7 +821,9 @@ function VaultScreen({
         </div>
       </header>
 
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog onClose={() => setSettingsOpen(false)} onEntries={onEntries} />
+      )}
       {importing !== null && (
         <ImportDialog
           fileName={importing}
@@ -787,18 +869,82 @@ function VaultScreen({
             <span className="count">{open.entries.filter((e) => e.hasTotp).length}</span>
           </button>
           {groups.length > 0 && <div className="lbl section">Klasörler</div>}
-          {groups.map(([id, g]) => (
-            <button
-              type="button"
-              key={id}
-              className={"nav" + (group === id ? " active" : "")}
-              onClick={() => setGroup(id)}
-            >
-              <FolderIcon />
-              <span className="ellipsis">{g.name}</span>
-              <span className="count">{g.count}</span>
+          {groups.map(([id, g]) =>
+            renaming?.id === id ? (
+              <form key={id} onSubmit={saveRename} className="nav-form">
+                <input
+                  className="text-input small-input"
+                  value={renaming.name}
+                  onChange={(e) => setRenaming({ id, name: e.target.value })}
+                  onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                  aria-label="Klasörün yeni adı"
+                  autoFocus
+                />
+              </form>
+            ) : (
+              <div key={id} className={"nav-item" + (group === id ? " active" : "")}>
+                <button type="button" className="nav" onClick={() => setGroup(id)}>
+                  <FolderIcon />
+                  <span className="ellipsis">{g.name}</span>
+                  <span className="count">{g.count}</span>
+                </button>
+                {group === id && (
+                  <span className="nav-tools">
+                    <button
+                      type="button"
+                      className="ghost-icon tiny"
+                      aria-label="Klasörü yeniden adlandır"
+                      title="Yeniden adlandır"
+                      onClick={() => setRenaming({ id, name: g.name })}
+                    >
+                      <PencilIcon />
+                    </button>
+                    {!g.root && (
+                      <button
+                        type="button"
+                        className={"ghost-icon tiny" + (confirmDel === id ? " danger-bg" : "")}
+                        aria-label="Klasörü sil"
+                        title={
+                          confirmDel === id
+                            ? `Emin misiniz? Klasör, alt klasörleri ve ${g.total} kayıt silinecek. Silmek için tekrar tıklayın.`
+                            : "Sil"
+                        }
+                        onClick={() => removeFolder(id)}
+                        onBlur={() => setConfirmDel(null)}
+                      >
+                        <XIcon />
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+            ),
+          )}
+          {confirmDel && (
+            <p className="warn small del-warn">
+              Klasör, alt klasörleri ve içindeki{" "}
+              {groups.find(([i]) => i === confirmDel)?.[1].total ?? 0} kayıt silinecek. Onaylamak
+              için × düğmesine tekrar basın.
+            </p>
+          )}
+          {newFolder === null ? (
+            <button type="button" className="nav muted-nav" onClick={() => setNewFolder("")}>
+              <PlusIcon />
+              Yeni klasör
             </button>
-          ))}
+          ) : (
+            <form onSubmit={createFolder} className="nav-form">
+              <input
+                className="text-input small-input"
+                placeholder="Klasör adı"
+                value={newFolder}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && setNewFolder(null)}
+                aria-label="Yeni klasör adı"
+                autoFocus
+              />
+            </form>
+          )}
           {health && health.checked > 0 && (
             <button
               type="button"
@@ -856,7 +1002,7 @@ function VaultScreen({
                     className={"row" + (e.id === selected ? " active" : "")}
                     onClick={() => setSelected(e.id)}
                   >
-                    <Avatar title={e.title} size={36} />
+                    <Avatar title={e.title} size={36} icon={e.icon} />
                     <span className="row-text">
                       <span className="row-title ellipsis">{e.title || "(başlıksız)"}</span>
                       <span className="row-sub ellipsis muted">{e.username}</span>
@@ -877,11 +1023,19 @@ function VaultScreen({
           {current ? (
             <>
               <div className="detail-head">
-                <Avatar title={current.title} size={52} />
+                <Avatar title={current.title} size={52} icon={current.icon} />
                 <div className="detail-title">
                   <h1 className="ellipsis">{current.title || "(başlıksız)"}</h1>
                   <div className="muted">{current.group}</div>
                 </div>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={autoType}
+                  title="Uygulama küçülür; 10 sn içinde hedef pencereye geçin. Başlığı doğrulanmayan pencereye yazılmaz."
+                >
+                  Otomatik yaz
+                </button>
                 <button
                   type="button"
                   className="btn btn-accent"
@@ -921,7 +1075,7 @@ function VaultScreen({
                   </div>
                 </div>
               </div>
-              <ExtrasView id={current.id} version={open.entries} onToast={setToast} />
+              <ExtrasView id={current.id} version={open.entries} onToast={setToast} onEntries={onEntries} />
             </>
           ) : (
             <p className="empty muted">Bir kayıt seçin.</p>

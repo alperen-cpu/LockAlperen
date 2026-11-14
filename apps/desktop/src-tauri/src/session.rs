@@ -28,6 +28,8 @@ pub struct EntrySummary {
     pub group_id: String,
     pub group: String,
     pub has_totp: bool,
+    /// `data:image/png;base64,...` of the sanitized, re-encoded icon.
+    pub icon: Option<String>,
 }
 
 /// What the unlock screen shows about the chosen file. The KDF values come
@@ -66,12 +68,19 @@ pub struct Session {
     import_path: Option<PathBuf>,
     /// Key file to use with the next unlock (chosen in Rust's dialog).
     keyfile: Option<PathBuf>,
+    /// Key file of the KeePass database being imported (never the vault's).
+    import_keyfile: Option<PathBuf>,
 }
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
 pub const LOCKED: &str = "Kasa kilitli.";
 pub const NO_SUCH_ENTRY: &str = "Kayıt bulunamadı.";
 pub const NO_SUCH_ITEM: &str = "Öğe bulunamadı.";
+pub const WRONG_CURRENT: &str = "Mevcut ana parola (ya da anahtar dosyası) yanlış.";
+pub const CANNOT_DELETE_ROOT: &str = "Ana klasör silinemez.";
+pub const EMPTY_GROUP_NAME: &str = "Klasör adı boş olamaz.";
+pub const ATTACHMENT_TOO_LARGE: &str = "Ek en fazla 16 MiB olabilir.";
+pub const MAX_ATTACHMENT_BYTES: u64 = 16 * 1024 * 1024;
 pub const BAD_FIELD: &str = "Özel alanın adı boş olamaz (en fazla 256 alan).";
 pub const KEYFILE_READ_FAILED: &str = "Anahtar dosyası okunamadı (en fazla 16 MiB).";
 pub const NO_NEW_PATH: &str = "Önce yeni kasanın kaydedileceği yeri seçin.";
@@ -106,6 +115,21 @@ pub struct TotpCode {
 pub struct GroupView {
     pub id: String,
     pub name: String,
+    /// None for the root folder.
+    pub parent: Option<String>,
+    /// Entries directly in this folder.
+    pub entries: usize,
+    /// Entries in this folder and all its subfolders (what a delete removes).
+    pub total_entries: usize,
+}
+
+/// CSV cell: always quoted, quotes doubled, and a leading = + - @ tab or CR
+/// prefixed with ' so spreadsheet apps do not run it as a formula
+/// (CSV/formula injection).
+pub fn csv_cell(s: &str) -> String {
+    let risky = matches!(s.chars().next(), Some('=' | '+' | '-' | '@' | '\t' | '\r'));
+    let body = if risky { format!("'{s}") } else { s.to_owned() };
+    format!("\"{}\"", body.replace('"', "\"\""))
 }
 
 /// What the editor works on. Holds secrets (password, notes): wiped on drop
@@ -213,6 +237,9 @@ pub enum Extra {
     Notes,
     Custom(usize),
 }
+
+/// Username, password, and the window-title markers for auto-type.
+pub type AutoTypeData = (Zeroizing<String>, Zeroizing<String>, Vec<String>);
 
 /// Generator settings as the UI sends them.
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -359,10 +386,12 @@ impl Session {
         if path.exists() {
             return Err(FILE_EXISTS.into());
         }
-        let mut vault = Vault::create(name, password, None, kdf).map_err(|e| match e {
-            CoreError::WeakPassword(_) => WEAK_PASSWORD.to_owned(),
-            _ => CREATE_FAILED.to_owned(),
-        })?;
+        let kf = self.keyfile_bytes()?;
+        let mut vault = Vault::create(name, password, kf.as_deref().map(|k| k.as_slice()), kdf)
+            .map_err(|e| match e {
+                CoreError::WeakPassword(_) => WEAK_PASSWORD.to_owned(),
+                _ => CREATE_FAILED.to_owned(),
+            })?;
         vault.save_file(&path).map_err(|e| match e {
             // save_file refuses a path holding a file this vault did not load
             // (e.g. created between the check above and now).
@@ -373,7 +402,10 @@ impl Session {
             name: vault.data.name.clone(),
             entry_count: vault.data.entries.len(),
         };
+        let keyfile = self.keyfile.take();
         let file = self.select(path);
+        // The key file used to create the vault stays selected for it.
+        self.keyfile = keyfile;
         self.vault = Some(vault);
         self.new_path = None;
         Ok((file, info))
@@ -413,12 +445,34 @@ impl Session {
 
     pub fn groups(&self) -> Result<Vec<GroupView>, String> {
         let data = &self.vault.as_ref().ok_or(LOCKED)?.data;
+        let direct = |id| data.entries.iter().filter(|e| e.group == id).count();
+        let total = |id| {
+            let mut n = 0;
+            let mut stack = vec![id];
+            let mut seen = std::collections::HashSet::new();
+            while let Some(g) = stack.pop() {
+                if !seen.insert(g) {
+                    continue;
+                }
+                n += direct(g);
+                stack.extend(
+                    data.groups
+                        .iter()
+                        .filter(|c| c.parent == Some(g))
+                        .map(|c| c.id),
+                );
+            }
+            n
+        };
         let mut list: Vec<GroupView> = data
             .groups
             .iter()
             .map(|g| GroupView {
                 id: g.id.to_string(),
                 name: g.name.clone(),
+                parent: g.parent.map(|p| p.to_string()),
+                entries: direct(g.id),
+                total_entries: total(g.id),
             })
             .collect();
         list.sort_by_cached_key(|g| g.name.to_lowercase());
@@ -554,6 +608,244 @@ impl Session {
         })
     }
 
+    fn group_uuid(data: &VaultData, id: &str) -> Result<uuid::Uuid, String> {
+        data.groups
+            .iter()
+            .find(|g| g.id.to_string() == id)
+            .map(|g| g.id)
+            .ok_or_else(|| NO_SUCH_GROUP.to_owned())
+    }
+
+    /// New folder under `parent` (None = the root). Returns its id.
+    pub fn add_group(&mut self, parent: Option<&str>, name: &str) -> Result<String, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(EMPTY_GROUP_NAME.into());
+        }
+        self.commit(|data| {
+            let parent = match parent {
+                Some(p) => Self::group_uuid(data, p)?,
+                None => data.root,
+            };
+            data.add_group(parent, name)
+                .map(|id| id.to_string())
+                .map_err(|_| NO_SUCH_GROUP.to_owned())
+        })
+    }
+
+    pub fn rename_group(&mut self, id: &str, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(EMPTY_GROUP_NAME.into());
+        }
+        self.commit(|data| {
+            let g = Self::group_uuid(data, id)?;
+            data.rename_group(g, name)
+                .map_err(|_| NO_SUCH_GROUP.to_owned())
+        })
+    }
+
+    /// Deletes a folder, its subfolders AND their entries (the UI asks twice
+    /// and shows the count). The root cannot be deleted.
+    pub fn delete_group(&mut self, id: &str) -> Result<(), String> {
+        self.commit(|data| {
+            let g = Self::group_uuid(data, id)?;
+            data.delete_group(g).map_err(|e| match e {
+                CoreError::CannotDeleteRoot => CANNOT_DELETE_ROOT.to_owned(),
+                _ => NO_SUCH_GROUP.to_owned(),
+            })
+        })
+    }
+
+    /// Restores an older version (index in the newest-first list the UI
+    /// shows). The current state goes into the history, so nothing is lost.
+    pub fn restore_version(&mut self, id: &str, newest_first_index: usize) -> Result<(), String> {
+        self.commit(|data| {
+            let e = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            let len = e.history.len();
+            if newest_first_index >= len {
+                return Err(NO_SUCH_ITEM.into());
+            }
+            let v = e.history[len - 1 - newest_first_index].clone();
+            let uuid = e.id;
+            data.update_entry(uuid, |e| {
+                e.title = v.title.clone();
+                e.username = v.username.clone();
+                e.password = v.password.clone();
+                e.url = v.url.clone();
+                e.notes = v.notes.clone();
+                e.totp = v.totp.clone();
+                e.fields = v.fields.clone();
+            })
+            .map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
+    }
+
+    pub fn add_attachment(&mut self, id: &str, path: &std::path::Path) -> Result<(), String> {
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|f| f.take(MAX_ATTACHMENT_BYTES + 1).read_to_end(&mut bytes))
+            .map_err(|_| READ_FAILED.to_owned())?;
+        if bytes.len() as u64 > MAX_ATTACHMENT_BYTES {
+            bytes.zeroize();
+            return Err(ATTACHMENT_TOO_LARGE.into());
+        }
+        let name: String = path
+            .file_name()
+            .map(|n| n.to_string_lossy().chars().take(255).collect())
+            .unwrap_or_else(|| "ek".into());
+        let att = lav_core::Attachment {
+            name,
+            data: lav_core::SecretBytes::new(bytes),
+        };
+        self.commit(|data| {
+            let uuid = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .map(|e| e.id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            data.update_entry(uuid, |e| e.attachments.push(att.clone()))
+                .map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
+    }
+
+    pub fn remove_attachment(&mut self, id: &str, index: usize) -> Result<(), String> {
+        self.commit(|data| {
+            let e = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            if index >= e.attachments.len() {
+                return Err(NO_SUCH_ITEM.into());
+            }
+            let uuid = e.id;
+            data.update_entry(uuid, |e| {
+                e.attachments.remove(index);
+            })
+            .map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
+    }
+
+    fn keyfile_bytes(&self) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+        match &self.keyfile {
+            Some(k) => Vault::read_keyfile(k)
+                .map(Some)
+                .map_err(|_| KEYFILE_READ_FAILED.to_owned()),
+            None => Ok(None),
+        }
+    }
+
+    /// Changes the master password (the key file, if any, stays). Needs the
+    /// CURRENT password (cf. KeePassXC CVE-2023-35866). Saves; if saving
+    /// fails, the old password is put back so memory and disk agree.
+    pub fn change_master(&mut self, current: &str, new: &str, confirm: &str) -> Result<(), String> {
+        if new != confirm {
+            return Err(PASSWORDS_DIFFER.into());
+        }
+        let path = self.path.clone().ok_or(NO_FILE_SELECTED)?;
+        let kf = self.keyfile_bytes()?;
+        let kf = kf.as_deref().map(|k| k.as_slice());
+        let vault = self.vault.as_mut().ok_or(LOCKED)?;
+        vault
+            .change_credentials(current, kf, new, kf, None)
+            .map_err(|e| match e {
+                CoreError::WrongCurrentCredentials => WRONG_CURRENT.to_owned(),
+                CoreError::WeakPassword(_) => WEAK_PASSWORD.to_owned(),
+                _ => CREATE_FAILED.to_owned(),
+            })?;
+        if let Err(e) = vault.save_file(&path) {
+            let _ = vault.change_credentials(new, kf, current, kf, None);
+            return Err(match e {
+                CoreError::FileChangedOnDisk => CHANGED_ON_DISK.to_owned(),
+                _ => SAVE_FAILED.to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Plain-text CSV of every entry, after re-checking the master password
+    /// (SECURITY.md "Dışa aktarma"). Returns the CSV; the caller writes it.
+    pub fn export_csv(&self, current: &str) -> Result<Zeroizing<String>, String> {
+        let kf = self.keyfile_bytes()?;
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        let ok = vault
+            .verify_credentials(current, kf.as_deref().map(|k| k.as_slice()))
+            .unwrap_or(false);
+        if !ok {
+            return Err(WRONG_CURRENT.into());
+        }
+        let data = &vault.data;
+        let mut out = Zeroizing::new(String::from(
+            "\"Klasör\",\"Başlık\",\"Kullanıcı adı\",\"Parola\",\"Web sitesi\",\"Notlar\",\"TOTP\",\"Etiketler\"\r\n",
+        ));
+        for e in &data.entries {
+            let group = data.group(e.group).map(|g| g.name.as_str()).unwrap_or("");
+            let totp = e.totp.as_ref().map(|t| t.expose()).unwrap_or("");
+            let cells = [
+                csv_cell(group),
+                csv_cell(&e.title),
+                csv_cell(&e.username),
+                csv_cell(e.password.expose()),
+                csv_cell(&e.url),
+                csv_cell(e.notes.expose()),
+                csv_cell(totp),
+                csv_cell(&e.tags.join(", ")),
+            ];
+            out.push_str(&cells.join(","));
+            out.push_str("\r\n");
+            for mut c in cells {
+                c.zeroize();
+            }
+        }
+        Ok(out)
+    }
+
+    /// Entries with a URL and no icon yet: (id, url).
+    pub fn missing_icons(&self, limit: usize) -> Result<Vec<(String, String)>, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        Ok(vault
+            .data
+            .entries
+            .iter()
+            .filter(|e| e.icon.is_none() && !e.url.trim().is_empty())
+            .take(limit)
+            .map(|e| (e.id.to_string(), e.url.clone()))
+            .collect())
+    }
+
+    /// Stores already-sanitized PNG icons (from lav-favicon) and saves once.
+    /// Not a content edit, so no history version is created.
+    pub fn set_icons(&mut self, icons: Vec<(String, Vec<u8>)>) -> Result<(), String> {
+        if icons.is_empty() {
+            return Ok(());
+        }
+        let now = crate::recent::now() as i64;
+        self.commit(|data| {
+            for (id, png) in icons {
+                if let Some(e) = data.entries.iter_mut().find(|e| e.id.to_string() == id) {
+                    e.icon = Some(lav_core::EntryIcon { png, fetched: now });
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Username, password and the window-title markers for auto-type.
+    pub fn autotype_data(&self, id: &str) -> Result<AutoTypeData, String> {
+        let e = self.entry_ref(id)?;
+        Ok((
+            Zeroizing::new(e.username.clone()),
+            Zeroizing::new(e.password.expose().to_owned()),
+            crate::autotype::expected_markers(&e.title, &e.url),
+        ))
+    }
+
     pub fn delete_entry(&mut self, id: &str) -> Result<(), String> {
         self.commit(|data| {
             let uuid = data
@@ -567,7 +859,16 @@ impl Session {
         })
     }
 
+    pub fn set_import_keyfile(&mut self, path: Option<PathBuf>) -> Option<String> {
+        self.import_keyfile = path;
+        self.import_keyfile
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+    }
+
     pub fn select_import(&mut self, path: PathBuf) -> String {
+        self.import_keyfile = None;
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -592,7 +893,12 @@ impl Session {
                     .read_to_end(&mut bytes)
             })
             .map_err(|_| READ_FAILED.to_owned())?;
-        let db = crate::import::open(&bytes, password).map_err(str::to_owned)?;
+        let kf = match &self.import_keyfile {
+            Some(k) => Some(Vault::read_keyfile(k).map_err(|_| KEYFILE_READ_FAILED.to_owned())?),
+            None => None,
+        };
+        let db = crate::import::open(&bytes, password, kf.as_deref().map(|k| k.as_slice()))
+            .map_err(str::to_owned)?;
         let stem = path
             .file_stem()
             .map(|n| n.to_string_lossy().into_owned())
@@ -601,6 +907,7 @@ impl Session {
         let summary =
             self.commit(|data| crate::import::convert(&db, data, &folder).map_err(str::to_owned))?;
         self.import_path = None;
+        self.import_keyfile = None;
         Ok(summary)
     }
 
@@ -734,6 +1041,13 @@ impl Session {
                 id: e.id.to_string(),
                 group_id: e.group.to_string(),
                 has_totp: e.totp.is_some(),
+                icon: e.icon.as_ref().map(|i| {
+                    use base64::Engine;
+                    format!(
+                        "data:image/png;base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(&i.png)
+                    )
+                }),
                 title: e.title.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
@@ -1252,6 +1566,114 @@ mod tests {
         assert_eq!(n, Extra::Notes);
         let c: Extra = serde_json::from_str(r#"{"kind":"custom","index":3}"#).unwrap();
         assert_eq!(c, Extra::Custom(3));
+    }
+
+    #[test]
+    fn folders_add_rename_delete_with_entries() {
+        let (dir, mut s) = opened("groups");
+        let root = s.groups().unwrap()[0].id.clone();
+        let g = s.add_group(None, "  Finans ").unwrap();
+        let sub = s.add_group(Some(&g), "Kartlar").unwrap();
+        let mut f = form(&s, None, "Kart");
+        f.group_id = sub.clone();
+        s.save_entry(&f).unwrap();
+        let gv = s.groups().unwrap();
+        let fin = gv.iter().find(|x| x.id == g).unwrap();
+        assert_eq!(
+            (fin.name.as_str(), fin.entries, fin.total_entries),
+            ("Finans", 0, 1)
+        );
+        assert_eq!(s.add_group(None, " "), Err(EMPTY_GROUP_NAME.to_owned()));
+        s.rename_group(&g, "Banka").unwrap();
+        assert_eq!(s.delete_group(&root), Err(CANNOT_DELETE_ROOT.to_owned()));
+        let before = s.entries().unwrap().len();
+        s.delete_group(&g).unwrap();
+        // Persisted: reopen and check folder and its entry are gone.
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert!(!s.groups().unwrap().iter().any(|x| x.id == g || x.id == sub));
+        assert_eq!(s.entries().unwrap().len(), before - 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn change_master_needs_current_and_persists() {
+        let (dir, mut s) = opened("master");
+        assert_eq!(
+            s.change_master("yanlış", "yeni-ana-parola", "yeni-ana-parola"),
+            Err(WRONG_CURRENT.to_owned())
+        );
+        assert_eq!(
+            s.change_master(PASSWORD, "yeni-ana-parola", "farklı"),
+            Err(PASSWORDS_DIFFER.to_owned())
+        );
+        assert_eq!(
+            s.change_master(PASSWORD, "kisa", "kisa"),
+            Err(WEAK_PASSWORD.to_owned())
+        );
+        s.change_master(PASSWORD, "yeni-ana-parola", "yeni-ana-parola")
+            .unwrap();
+        s.lock();
+        assert_eq!(s.unlock(PASSWORD), Err(UNLOCK_FAILED.to_owned()));
+        assert!(s.unlock("yeni-ana-parola").is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn restore_attachments_and_export() {
+        let (dir, mut s) = opened("restore");
+        let id = s.save_entry(&form(&s, None, "=SUM(A1)")).unwrap();
+        let mut f = s.entry_form(&id).unwrap();
+        f.password = "ikinci".into();
+        s.save_entry(&f).unwrap();
+        s.restore_version(&id, 0).unwrap();
+        assert_eq!(s.entry_form(&id).unwrap().password, "yeni-gizli-parola");
+        assert_eq!(s.extras(&id).unwrap().history.len(), 2, "nothing lost");
+        assert_eq!(s.restore_version(&id, 9), Err(NO_SUCH_ITEM.to_owned()));
+
+        let file = dir.join("ek.txt");
+        std::fs::write(&file, b"kurtarma kodlari").unwrap();
+        s.add_attachment(&id, &file).unwrap();
+        assert_eq!(
+            s.attachment(&id, 0).unwrap().1.as_slice(),
+            b"kurtarma kodlari"
+        );
+        s.remove_attachment(&id, 0).unwrap();
+        assert!(s.extras(&id).unwrap().attachments.is_empty());
+
+        assert_eq!(s.export_csv("yanlış").err(), Some(WRONG_CURRENT.to_owned()));
+        let csv = s.export_csv(PASSWORD).unwrap();
+        assert!(csv.contains("\"'=SUM(A1)\""), "formula neutralised");
+        assert!(csv.contains("yeni-gizli-parola"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn csv_cells_are_quoted_and_safe() {
+        assert_eq!(csv_cell("a\"b"), "\"a\"\"b\"");
+        assert_eq!(csv_cell("+1"), "\"'+1\"");
+        assert_eq!(csv_cell("@x"), "\"'@x\"");
+        assert_eq!(csv_cell("-2"), "\"'-2\"");
+        assert_eq!(csv_cell("normal"), "\"normal\"");
+    }
+
+    #[test]
+    fn create_with_key_file() {
+        let dir = temp_dir("create-kf");
+        let key = dir.join("k.bin");
+        std::fs::write(&key, b"0123456789abcdef-key").unwrap();
+        let mut s = Session::default();
+        s.select_new(dir.join("kf.lav"));
+        s.set_keyfile(Some(key.clone()));
+        s.create_with("KF", PASSWORD, PASSWORD, fast_kdf()).unwrap();
+        s.lock();
+        assert!(
+            s.unlock(PASSWORD).is_ok(),
+            "key file kept for the new vault"
+        );
+        s.set_keyfile(None);
+        assert_eq!(s.unlock(PASSWORD), Err(UNLOCK_FAILED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

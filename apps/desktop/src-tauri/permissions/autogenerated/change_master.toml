@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-change-master"
+description = "Enables the change_master command without any pre-configured scope."
+commands.allow = ["change_master"]
+
+[[permission]]
+identifier = "deny-change-master"
+description = "Denies the change_master command without any pre-configured scope."
+commands.deny = ["change_master"]

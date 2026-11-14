@@ -32,6 +32,17 @@ fn main() {
             "save_attachment",
             "get_settings",
             "set_settings",
+            "add_group",
+            "rename_group",
+            "delete_group",
+            "restore_version",
+            "add_attachment",
+            "remove_attachment",
+            "change_master",
+            "export_csv",
+            "pick_import_keyfile",
+            "fetch_icons",
+            "auto_type",
         ]),
     ))
     .expect("failed to run tauri-build");

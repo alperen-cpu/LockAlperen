@@ -32,6 +32,17 @@
     "allow-copy-extra",
     "allow-save-attachment",
     "allow-get-settings",
-    "allow-set-settings"
+    "allow-set-settings",
+    "allow-add-group",
+    "allow-rename-group",
+    "allow-delete-group",
+    "allow-restore-version",
+    "allow-add-attachment",
+    "allow-remove-attachment",
+    "allow-change-master",
+    "allow-export-csv",
+    "allow-pick-import-keyfile",
+    "allow-fetch-icons",
+    "allow-auto-type"
   ]
 }

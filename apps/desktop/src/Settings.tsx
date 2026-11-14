@@ -1,18 +1,94 @@
 // Settings dialog. Only non-secret preferences; applied and saved by Rust.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as api from "./api";
+import type { EntrySummary } from "./api";
 
-export function SettingsDialog(props: { onClose: () => void }) {
+export function SettingsDialog(props: {
+  onClose: () => void;
+  onEntries: (entries: EntrySummary[]) => void;
+}) {
   const [idle, setIdle] = useState<number | null>(null);
+  const [icons, setIcons] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Passwords: uncontrolled inputs, cleared on submit, never React state.
+  const cur = useRef<HTMLInputElement>(null);
+  const nw = useRef<HTMLInputElement>(null);
+  const cf = useRef<HTMLInputElement>(null);
+  const exp = useRef<HTMLInputElement>(null);
+
+  function take(r: React.RefObject<HTMLInputElement | null>) {
+    const v = r.current?.value ?? "";
+    if (r.current) r.current.value = "";
+    return v;
+  }
+
+  async function changeMaster(ev: FormEvent) {
+    ev.preventDefault();
+    const [c, n, k] = [take(cur), take(nw), take(cf)];
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.changeMaster(c, n, k);
+      setMsg("Ana parola değiştirildi ve kasa kaydedildi. Eski yedek (.bak) silindi.");
+    } catch (e) {
+      setMsg(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportCsv(ev: FormEvent) {
+    ev.preventDefault();
+    const c = take(exp);
+    setBusy(true);
+    setMsg(null);
+    try {
+      if (await api.exportCsv(c)) {
+        setMsg("Dışa aktarıldı. Bu dosya ŞİFRESİZDİR: işiniz bitince güvenli biçimde silin.");
+      }
+    } catch (e) {
+      setMsg(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleIcons(on: boolean) {
+    setIcons(on);
+    try {
+      await api.setSettings({ idleMinutes: idle ?? 5, fetchIcons: on });
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
+
+  async function downloadIcons() {
+    setBusy(true);
+    setMsg("İkonlar indiriliyor…");
+    try {
+      const r = await api.fetchIcons();
+      props.onEntries(r.entries);
+      setMsg(`${r.fetched} ikon indirildi, ${r.failed} sitede bulunamadı.`);
+    } catch (e) {
+      setMsg(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (idle !== null) return;
     api.getSettings().then(
-      (s) => setIdle(s.idleMinutes),
+      (s) => {
+        setIdle(s.idleMinutes);
+        setIcons(s.fetchIcons);
+      },
       (e) => setError(api.errorText(e)),
     );
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onClose();
+      if (e.key === "Escape" && !busy) props.onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -21,7 +97,7 @@ export function SettingsDialog(props: { onClose: () => void }) {
   async function change(v: number) {
     setIdle(v);
     try {
-      const s = await api.setSettings({ idleMinutes: v });
+      const s = await api.setSettings({ idleMinutes: v, fetchIcons: icons });
       setIdle(s.idleMinutes);
       setError(null);
     } catch (e) {
@@ -54,6 +130,47 @@ export function SettingsDialog(props: { onClose: () => void }) {
           Windows kilitlenince, oturum kapanınca ya da uyku moduna geçilince kasa her zaman hemen
           kilitlenir. Kopyalanan değerler 12 saniye sonra panodan silinir.
         </p>
+        <div className="field">
+          <span className="lbl">Site ikonları</span>
+          <label className="check">
+            <input type="checkbox" checked={icons} onChange={(e) => void toggleIcons(e.target.checked)} />
+            Kayıtların web sitelerinden ikon indir
+          </label>
+          <p className="muted small">
+            Kapalıyken hiçbir siteye bağlanılmaz. Açıkken her siteye doğrudan bağlanılır (üçüncü taraf
+            servis yok); site ve ağ, hangi hesaplarınız olduğunu görebilir. İkonlar yeniden kodlanıp
+            kasada şifreli saklanır.
+          </p>
+          {icons && (
+            <button type="button" className="btn" onClick={downloadIcons} disabled={busy}>
+              Eksik ikonları şimdi indir
+            </button>
+          )}
+        </div>
+
+        <form className="field" onSubmit={changeMaster}>
+          <span className="lbl">Ana parolayı değiştir</span>
+          <input ref={cur} className="text-input" type="password" placeholder="Mevcut ana parola" aria-label="Mevcut ana parola" autoComplete="off" />
+          <input ref={nw} className="text-input" type="password" placeholder="Yeni ana parola" aria-label="Yeni ana parola" autoComplete="new-password" />
+          <input ref={cf} className="text-input" type="password" placeholder="Yeni ana parola (tekrar)" aria-label="Yeni ana parola tekrar" autoComplete="new-password" />
+          <button type="submit" className="btn" disabled={busy}>
+            Ana parolayı değiştir
+          </button>
+        </form>
+
+        <form className="field" onSubmit={exportCsv}>
+          <span className="lbl">Dışa aktar (CSV)</span>
+          <p className="muted small">
+            Bütün kayıtlar parolalarıyla birlikte <strong>şifresiz</strong> bir dosyaya yazılır. Onay
+            için ana parolanızı girin.
+          </p>
+          <input ref={exp} className="text-input" type="password" placeholder="Ana parola" aria-label="Dışa aktarma için ana parola" autoComplete="off" />
+          <button type="submit" className="btn" disabled={busy}>
+            Dışa aktar…
+          </button>
+        </form>
+
+        {msg && <p className="muted small" role="status">{msg}</p>}
         {error && <p className="error">{error}</p>}
         <div className="form-buttons">
           <button type="button" className="btn btn-accent wide" onClick={props.onClose} autoFocus>

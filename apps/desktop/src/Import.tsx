@@ -13,6 +13,7 @@ export function ImportDialog(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportSummary | null>(null);
+  const [keyName, setKeyName] = useState<string | null>(null);
   // KeePass master password: uncontrolled, cleared on submit, never state.
   const pwRef = useRef<HTMLInputElement>(null);
 
@@ -98,8 +99,24 @@ export function ImportDialog(props: {
           <form onSubmit={submit} className="modal-form">
             <p className="muted small">
               Dosya bu bilgisayarda çözülür ve kayıtlar açık kasaya yeni bir klasör olarak eklenir.
-              Yalnızca KDBX 4 (KeePass 2.35+) desteklenir; anahtar dosyası henüz desteklenmiyor.
+              Yalnızca KDBX 4 (KeePass 2.35+) desteklenir.
             </p>
+            <button
+              type="button"
+              className="btn btn-left"
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  const n = await api.pickImportKeyfile();
+                  if (n !== null) setKeyName(n);
+                } catch (e) {
+                  setError(api.errorText(e));
+                }
+              }}
+            >
+              <FileIcon />
+              <span className="ellipsis">{keyName ? `Anahtar dosyası: ${keyName}` : "KeePass anahtar dosyası (isteğe bağlı)…"}</span>
+            </button>
             <div className="field">
               <label className="lbl" htmlFor="kp-pw">
                 KeePass ana parolası

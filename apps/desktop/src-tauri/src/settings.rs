@@ -4,7 +4,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,17 +15,23 @@ const MAX_FILE_BYTES: u64 = 16 * 1024;
 
 /// The idle timeout in effect, read by the auto-lock thread.
 static IDLE_MINUTES: AtomicU32 = AtomicU32::new(DEFAULT_IDLE_MINUTES);
+static FETCH_ICONS: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub idle_minutes: u32,
+    /// Download site icons. Off by default: contacting a site tells it (and
+    /// the network) which accounts are in the vault.
+    #[serde(default)]
+    pub fetch_icons: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             idle_minutes: DEFAULT_IDLE_MINUTES,
+            fetch_icons: false,
         }
     }
 }
@@ -39,6 +45,7 @@ impl Settings {
             } else {
                 DEFAULT_IDLE_MINUTES
             },
+            fetch_icons: self.fetch_icons,
         }
     }
 }
@@ -48,7 +55,20 @@ pub fn idle_minutes() -> u32 {
 }
 
 pub fn apply(s: Settings) {
-    IDLE_MINUTES.store(s.sanitized().idle_minutes, Ordering::Relaxed);
+    let s = s.sanitized();
+    IDLE_MINUTES.store(s.idle_minutes, Ordering::Relaxed);
+    FETCH_ICONS.store(s.fetch_icons, Ordering::Relaxed);
+}
+
+pub fn fetch_icons() -> bool {
+    FETCH_ICONS.load(Ordering::Relaxed)
+}
+
+pub fn current() -> Settings {
+    Settings {
+        idle_minutes: idle_minutes(),
+        fetch_icons: fetch_icons(),
+    }
 }
 
 pub fn load(file: &Path) -> Settings {
@@ -85,13 +105,34 @@ mod tests {
 
     #[test]
     fn only_listed_choices_are_accepted() {
-        assert_eq!(Settings { idle_minutes: 15 }.sanitized().idle_minutes, 15);
         assert_eq!(
-            Settings { idle_minutes: 0 }.sanitized().idle_minutes,
+            Settings {
+                idle_minutes: 15,
+                fetch_icons: false
+            }
+            .sanitized()
+            .idle_minutes,
+            15
+        );
+        assert_eq!(
+            Settings {
+                idle_minutes: 0,
+                fetch_icons: false
+            }
+            .sanitized()
+            .idle_minutes,
             5,
             "no 'never'"
         );
-        assert_eq!(Settings { idle_minutes: 9999 }.sanitized().idle_minutes, 5);
+        assert_eq!(
+            Settings {
+                idle_minutes: 9999,
+                fetch_icons: false
+            }
+            .sanitized()
+            .idle_minutes,
+            5
+        );
     }
 
     #[test]
@@ -100,8 +141,16 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         let file = dir.join("settings.json");
         assert_eq!(load(&file), Settings::default());
-        save(&file, Settings { idle_minutes: 30 }).unwrap();
+        save(
+            &file,
+            Settings {
+                idle_minutes: 30,
+                fetch_icons: true,
+            },
+        )
+        .unwrap();
         assert_eq!(load(&file).idle_minutes, 30);
+        assert!(load(&file).fetch_icons);
         fs::write(&file, br#"{"idleMinutes": 0}"#).unwrap();
         assert_eq!(load(&file).idle_minutes, 5);
         fs::write(&file, b"garbage").unwrap();

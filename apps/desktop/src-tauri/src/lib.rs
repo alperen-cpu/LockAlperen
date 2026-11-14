@@ -2,6 +2,7 @@
 //! every secret stays on the Rust side (`session`).
 
 mod autolock;
+mod autotype;
 mod clipboard;
 mod hardening;
 mod health;
@@ -31,9 +32,7 @@ struct SettingsFile(Arc<Mutex<Option<std::path::PathBuf>>>);
 
 #[tauri::command]
 fn get_settings() -> settings::Settings {
-    settings::Settings {
-        idle_minutes: settings::idle_minutes(),
-    }
+    settings::current()
 }
 
 /// Applies at once (the auto-lock thread reads it every second) and saves.
@@ -131,6 +130,234 @@ async fn pick_vault_file(
     };
     let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
     state.with(|s| s.select(path)).map(Some)
+}
+
+async fn pick_path(
+    app: AppHandle,
+    save_name: Option<String>,
+    title: &'static str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let d = app.dialog().file().set_title(title);
+        match save_name {
+            Some(n) => d.set_file_name(&n).blocking_save_file(),
+            None => d.blocking_pick_file(),
+        }
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    match picked {
+        None => Ok(None),
+        Some(p) => p.into_path().map(Some).map_err(|_| INTERNAL.to_owned()),
+    }
+}
+
+/// Runs a session change off the main thread and returns the new list.
+async fn change_and_list(
+    state: &Shared,
+    f: impl FnOnce(&mut Session) -> Result<(), String> + Send + 'static,
+) -> Result<Vec<EntrySummary>, String> {
+    let shared = state.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| {
+                f(s)?;
+                s.entries()
+            })
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
+#[tauri::command]
+async fn add_group(
+    parent: Option<String>,
+    name: String,
+    state: State<'_, Shared>,
+) -> Result<String, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| s.add_group(parent.as_deref(), &name))
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
+#[tauri::command]
+async fn rename_group(
+    id: String,
+    name: String,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.rename_group(&id, &name)).await
+}
+
+#[tauri::command]
+async fn delete_group(id: String, state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.delete_group(&id)).await
+}
+
+#[tauri::command]
+async fn restore_version(
+    id: String,
+    index: usize,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.restore_version(&id, index)).await
+}
+
+/// File picker in Rust; the file is read and stored encrypted in the vault.
+#[tauri::command]
+async fn add_attachment(
+    id: String,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<bool, String> {
+    let Some(path) = pick_path(app, None, "Eklenecek dosyayı seç").await? else {
+        return Ok(false);
+    };
+    change_and_list(&state, move |s| s.add_attachment(&id, &path)).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn remove_attachment(
+    id: String,
+    index: usize,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    change_and_list(&state, move |s| s.remove_attachment(&id, index)).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn change_master(
+    current: String,
+    new: String,
+    confirm: String,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    let (current, new, confirm) = (
+        Zeroizing::new(current),
+        Zeroizing::new(new),
+        Zeroizing::new(confirm),
+    );
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| s.change_master(&current, &new, &confirm))
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
+/// Re-checks the master password, then writes a PLAIN-TEXT CSV where the
+/// user chooses. Returns false if the save dialog was cancelled.
+#[tauri::command]
+async fn export_csv(
+    current: String,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<bool, String> {
+    let current = Zeroizing::new(current);
+    let shared = state.inner().clone();
+    let csv = tauri::async_runtime::spawn_blocking(move || {
+        shared.with(|s| s.export_csv(&current)).and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())??;
+    let Some(path) = pick_path(
+        app,
+        Some("LockAlperen-disa-aktarim.csv".into()),
+        "Dışa aktarılacak yer",
+    )
+    .await?
+    else {
+        return Ok(false);
+    };
+    // UTF-8 BOM so spreadsheet apps read Turkish characters correctly.
+    let mut bytes = Zeroizing::new(Vec::with_capacity(csv.len() + 3));
+    bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+    bytes.extend_from_slice(csv.as_bytes());
+    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn pick_import_keyfile(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let Some(path) = pick_path(app, None, "KeePass anahtar dosyası").await? else {
+        return Ok(None);
+    };
+    state.with(|s| s.set_import_keyfile(Some(path)))
+}
+
+#[derive(serde::Serialize)]
+struct IconsResult {
+    fetched: usize,
+    failed: usize,
+    entries: Vec<EntrySummary>,
+}
+
+/// Downloads missing site icons (opt-in in Ayarlar). Each icon goes through
+/// lav-favicon: public addresses only, size/time limits, re-encoded PNG.
+#[tauri::command]
+async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
+    if !settings::fetch_icons() {
+        return Err("Site ikonları Ayarlar'dan açılmamış.".into());
+    }
+    let todo = state.with(|s| s.missing_icons(300)).and_then(|r| r)?;
+    let opts = lav_favicon::Options::default();
+    let (mut got, mut failed) = (Vec::new(), 0usize);
+    for (id, url) in todo {
+        match lav_favicon::fetch(&url, &opts).await {
+            Ok(icon) => got.push((id, icon.png)),
+            Err(_) => failed += 1,
+        }
+    }
+    let fetched = got.len();
+    let entries = change_and_list(&state, move |s| s.set_icons(got)).await?;
+    Ok(IconsResult {
+        fetched,
+        failed,
+        entries,
+    })
+}
+
+/// Minimizes the app, waits for the user to switch to the target window,
+/// verifies it, then types username, Tab, password, Enter.
+#[tauri::command]
+async fn auto_type(
+    id: String,
+    window: tauri::WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    let (user, pw, markers) = state.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
+    if markers.is_empty() {
+        return Err("Bu kaydın başlığı ya da web sitesi yok; hedef pencere doğrulanamaz.".into());
+    }
+    let _ = window.minimize();
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = autotype::wait_for_target(&markers)?;
+        autotype::type_into(
+            target,
+            &[
+                autotype::Step::Text(&user),
+                autotype::Step::Tab,
+                autotype::Step::Text(&pw),
+                autotype::Step::Enter,
+            ],
+        )
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+    .map_err(str::to_owned)
 }
 
 #[tauri::command]
@@ -620,7 +847,18 @@ pub fn run() {
             copy_extra,
             save_attachment,
             get_settings,
-            set_settings
+            set_settings,
+            add_group,
+            rename_group,
+            delete_group,
+            restore_version,
+            add_attachment,
+            remove_attachment,
+            change_master,
+            export_csv,
+            pick_import_keyfile,
+            fetch_icons,
+            auto_type
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");
