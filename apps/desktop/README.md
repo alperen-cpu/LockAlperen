@@ -51,7 +51,7 @@ var.
 | Ana parola değiştirme | Mevcut parola yeniden istenir (KeePassXC CVE-2023-35866 dersi). Yeni tuz ve anahtar; eski `.bak` silinir. Kayıt başarısız olursa eski parola geri konur (bellek ve disk aynı kalır). Anahtar dosyası varsa korunur. |
 | Dışa aktarma | CSV; ana parola yeniden doğrulanır; hücreler kaçışlanır ve formül olarak çalışmaz; dosya şifresizdir (arayüz söyler). |
 | Otomatik yazma | Hedef pencere doğrulanmadan yazmaz (başka süreç + başlıkta kayıt adı ya da site). Pencere değişirse durur. `unsafe` kod `src/autotype.rs`'te. |
-| Site ikonları | **Varsayılan kapalı** (Ayarlar). Açıkken `lav-favicon` ile doğrudan siteden (üçüncü taraf yok), yalnızca açık internet adresleri, boyut/süre sınırlı; resim yeniden kodlanmış PNG olarak kasada şifreli saklanır. CSP'ye yalnızca `img-src data:` eklendi (kendi ürettiğimiz PNG'ler için). |
+| Site ikonları | **Otomatik** (proje sahibinin kararı): kilit açıldıktan ve bir kayıt kaydedildikten sonra arka planda, ikonu olmayan kayıtlar için. `lav-favicon` ile doğrudan siteye bağlanılır (üçüncü taraf servis yok), yalnızca açık internet adresleri, boyut ve süre sınırlı; resim yeniden kodlanmış PNG olarak kasada şifreli saklanır. Her kayıt uygulama açıkken bir kez denenir. **Gizlilik sonucu:** siteler ve ağ (ör. şirket proxy'si, DNS), kasada hangi sitelerin olduğunu görebilir. CSP'ye yalnızca `img-src data:` eklendi. |
 | Geçmiş ve ekler | Eski sürüm iki onayla geri yüklenir; şimdiki hâl geçmişe eklenir (kayıp yok). Ek ekleme: dosya Rust'taki pencereyle seçilir, en fazla 16 MiB, kasada şifreli. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
 
@@ -110,9 +110,8 @@ var.
 - **Pano:** Windows'un `EmptyClipboard` ile bıraktığı bellek bizim tarafımızdan silinmez; pano
   açıkken başka bir program içeriği okuyabilir. Pano geçmişi işaretlerinin Win+V'de gerçekten
   gizlendiği elle (Win+V açılarak) **kontrol edilmedi**; yalnızca işaretlerin konduğu doğrulandı.
-- **Win+L ve uyku:** Windows'un bu mesajları gizli pencereye gerçekten gönderdiği **elle
-  doğrulanmadı** (oturumu kilitlemek otomasyonla yapılmadı). Denemek için: kasayı aç, Win+L'ye
-  bas, geri dön; kasa kilitli olmalı.
+- **Win+L:** proje sahibi elle doğruladı (2026-11-15): Win+L sonrası kasa kilitli. **Uyku** elle
+  denenmedi.
 - **Boşta kalma süresi** Ayarlar'dan seçilir (1–60 dk; "asla" bilinçli olarak yok).
 - **KeePass:** başlık okuyucumuz için libFuzzer hedefi yok (masaüstü crate'i yalnızca Windows'ta
   derleniyor, fuzz CI'ı Linux'ta); yerine mutasyon testi var. `keepass` crate'inin çözdüğü

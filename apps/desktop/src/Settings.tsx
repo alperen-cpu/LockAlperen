@@ -5,10 +5,9 @@ import type { EntrySummary } from "./api";
 
 export function SettingsDialog(props: {
   onClose: () => void;
-  onEntries: (entries: EntrySummary[]) => void;
+  onEntries?: (entries: EntrySummary[]) => void;
 }) {
   const [idle, setIdle] = useState<number | null>(null);
-  const [icons, setIcons] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Passwords: uncontrolled inputs, cleared on submit, never React state.
@@ -54,28 +53,6 @@ export function SettingsDialog(props: {
     }
   }
 
-  async function toggleIcons(on: boolean) {
-    setIcons(on);
-    try {
-      await api.setSettings({ idleMinutes: idle ?? 5, fetchIcons: on });
-    } catch (e) {
-      setError(api.errorText(e));
-    }
-  }
-
-  async function downloadIcons() {
-    setBusy(true);
-    setMsg("İkonlar indiriliyor…");
-    try {
-      const r = await api.fetchIcons();
-      props.onEntries(r.entries);
-      setMsg(`${r.fetched} ikon indirildi, ${r.failed} sitede bulunamadı.`);
-    } catch (e) {
-      setMsg(api.errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,7 +60,6 @@ export function SettingsDialog(props: {
     api.getSettings().then(
       (s) => {
         setIdle(s.idleMinutes);
-        setIcons(s.fetchIcons);
       },
       (e) => setError(api.errorText(e)),
     );
@@ -97,7 +73,7 @@ export function SettingsDialog(props: {
   async function change(v: number) {
     setIdle(v);
     try {
-      const s = await api.setSettings({ idleMinutes: v, fetchIcons: icons });
+      const s = await api.setSettings({ idleMinutes: v });
       setIdle(s.idleMinutes);
       setError(null);
     } catch (e) {
@@ -130,24 +106,6 @@ export function SettingsDialog(props: {
           Windows kilitlenince, oturum kapanınca ya da uyku moduna geçilince kasa her zaman hemen
           kilitlenir. Kopyalanan değerler 12 saniye sonra panodan silinir.
         </p>
-        <div className="field">
-          <span className="lbl">Site ikonları</span>
-          <label className="check">
-            <input type="checkbox" checked={icons} onChange={(e) => void toggleIcons(e.target.checked)} />
-            Kayıtların web sitelerinden ikon indir
-          </label>
-          <p className="muted small">
-            Kapalıyken hiçbir siteye bağlanılmaz. Açıkken her siteye doğrudan bağlanılır (üçüncü taraf
-            servis yok); site ve ağ, hangi hesaplarınız olduğunu görebilir. İkonlar yeniden kodlanıp
-            kasada şifreli saklanır.
-          </p>
-          {icons && (
-            <button type="button" className="btn" onClick={downloadIcons} disabled={busy}>
-              Eksik ikonları şimdi indir
-            </button>
-          )}
-        </div>
-
         <form className="field" onSubmit={changeMaster}>
           <span className="lbl">Ana parolayı değiştir</span>
           <input ref={cur} className="text-input" type="password" placeholder="Mevcut ana parola" aria-label="Mevcut ana parola" autoComplete="off" />

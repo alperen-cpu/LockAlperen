@@ -614,6 +614,23 @@ function VaultScreen({
     }
   }
 
+  // Site icons are fetched automatically in the background after unlocking
+  // and after a save; the list updates when they arrive.
+  const [iconTick, setIconTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    api.fetchIcons().then(
+      (r) => {
+        if (alive && r.fetched > 0) onEntries(r.entries);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iconTick]);
+
   // Rust locks on its own (idle, Win+L, sleep); here we only notice it.
   useEffect(() => {
     let alive = true;
@@ -839,6 +856,7 @@ function VaultScreen({
             if (saved) {
               onEntries(saved.entries);
               setSelected(saved.id);
+              setIconTick((t) => t + 1);
             }
             setEditing(undefined);
           }}

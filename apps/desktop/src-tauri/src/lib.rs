@@ -305,14 +305,20 @@ struct IconsResult {
     entries: Vec<EntrySummary>,
 }
 
-/// Downloads missing site icons (opt-in in Ayarlar). Each icon goes through
-/// lav-favicon: public addresses only, size/time limits, re-encoded PNG.
+/// Entry ids already tried in this run, so a site without an icon is not
+/// contacted again on every unlock or save.
+static ICON_TRIED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Downloads missing site icons automatically (after unlock and save). Each
+/// icon goes through lav-favicon: direct to the site (no third-party
+/// service), public addresses only, size/time limits, re-encoded PNG.
 #[tauri::command]
 async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
-    if !settings::fetch_icons() {
-        return Err("Site ikonları Ayarlar'dan açılmamış.".into());
+    let mut todo = state.with(|s| s.missing_icons(300)).and_then(|r| r)?;
+    if let Ok(mut tried) = ICON_TRIED.lock() {
+        todo.retain(|(id, _)| tried.insert(id.clone()));
     }
-    let todo = state.with(|s| s.missing_icons(300)).and_then(|r| r)?;
     let opts = lav_favicon::Options::default();
     let (mut got, mut failed) = (Vec::new(), 0usize);
     for (id, url) in todo {
