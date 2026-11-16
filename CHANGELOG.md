@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]: uygulama içi güncelleme
+
+- **Güncelleme:** Uygulama açılışta yeni sürümü denetler (Ayarlar'dan kapatılabilir) ve onay
+  alınca kurulu sürümün üzerine kurar. Kasa dosyaları ve ayarlar korunur. Kurulum dosyası
+  gömülü anahtarla imza doğrulanmadan çalıştırılmaz. Ayrıntı: [docs/UPDATES.md](docs/UPDATES.md).
+- **Sürüm yayınlama:** `v*` etiketi GitHub Actions'ta imzalı kurulum, `latest.json` ve taslak
+  bir Release üretir. Sürüm numarası `node scripts/set-version.mjs` ile değiştirilir.
+- Ayarlar'da kullanılan sürüm görünür.
+
 ## [Yayınlanmamış]: kasa formatı v2
 
 ### ⚠️ Kırıcı değişiklik: format v1 kaldırıldı
@@ -12,7 +21,7 @@
   koruması).
 - v1 ile yazılmış `.bak` dosyaları da açılmaz.
 - **Geçiş:** Format daha önce yayınlanmadığı için kullanıcı dosyası beklenmiyor. Elinde v1
-  dosyası olan biri (geliştirme ya da test kopyası) dosyayı `f3ef659` commit'iyle açıp içeriği
+  dosyası olan biri (geliştirme ya da test kopyası) dosyayı `c1c606a` commit'iyle açıp içeriği
   dışa aktarmalı, sonra bu sürümde yeniden oluşturmalı.
 - Ayrıntı: [docs/FORMAT.md](docs/FORMAT.md).
 
@@ -69,7 +78,7 @@
   0 başarısız, 11 yok sayıldı). Windows'a özel T1 ve T8 dahil.
 - CI çalışmaları: [43474412721](https://github.com/alperen-cpu/LockAlperen/actions/runs/43474412721)
   (push) ve [43479266434](https://github.com/alperen-cpu/LockAlperen/actions/runs/43479266434)
-  (PR #1), ikisi de commit `10f2272` üzerinde. Test sayıları push çalışmasından; iki çalışmada da
+  (PR #1), ikisi de commit `b27f4d1` üzerinde. Test sayıları push çalışmasından; iki çalışmada da
   bütün işler (fuzz ve supply-chain dahil) geçti.
 - Bellek testleri (`lav-memtest`, 4 test) CI'da Windows/MSVC **debug** derlemesinde de geçti.
   Release derlemesinde yalnızca yerelde Windows/GNU ile ölçüldü. Linux için bellek testi yok

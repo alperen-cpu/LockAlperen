@@ -43,6 +43,9 @@
     "allow-export-csv",
     "allow-pick-import-keyfile",
     "allow-fetch-icons",
-    "allow-auto-type"
+    "allow-auto-type",
+    "allow-app-version",
+    "allow-check-update",
+    "allow-install-update"
   ]
 }

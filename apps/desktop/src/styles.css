@@ -1222,3 +1222,39 @@ input[type="range"] {
     display: none;
   }
 }
+
+/* New-version notice (Update.tsx). Fixed, so it shows on every screen. */
+.update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--hover);
+  border: 1px solid #2e3647;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.update-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.update-offer p {
+  margin: 0;
+}
+
+.update-notes {
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.update-buttons {
+  display: flex;
+  gap: 8px;
+}

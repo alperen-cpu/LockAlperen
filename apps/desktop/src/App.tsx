@@ -12,6 +12,7 @@ import { Editor } from "./Editor";
 import { ImportDialog } from "./Import";
 import { ExtrasView } from "./Extras";
 import { SettingsDialog } from "./Settings";
+import { UpdateBanner } from "./Update";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
@@ -35,6 +36,15 @@ import {
 type Open = { info: VaultInfo; entries: EntrySummary[] };
 
 export function App() {
+  return (
+    <>
+      <Screens />
+      <UpdateBanner />
+    </>
+  );
+}
+
+function Screens() {
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [open, setOpen] = useState<Open | null>(null);
   const [error, setError] = useState<string | null>(null);

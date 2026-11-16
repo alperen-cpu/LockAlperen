@@ -1,0 +1,98 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds the signed NSIS installer and creates a
+# DRAFT GitHub Release with the installer, its signature and latest.json.
+# Installed copies see the update only after the draft is published
+# (releases/latest ignores drafts). See docs/UPDATES.md.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Same pinned actions as ci.yml (full commit SHAs).
+# actions/checkout v4            = 11d5960a326750d5838078e36cf38b85af677262
+# dtolnay/rust-toolchain stable  = b725eda525362e7cf34af9a7243cac1e3f01a7ec
+
+jobs:
+  release:
+    runs-on: windows-latest
+    # The only job in the repository that may write: it creates the release.
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: apps/desktop
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+
+      - name: Tag, version files and release key agree
+        run: |
+          $v = $env:TAG.Substring(1)
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "(.*)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($pkg -ne $v -or $conf.version -ne $v -or $cargo -ne $v) {
+            throw "Tag $env:TAG, package.json $pkg, tauri.conf.json $($conf.version), Cargo.toml $cargo. Run: node scripts/set-version.mjs $v"
+          }
+          if ([string]::IsNullOrWhiteSpace($conf.plugins.updater.pubkey)) {
+            throw "tauri.conf.json has no updater pubkey (docs/UPDATES.md, 'Bir kerelik kurulum')"
+          }
+
+      - run: npm ci --no-audit --no-fund
+      - run: cargo test --locked
+        working-directory: apps/desktop/src-tauri
+
+      - name: Build and sign the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --ci --config src-tauri/tauri.release.conf.json
+
+      - name: Signature verifies with the key built into the app
+        run: |
+          $v = $env:TAG.Substring(1)
+          $exe = "target/release/bundle/nsis/LockAlperen_${v}_x64-setup.exe"
+          cargo run --locked --example verify_release -- $exe $v
+          if ($LASTEXITCODE -ne 0) { throw "verify_release failed" }
+        working-directory: apps/desktop/src-tauri
+
+      - name: Write latest.json
+        run: |
+          $v = $env:TAG.Substring(1)
+          $name = "LockAlperen_${v}_x64-setup.exe"
+          $exe = "src-tauri/target/release/bundle/nsis/$name"
+          $entry = [ordered]@{
+            signature = (Get-Content "$exe.sig" -Raw).Trim()
+            url       = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/$name"
+          }
+          [ordered]@{
+            version   = $v
+            notes     = "Sürüm notları: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:TAG"
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64-nsis" = $entry
+              "windows-x86_64"      = $entry
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content latest.json -Encoding utf8NoBOM
+          Get-Content latest.json
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = $env:TAG.Substring(1)
+          $exe = "src-tauri/target/release/bundle/nsis/LockAlperen_${v}_x64-setup.exe"
+          gh release create $env:TAG --draft --verify-tag --title "LockAlperen $v" --generate-notes `
+            $exe "$exe.sig" latest.json
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

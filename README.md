@@ -6,6 +6,7 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **Modern kriptografi:** Argon2id, HKDF-SHA256 ve XChaCha20-Poly1305 ([format](docs/FORMAT.md))
 - **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf servis yok)
 - **KeePass'ten kolay geçiş:** `.kdbx` içe aktarma *(yakında)*
+- **Uygulama içi güncelleme:** Yeni sürüm, imzası doğrulanarak kurulu sürümün üzerine kurulur ([nasıl çalışır](docs/UPDATES.md))
 - **Açık kaynak:** MIT lisansı
 
 > ⚠️ Proje erken geliştirme aşamasındadır. Gerçek parolalarınızı henüz yalnızca bu uygulamaya emanet etmeyin.
@@ -34,4 +35,5 @@ cargo audit          # bağımlılık güvenlik taraması
 
 - [Dosya formatı](docs/FORMAT.md)
 - [Tehdit modeli](docs/THREAT_MODEL.md)
+- [Güncellemeler ve sürüm yayınlama](docs/UPDATES.md)
 - [Güvenlik ve KeePass açıklarıyla karşılaştırma](SECURITY.md)

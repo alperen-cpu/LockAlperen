@@ -24,6 +24,7 @@ bir parola yöneticisidir.
 | Parola değiştikten sonra eski yedeğin açılması | Eski parolalı `.bak` silinir |
 | Ekran paylaşımı ve pano geçmişi | Pencere ekran yakalamadan hariç tutulur, pano geçmişi kapatılır *(uygulama katmanı)* |
 | Favicon üzerinden yerel ağ taraması veya kötü niyetli resim | Yalnızca HTTPS, yerel adresler yasak, resim yeniden kodlanır (`lav-favicon`) |
+| Sahte ya da eski güncelleme (MITM, kurcalanmış `latest.json`) | Yalnızca HTTPS; kurulum dosyası gömülü anahtarla imza doğrulanmadan çalıştırılmaz; imza sürüme bağlı, sürüm düşürme yok; indirme adresi bu reponun Releases'ı ([UPDATES.md](UPDATES.md)). **Kapsam dışı:** imza anahtarı ve parolasının birlikte çalınması |
 
 ## Kapsam dışı ❌
 

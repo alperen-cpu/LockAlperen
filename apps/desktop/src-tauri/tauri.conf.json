@@ -50,6 +50,18 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEOTk1OEU4NTE5RDVGRTMKUldUalg1MVI2RmlaYlEzNU5nL2lIREZ0YU5lZkRFZW1HZytUend4d1pib24rWTNjTU8wZk10KzMK",
+      "endpoints": [
+        "https://github.com/alperen-cpu/LockAlperen/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],

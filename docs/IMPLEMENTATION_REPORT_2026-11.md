@@ -87,7 +87,7 @@ Değerlendirme:
 Ayrıntı `docs/FORMAT.md` "v1'in kaldırılması" bölümünde. Özet:
 
 - v1 `.lav` ve `.bak` dosyaları bu sürümle açılamaz, otomatik dönüştürme yok.
-- Yayınlanmış dosya olmadığı için kullanıcı etkisi beklenmiyor. Geliştirme kopyaları `f3ef659`
+- Yayınlanmış dosya olmadığı için kullanıcı etkisi beklenmiyor. Geliştirme kopyaları `c1c606a`
   ile açılıp yeniden oluşturulmalı.
 
 ### Doğrulanmamış olanlar
@@ -385,7 +385,7 @@ risk olarak kalıyor.
 ## Ek: CI sonuçları (2026-11-13)
 
 Yukarıdaki "Linux'ta çalıştırılmadı" ve "MSVC sonucu görülmedi" ifadeleri yazıldıkları anki
-durumu anlatıyor. Dal push edildikten sonra CI, commit `10f2272` üzerinde iki kez çalıştı:
+durumu anlatıyor. Dal push edildikten sonra CI, commit `b27f4d1` üzerinde iki kez çalıştı:
 [43474412721](https://github.com/alperen-cpu/LockAlperen/actions/runs/43474412721) (push) ve
 [43479266434](https://github.com/alperen-cpu/LockAlperen/actions/runs/43479266434) (PR #1).
 
@@ -402,4 +402,4 @@ Böylece T2, Unix inode kontrolü ve dizin `fsync` yolu Linux'ta **çalıştır�
 - Bellek testleri (`lav-memtest`, 4/4) CI'da Windows/MSVC **debug** derlemesinde de geçti.
   Release ölçümü yalnızca yerelde Windows/GNU ile yapıldı; MSVC release ve Linux için ölçüm yok.
 - Gerçek güç kesintisi, OneDrive ve ağ sürücüleri hâlâ test edilmedi.
-- PR #1, merge commit `d22967c` ile `main`'e birleştirildi.
+- PR #1, merge commit `d207324` ile `main`'e birleştirildi.
