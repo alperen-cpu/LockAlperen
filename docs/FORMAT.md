@@ -136,7 +136,7 @@ dosya boyutu sınırı kendi mesajlarını korur, çünkü parolaya bağlı değ
   `version != 2` olan her dosya Argon2 çalışmadan `UnsupportedVersion` ile reddedilir.
 - **Etki:** v1 ile kaydedilmiş bir kasa bu sürümle açılamaz ve otomatik dönüştürülmez.
   Format yayınlanmadığı için bilinen bir kullanıcı dosyası yoktur. Elinde v1 dosyası olan
-  biri (geliştirme ya da test kopyası) dosyayı bir önceki commit'le (`f3ef659`) açıp içeriği
+  biri (geliştirme ya da test kopyası) dosyayı bir önceki commit'le (`c1c606a`) açıp içeriği
   dışa aktarmalı, sonra yeni sürümde yeniden oluşturmalıdır.
 - v1 `.bak` dosyaları da açılamaz. Bu kasıtlıdır.
 - İleride v2'den v3'e geçiş gerekirse geçiş, v2 dosyası **tam doğrulandıktan sonra** ve yalnızca
