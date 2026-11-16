@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]: uygulama içi güncelleme
+## [0.2.0] - 2026-11-16: uygulama içi güncelleme
 
 - **Güncelleme:** Uygulama açılışta yeni sürümü denetler (Ayarlar'dan kapatılabilir) ve onay
   alınca kurulu sürümün üzerine kurar. Kasa dosyaları ve ayarlar korunur. Kurulum dosyası
@@ -9,7 +9,7 @@
   bir Release üretir. Sürüm numarası `node scripts/set-version.mjs` ile değiştirilir.
 - Ayarlar'da kullanılan sürüm görünür.
 
-## [Yayınlanmamış]: kasa formatı v2
+## [0.2.0] - 2026-11-16: kasa formatı v2
 
 ### ⚠️ Kırıcı değişiklik: format v1 kaldırıldı
 
