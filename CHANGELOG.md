@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]: uygulama içi güncelleme
+
+- **Güncelleme:** Uygulama açılışta yeni sürümü denetler (Ayarlar'dan kapatılabilir) ve onay
+  alınca kurulu sürümün üzerine kurar. Kasa dosyaları ve ayarlar korunur. Kurulum dosyası
+  gömülü anahtarla imza doğrulanmadan çalıştırılmaz. Ayrıntı: [docs/UPDATES.md](docs/UPDATES.md).
+- **Sürüm yayınlama:** `v*` etiketi GitHub Actions'ta imzalı kurulum, `latest.json` ve taslak
+  bir Release üretir. Sürüm numarası `node scripts/set-version.mjs` ile değiştirilir.
+- Ayarlar'da kullanılan sürüm görünür.
+
 ## [Yayınlanmamış]: kasa formatı v2
 
 ### ⚠️ Kırıcı değişiklik: format v1 kaldırıldı

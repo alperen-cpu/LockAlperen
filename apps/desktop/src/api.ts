@@ -200,6 +200,8 @@ export const saveAttachment = (id: string, index: number) =>
 
 export interface Settings {
   idleMinutes: number;
+  /** Look for a new version at startup (Rust decides where and verifies). */
+  checkUpdates: boolean;
 }
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
@@ -207,6 +209,20 @@ export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
 export const getSettings = () => invoke<Settings>("get_settings");
 
 export const setSettings = (value: Settings) => invoke<Settings>("set_settings", { value });
+
+export const appVersion = () => invoke<string>("app_version");
+
+export interface AvailableUpdate {
+  version: string;
+  notes: string | null;
+}
+
+/** null = up to date. Throws a Turkish message on network/config errors. */
+export const checkUpdate = () => invoke<AvailableUpdate | null>("check_update");
+
+/** Locks the vault, installs the update found by checkUpdate and restarts.
+ *  Resolves only if something failed (it throws then). */
+export const installUpdate = () => invoke<void>("install_update");
 
 export const addGroup = (parent: string | null, name: string) =>
   invoke<string>("add_group", { parent, name });

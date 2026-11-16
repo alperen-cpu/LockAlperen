@@ -2,12 +2,14 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as api from "./api";
 import type { EntrySummary } from "./api";
+import { UpdateSettings } from "./Update";
 
 export function SettingsDialog(props: {
   onClose: () => void;
   onEntries?: (entries: EntrySummary[]) => void;
 }) {
-  const [idle, setIdle] = useState<number | null>(null);
+  // All settings travel together, so changing one never resets another.
+  const [settings, setSettingsState] = useState<api.Settings | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Passwords: uncontrolled inputs, cleared on submit, never React state.
@@ -56,10 +58,10 @@ export function SettingsDialog(props: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (idle !== null) return;
+    if (settings !== null) return;
     api.getSettings().then(
       (s) => {
-        setIdle(s.idleMinutes);
+        setSettingsState(s);
       },
       (e) => setError(api.errorText(e)),
     );
@@ -70,11 +72,12 @@ export function SettingsDialog(props: {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function change(v: number) {
-    setIdle(v);
+  async function change(patch: Partial<api.Settings>) {
+    if (settings === null) return;
+    const next = { ...settings, ...patch };
+    setSettingsState(next);
     try {
-      const s = await api.setSettings({ idleMinutes: v });
-      setIdle(s.idleMinutes);
+      setSettingsState(await api.setSettings(next));
       setError(null);
     } catch (e) {
       setError(api.errorText(e));
@@ -92,8 +95,9 @@ export function SettingsDialog(props: {
           <select
             id="s-idle"
             className="text-input"
-            value={idle ?? ""}
-            onChange={(e) => void change(Number(e.target.value))}
+            value={settings?.idleMinutes ?? ""}
+            disabled={settings === null}
+            onChange={(e) => void change({ idleMinutes: Number(e.target.value) })}
           >
             {api.IDLE_CHOICES.map((m) => (
               <option key={m} value={m}>
@@ -127,6 +131,13 @@ export function SettingsDialog(props: {
             Dışa aktar…
           </button>
         </form>
+
+        {settings !== null && (
+          <UpdateSettings
+            checkUpdates={settings.checkUpdates}
+            onCheckUpdates={(on) => void change({ checkUpdates: on })}
+          />
+        )}
 
         {msg && <p className="muted small" role="status">{msg}</p>}
         {error && <p className="error">{error}</p>}

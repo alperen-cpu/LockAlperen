@@ -43,6 +43,9 @@ fn main() {
             "pick_import_keyfile",
             "fetch_icons",
             "auto_type",
+            "app_version",
+            "check_update",
+            "install_update",
         ]),
     ))
     .expect("failed to run tauri-build");

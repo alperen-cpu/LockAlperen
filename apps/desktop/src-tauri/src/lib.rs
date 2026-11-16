@@ -11,6 +11,7 @@ mod recent;
 mod session;
 mod settings;
 mod totp;
+mod update;
 
 use std::sync::{Arc, Mutex};
 
@@ -47,6 +48,32 @@ fn set_settings(
         settings::save(&path, value).map_err(|_| "Ayarlar kaydedilemedi.".to_owned())?;
     }
     Ok(value)
+}
+
+/// The running version, shown in Settings.
+#[tauri::command]
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+/// Asks the release endpoint whether a newer, installable version exists.
+/// Only the version and notes go to the WebView; the update stays here.
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<Option<update::Available>, String> {
+    update::check(&app).await
+}
+
+/// Installs the update found by the last check. The vault is locked (and our
+/// clipboard value cleared) once the installer has been verified; on success
+/// the app exits and the installer restarts it, so this returns only errors.
+#[tauri::command]
+async fn install_update(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    last: State<'_, LastCopy>,
+) -> Result<(), String> {
+    let (shared, last) = (state.inner().clone(), last.inner().clone());
+    update::install(&app, move || lock_all(&shared, &last)).await
 }
 
 /// "Son kasalar": the list and the file it lives in (set at startup).
@@ -809,6 +836,9 @@ pub fn run() {
     start_autolock(shared.clone(), last.clone());
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Its own JS commands are not granted to the WebView (capabilities);
+        // only ours below (check_update, install_update) are.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
                 .on_navigation(|_, url| navigation_allowed(url))
@@ -818,6 +848,7 @@ pub fn run() {
         .manage(last)
         .manage(Recent::default())
         .manage(SettingsFile::default())
+        .manage(update::Pending::default())
         .setup(|app| {
             use tauri::Manager;
             // Keep the window out of screenshots and screen sharing. Debug
@@ -887,7 +918,10 @@ pub fn run() {
             export_csv,
             pick_import_keyfile,
             fetch_icons,
-            auto_type
+            auto_type,
+            app_version,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

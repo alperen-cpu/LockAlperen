@@ -4,7 +4,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -16,16 +16,23 @@ const MAX_FILE_BYTES: u64 = 16 * 1024;
 /// The idle timeout in effect, read by the auto-lock thread.
 static IDLE_MINUTES: AtomicU32 = AtomicU32::new(DEFAULT_IDLE_MINUTES);
 
+/// Whether to look for a new version at startup (docs/UPDATES.md).
+static CHECK_UPDATES: AtomicBool = AtomicBool::new(true);
+
+/// Missing fields take their default, so a file written by an older version
+/// keeps the values it has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub idle_minutes: u32,
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             idle_minutes: DEFAULT_IDLE_MINUTES,
+            check_updates: true,
         }
     }
 }
@@ -39,6 +46,7 @@ impl Settings {
             } else {
                 DEFAULT_IDLE_MINUTES
             },
+            check_updates: self.check_updates,
         }
     }
 }
@@ -50,11 +58,13 @@ pub fn idle_minutes() -> u32 {
 pub fn apply(s: Settings) {
     let s = s.sanitized();
     IDLE_MINUTES.store(s.idle_minutes, Ordering::Relaxed);
+    CHECK_UPDATES.store(s.check_updates, Ordering::Relaxed);
 }
 
 pub fn current() -> Settings {
     Settings {
         idle_minutes: idle_minutes(),
+        check_updates: CHECK_UPDATES.load(Ordering::Relaxed),
     }
 }
 
@@ -92,13 +102,34 @@ mod tests {
 
     #[test]
     fn only_listed_choices_are_accepted() {
-        assert_eq!(Settings { idle_minutes: 15 }.sanitized().idle_minutes, 15);
         assert_eq!(
-            Settings { idle_minutes: 0 }.sanitized().idle_minutes,
+            Settings {
+                idle_minutes: 15,
+                ..Default::default()
+            }
+            .sanitized()
+            .idle_minutes,
+            15
+        );
+        assert_eq!(
+            Settings {
+                idle_minutes: 0,
+                ..Default::default()
+            }
+            .sanitized()
+            .idle_minutes,
             5,
             "no 'never'"
         );
-        assert_eq!(Settings { idle_minutes: 9999 }.sanitized().idle_minutes, 5);
+        assert_eq!(
+            Settings {
+                idle_minutes: 9999,
+                ..Default::default()
+            }
+            .sanitized()
+            .idle_minutes,
+            5
+        );
     }
 
     #[test]
@@ -107,12 +138,43 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         let file = dir.join("settings.json");
         assert_eq!(load(&file), Settings::default());
-        save(&file, Settings { idle_minutes: 30 }).unwrap();
+        save(
+            &file,
+            Settings {
+                idle_minutes: 30,
+                check_updates: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            load(&file),
+            Settings {
+                idle_minutes: 30,
+                check_updates: false
+            }
+        );
         assert_eq!(load(&file).idle_minutes, 30);
         fs::write(&file, br#"{"idleMinutes": 0}"#).unwrap();
         assert_eq!(load(&file).idle_minutes, 5);
         fs::write(&file, b"garbage").unwrap();
         assert_eq!(load(&file), Settings::default());
         let _ = fs::remove_dir_all(dir);
+    }
+
+    /// settings.json written before "checkUpdates" existed: the idle time the
+    /// user chose survives, and update checks get their default (on).
+    #[test]
+    fn older_file_keeps_its_values() {
+        let s: Settings = serde_json::from_slice(br#"{"idleMinutes": 30}"#).unwrap();
+        assert_eq!(
+            s,
+            Settings {
+                idle_minutes: 30,
+                check_updates: true
+            }
+        );
+        let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
+        assert_eq!(s.idle_minutes, DEFAULT_IDLE_MINUTES);
+        assert!(!s.check_updates);
     }
 }
