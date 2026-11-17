@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.4.2] - 2026-11-17: klasör simgeleri, listeleme stilleri
 
 - **Klasör simgeleri:** Klasör araçlarındaki "Simge" düğmesiyle 48 Font Awesome simgesinden biri
   seçilebilir (ev, iş, banka, e-posta, sunucu, oyun…). Simgeler uygulamaya gömülü; ağdan bir şey
