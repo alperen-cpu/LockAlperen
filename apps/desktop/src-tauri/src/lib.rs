@@ -13,6 +13,7 @@ mod lockicon;
 mod recent;
 mod session;
 mod settings;
+mod titlebar;
 mod totp;
 mod tray;
 mod update;
@@ -53,6 +54,14 @@ fn set_settings(
         settings::save(&path, value).map_err(|_| "Ayarlar kaydedilemedi.".to_owned())?;
     }
     Ok(value)
+}
+
+/// Colours the native title bar like the app (Windows 11; ignored on 10).
+#[tauri::command]
+fn set_titlebar(dark: bool, window: tauri::WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        titlebar::paint(hwnd.0 as _, dark);
+    }
 }
 
 /// Whether the global auto-type shortcut is registered (Settings shows a
@@ -202,7 +211,6 @@ impl Recent {
 }
 
 /// How long a copied secret stays on the clipboard.
-const CLIPBOARD_SECONDS: u64 = 12;
 
 #[derive(Default, Clone)]
 struct Shared(Arc<Mutex<Session>>);
@@ -843,16 +851,17 @@ async fn copy_field(
     copy_and_schedule_clear(&value, &last)
 }
 
-/// Puts `value` on the clipboard (marked private) and clears it after
-/// CLIPBOARD_SECONDS if it is still ours.
+/// Puts `value` on the clipboard (marked private) and clears it after the
+/// chosen time (Settings, 5-90 s) if it is still ours.
 fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> {
     let copied = clipboard::copy_secret(value).map_err(|_| "Panoya kopyalanamadı.".to_owned())?;
     if let Ok(mut g) = last.0.lock() {
         *g = Some(copied);
     }
     let last = last.clone();
+    let secs = u64::from(settings::clipboard_seconds());
     tauri::async_runtime::spawn(async move {
-        tokio_sleep(Duration::from_secs(CLIPBOARD_SECONDS)).await;
+        tokio_sleep(Duration::from_secs(secs)).await;
         clipboard::clear_if_ours(copied);
         if let Ok(mut g) = last.0.lock() {
             if *g == Some(copied) {
@@ -860,7 +869,7 @@ fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> 
             }
         }
     });
-    Ok(CLIPBOARD_SECONDS)
+    Ok(secs)
 }
 
 /// Locks the vault and clears our clipboard content. Used by the button,
@@ -927,7 +936,14 @@ fn start_autolock(shared: Shared, last: LastCopy) {
         let (shared, last) = (shared.clone(), last.clone());
         // If the watcher cannot start, idle locking still works; the failure
         // is not hidden from developers.
-        if autolock::watch(move |_reason| lock_all(&shared, &last)).is_none() {
+        // Win+L, sleep, disconnect, logoff: lock unless the owner turned it
+        // off in Settings (default on). Idle locking is separate and stays.
+        let on_event = move |_reason| {
+            if settings::lock_on_system_events() {
+                lock_all(&shared, &last)
+            }
+        };
+        if autolock::watch(on_event).is_none() {
             eprintln!("LockAlperen: session/power watcher could not start");
         }
     }
@@ -1073,6 +1089,7 @@ pub fn run() {
             move_group,
             move_entry,
             set_group_icon,
+            set_titlebar,
             hotkey_active,
             app_version,
             check_update,

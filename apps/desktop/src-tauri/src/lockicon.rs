@@ -50,6 +50,20 @@ pub fn with_lock_badge(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
     let s = w.min(h) as f32;
     let r = s * 0.30; // badge radius
     let (cx, cy) = (w as f32 - r - s * 0.02, h as f32 - r - s * 0.02);
+    draw_badge(&mut out, w, h, cx, cy, r);
+    out
+}
+
+/// Only the badge, filling a transparent square: the taskbar overlay
+/// (Windows draws it over the corner of the taskbar button).
+pub fn lock_badge(size: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (size * size * 4) as usize];
+    let s = size as f32;
+    draw_badge(&mut out, size, size, s / 2.0, s / 2.0, s * 0.42);
+    out
+}
+
+fn draw_badge(out: &mut [u8], w: u32, h: u32, cx: f32, cy: f32, r: f32) {
     // In badge units (u, v), v down, centred on the badge.
     let unit = |x: f32, y: f32| ((x - cx) / r, (y - cy) / r);
     let ring = |x: f32, y: f32| {
@@ -80,12 +94,18 @@ pub fn with_lock_badge(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
             paint(p, WHITE, coverage(px, py, &padlock));
         }
     }
-    out
 }
 
-fn apply(app: &AppHandle, icon: &Image<'static>, unlocked: bool) {
+fn apply(app: &AppHandle, icon: &Image<'static>, overlay: &Image<'static>, unlocked: bool) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_icon(icon.clone());
+        // The taskbar button shows the app's own icon (pinned or not), so
+        // the lock is shown there as an overlay badge, as KeePass does.
+        let _ = w.set_overlay_icon(if unlocked {
+            None
+        } else {
+            Some(overlay.clone())
+        });
     }
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_icon(Some(icon.clone()));
@@ -109,6 +129,7 @@ pub fn watch(app: &AppHandle, is_unlocked: impl Fn() -> bool + Send + 'static) {
         base.width(),
         base.height(),
     );
+    let overlay = Image::new_owned(lock_badge(32), 32, 32);
     let app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("lav-lockicon".into())
@@ -117,7 +138,8 @@ pub fn watch(app: &AppHandle, is_unlocked: impl Fn() -> bool + Send + 'static) {
             loop {
                 let unlocked = is_unlocked();
                 if last != Some(unlocked) {
-                    apply(&app, if unlocked { &normal } else { &locked }, unlocked);
+                    let icon = if unlocked { &normal } else { &locked };
+                    apply(&app, icon, &overlay, unlocked);
                     last = Some(unlocked);
                 }
                 std::thread::sleep(POLL);
@@ -153,6 +175,17 @@ mod tests {
         assert!(red[0] > 200 && red[1] < 110 && red[2] < 110, "{red:?}");
         // The padlock body: white.
         let white = at(&out, w, cx as u32, (cy + 0.3 * r) as u32);
+        assert!(white.iter().all(|&c| c > 240), "{white:?}");
+    }
+
+    #[test]
+    fn overlay_badge_fills_its_square() {
+        let out = lock_badge(32);
+        assert_eq!(out.len(), 32 * 32 * 4);
+        assert_eq!(at(&out, 32, 0, 0)[3], 0, "corner stays transparent");
+        let red = at(&out, 32, 16, 4);
+        assert!(red[0] > 200 && red[1] < 110 && red[3] == 255, "{red:?}");
+        let white = at(&out, 32, 16, 20);
         assert!(white.iter().all(|&c| c > 240), "{white:?}");
     }
 

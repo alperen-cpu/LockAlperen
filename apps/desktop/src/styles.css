@@ -2073,9 +2073,25 @@ input[type="range"] {
   border-radius: 18px;
 }
 
+.entries.style-grid > li {
+  min-width: 0;
+}
+
+.entries.style-grid .row {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .entries.style-grid .row-text {
   width: 100%;
+  min-width: 0;
   align-items: center;
+}
+
+/* Long titles and user names end with "…" instead of leaving the card. */
+.entries.style-grid .row-title,
+.entries.style-grid .row-sub {
+  max-width: 100%;
 }
 
 .entries.style-grid .badge {

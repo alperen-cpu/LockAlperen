@@ -11,7 +11,7 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **Otomatik yazma:** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
   doğrulanan pencereye yazar
 - **Sistem tepsisi:** Kapatınca tepside çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
-- **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano 12 sn sonra temizlenir ve pano
+- **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
   geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
 - **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf
   servis yok)

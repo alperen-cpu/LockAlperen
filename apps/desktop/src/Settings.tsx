@@ -20,7 +20,7 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     intro: "Kullanıcı adını ve parolayı başka bir pencereye yazma.",
   },
   { id: "look", label: "Görünüm", intro: "Renk teması." },
-  { id: "window", label: "Pencere ve tepsi", intro: "Kapat düğmesi ve sistem tepsisi." },
+  { id: "window", label: "Pencere", intro: "Pencereyi kapattığınızda ne olacağı." },
   { id: "updates", label: "Güncellemeler", intro: "Yeni sürümler GitHub'dan imzası doğrulanarak kurulur." },
   {
     id: "data",
@@ -182,16 +182,41 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
                 </select>
               </Row>
               <Row
-                title="Win+L, uyku ve oturum kapatmada kilitle"
-                text="Her zaman açık. Kilitlenince görev çubuğu simgesinde kırmızı kilit görünür."
+                title={<label htmlFor="s-sys">Bilgisayar kilitlenince kasayı da kilitle</label>}
+                text="Win+L'ye basınca, uyku moduna geçince ya da oturum kapanınca kasa kilitlenir. Kilitliyken görev çubuğu simgesinde kırmızı kilit görünür."
               >
-                <span className="pill-ok">Açık</span>
+                <input
+                  id="s-sys"
+                  type="checkbox"
+                  className="switch"
+                  checked={settings?.lockOnSystemEvents ?? true}
+                  disabled={off}
+                  onChange={(e) => void change({ lockOnSystemEvents: e.target.checked })}
+                />
               </Row>
+              {settings !== null && !settings.lockOnSystemEvents && (
+                <p className="warn set-note">
+                  Kapalıyken bilgisayarı kilitleyip başından kalksanız da kasa açık kalır; yalnızca
+                  otomatik kilit süresi dolunca kilitlenir. Açık tutmanız önerilir.
+                </p>
+              )}
               <Row
-                title="Panoyu temizle"
-                text="Kopyalanan değerler 12 saniye sonra ve kilitlenince silinir; pano geçmişine alınmaz."
+                title={<label htmlFor="s-clip">Panoyu temizle</label>}
+                text="Kopyalanan parola ya da kod bu süre sonunda ve kasa kilitlenince panodan silinir; pano geçmişine alınmaz."
               >
-                <span className="pill-ok">12 sn</span>
+                <select
+                  id="s-clip"
+                  className="text-input set-select"
+                  value={settings?.clipboardSeconds ?? ""}
+                  disabled={off}
+                  onChange={(e) => void change({ clipboardSeconds: Number(e.target.value) })}
+                >
+                  {api.CLIPBOARD_CHOICES.map((s) => (
+                    <option key={s} value={s}>
+                      {s} saniye
+                    </option>
+                  ))}
+                </select>
               </Row>
             </section>
 
@@ -279,8 +304,8 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
         {category === "window" && (
           <section className="set-card">
             <Row
-              title={<label htmlFor="s-tray">Kapatınca tepsiye gizle</label>}
-              text="Kapat düğmesi uygulamayı sistem tepsisine gizler. Tepsideyken de kilit kuralları geçerlidir; tamamen çıkmak için tepsi simgesinde “Kilitle ve çık”."
+              title={<label htmlFor="s-tray">Kapatınca arka planda çalışmaya devam etsin</label>}
+              text="Pencereyi kapattığınızda LockAlperen kapanmaz; görev çubuğunun sağında, saatin yanındaki simgelerin arasında çalışır. Oradan tıklayarak yeniden açabilirsiniz. Tamamen kapatmak için o simgeye sağ tıklayıp “Kilitle ve çık”ı seçin. Arka plandayken de otomatik kilit çalışır."
             >
               <input
                 id="s-tray"

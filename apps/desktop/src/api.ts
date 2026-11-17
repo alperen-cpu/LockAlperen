@@ -227,17 +227,39 @@ export interface Settings {
   /** "system" follows Windows. */
   theme: Theme;
   listStyle: ListStyle;
+  /** Seconds before a copied value is cleared (CLIPBOARD_CHOICES). */
+  clipboardSeconds: number;
+  /** Lock on Win+L, sleep, disconnect and logoff. */
+  lockOnSystemEvents: boolean;
 }
+
+export const CLIPBOARD_CHOICES = [5, 10, 12, 15, 20, 30, 45, 60, 90];
 
 export type ListStyle = "list" | "compact" | "grid" | "table";
 
 export type Theme = "system" | "light" | "dark";
 
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+let currentTheme: Theme = "system";
+
+/** Paints the native title bar like the page (Windows 11; ignored on 10). */
+function syncTitlebar() {
+  const dark = currentTheme === "dark" || (currentTheme === "system" && darkQuery.matches);
+  invoke("set_titlebar", { dark }).catch(() => {});
+}
+
+// "Windows ile aynı": follow Windows when its theme changes.
+darkQuery.addEventListener("change", () => {
+  if (currentTheme === "system") syncTitlebar();
+});
+
 /** Applies the colour theme (styles.css): "system" leaves it to Windows. */
 export function applyTheme(theme: Theme) {
+  currentTheme = theme;
   const root = document.documentElement;
   if (theme === "system") delete root.dataset.theme;
   else root.dataset.theme = theme;
+  syncTitlebar();
 }
 
 export type Shortcut = "off" | "ctrl-alt-a" | "ctrl-alt-shift-a" | "ctrl-alt-shift-k" | "ctrl-alt-shift-l";
