@@ -97,7 +97,10 @@ var.
 - `cargo audit`: bilinen açık yok. Uyarılar yalnızca Linux derlemesine giren bağımlılıklarda:
   `proc-macro-error` bakımsız, `glib` unsound (GTK yolu) ve `zvariant`/`zbus_names`/`zvariant_derive`
   bakımsız (tek örnek eklentisinin D-Bus yolu). `cargo tree` ile Windows hedefinde olmadıkları
-  doğrulandı; CI'daki istisnalar gerekçeleriyle `ci.yml`'de.
+  doğrulandı; CI'daki istisnalar gerekçeleriyle `ci.yml`'de. **Windows derlemesinde olan tek
+  uyarı:** `chrono` bakımsız (RUSTSEC-2026-0543, 2026-11-17), `keepass` üzerinden KDBX içe
+  aktarmada tarihleri okumak için. Bilinen açık yok, düzeltilmiş sürüm yok; `fxhash` ile aynı
+  politika. `keepass` `chrono`'yu bırakınca istisna kaldırılmalı.
 - **Gerçek uygulamada otomasyonla denenenler (2026-11-17, debug derleme, geçici test kasası):**
   - Tepsi: kapatınca pencere gizleniyor ve süreç sürüyor; ikinci açılış yeni süreç başlatmadan
     pencereyi geri getiriyor; ayar kapalıyken kapatmak çıkıyor.

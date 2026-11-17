@@ -73,7 +73,10 @@ jobs:
       # RUSTSEC-2026-0370/0371/0372 zvariant, zbus_names, zvariant_derive unmaintained: D-Bus,
       # pulled in only on Linux by tauri-plugin-single-instance; not in the Windows build
       # (`cargo tree --target x86_64-pc-windows-msvc` has no zbus/zvariant).
-      - run: cargo audit --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2025-0057 --ignore RUSTSEC-2026-0370 --ignore RUSTSEC-2026-0371 --ignore RUSTSEC-2026-0372
+      # RUSTSEC-2026-0543 chrono unmaintained, no known vulnerability: IN the Windows build,
+      # via keepass (KDBX import, reads entry timestamps). Same policy as fxhash; revisit when
+      # keepass drops or replaces chrono.
+      - run: cargo audit --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2025-0057 --ignore RUSTSEC-2026-0370 --ignore RUSTSEC-2026-0371 --ignore RUSTSEC-2026-0372 --ignore RUSTSEC-2026-0543
         working-directory: apps/desktop/src-tauri
 
   supply-chain:
