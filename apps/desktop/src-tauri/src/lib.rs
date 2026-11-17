@@ -9,6 +9,7 @@ mod hardening;
 mod health;
 mod hotkey;
 mod import;
+mod lockicon;
 mod recent;
 mod session;
 mod settings;
@@ -1008,6 +1009,13 @@ pub fn run() {
             }
             if tray::create(app.handle()).is_err() {
                 eprintln!("LockAlperen: tray icon could not be created");
+            }
+            // Red padlock on the window and tray icon while locked.
+            {
+                let shared = app.state::<Shared>().inner().clone();
+                lockicon::watch(app.handle(), move || {
+                    shared.with(|s| s.is_unlocked()).unwrap_or(false)
+                });
             }
             Ok(())
         })
