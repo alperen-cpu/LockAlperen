@@ -1,7 +1,7 @@
-# LockAlperen masaüstü (Faz 2: iskelet)
+# LockAlperen masaüstü
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, klasörler, parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma, CSV dışa aktarma, anahtar dosyası, özel alanlar, ekler, kayıt geçmişi, otomatik yazma, site ikonları, ana parola değiştirme, uygulama içi güncelleme.
 
 ## Geliştirme
 
@@ -19,11 +19,11 @@ parola komut satırında görünür).
 dosyasına, `cargo deny` politikasına ve Linux CI'ına girmez. CI'da ayrı bir Windows (MSVC) işi
 var.
 
-## Güvenlik kararları (bu adımda uygulananlar)
+## Güvenlik kararları
 
 | Konu | Uygulama |
 |---|---|
-| IPC yüzeyi | WebView'e açık yalnızca 4 komut var: `pick_vault_file`, `unlock`, `lock`, `list_entries` (`capabilities/main.json`). Core, dosya sistemi, shell ya da diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı, yetki verilmeyen komut reddedilir. |
+| IPC yüzeyi | WebView yalnızca uygulamanın kendi komutlarını çağırabilir (43 komut, tek tek `capabilities/main.json`'da listeli). Core, dosya sistemi, shell ya da diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı, yetki verilmeyen komut reddedilir. |
 | Dosya yolu | Kasa yolu yalnızca Rust tarafında tutulur. Dosya seçme penceresini Rust açar. WebView hiçbir zaman yol göndermez, bu yüzden WebView'e enjekte edilen bir betik başka bir dosyayı açtıramaz. |
 | Sırlar | Liste yanıtında parola, not, TOTP, özel alan ve ek **yok** (`EntrySummary`). Test, IPC'ye giden JSON'u kontrol ediyor. |
 | Ana parola | React state'inde tutulmaz. Kontrolsüz input kullanılır, gönderilirken okunup hemen temizlenir. Rust tarafında `Zeroizing<String>` içinde tutulur. |
