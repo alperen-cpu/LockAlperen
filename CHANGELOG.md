@@ -1,5 +1,13 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Siteyi aç daha esnek:** `localhost:8080`, `intranet:8443/giris`, `site.com:8443` gibi portlu
+  adresler ve `kullanici@site.com` gibi kullanıcı bilgisi içeren adresler artık açılıyor (0.3.0'da
+  "http(s) adresi değil" diye reddediliyordu). Kullanıcı bilgisi tarayıcıya gönderilmez.
+  Tarayıcı yerine program başlatabilecek şemalar (`file:`, `cmd://`, `ms-msdt:` vb.) yine
+  açılmaz.
+
 ## [0.3.0] - 2026-11-17: tepsi, otomatik yazma kısayolu, klasör taşıma
 
 - **Sistem tepsisi:** Kapat düğmesi pencereyi tepsiye gizler (Ayarlar'dan kapatılabilir). Tepsi

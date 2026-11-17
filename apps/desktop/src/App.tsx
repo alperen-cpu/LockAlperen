@@ -186,11 +186,8 @@ function Screens() {
  *  opened (src-tauri/src/browser.rs: http/https only). */
 function looksLikeWeb(url: string) {
   const t = url.trim();
-  return (
-    t !== "" &&
-    !t.includes("\\") &&
-    (/^https?:\/\//i.test(t) || !/^[a-z][a-z0-9+.-]*:/i.test(t))
-  );
+  // No "://" = taken as https (site.com, localhost:8080); otherwise http(s) only.
+  return t !== "" && (!t.includes("://") || /^https?:\/\//i.test(t));
 }
 
 function timeAgo(unix: number) {
