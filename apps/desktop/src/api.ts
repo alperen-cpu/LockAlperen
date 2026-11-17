@@ -103,6 +103,8 @@ export interface EntryForm {
   totp: string;
   /** Custom fields; null/absent = keep unchanged. */
   fields?: FormField[] | null;
+  /** Expiry as Unix seconds (KeePass "Expires"); null = never. */
+  expires?: number | null;
 }
 
 export interface FormField {
@@ -142,6 +144,10 @@ export const entryForm = (id: string) => invoke<EntryForm>("entry_form", { id })
 /** Saves to disk; nothing changes on screen if the save fails. */
 export const saveEntry = (form: EntryForm) =>
   invoke<{ id: string; entries: EntrySummary[] }>("save_entry", { form });
+
+/** KeePass "Duplicate Entry": a copy in the same folder, without history. */
+export const duplicateEntry = (id: string) =>
+  invoke<{ id: string; entries: EntrySummary[] }>("duplicate_entry", { id });
 
 export const deleteEntry = (id: string) => invoke<EntrySummary[]>("delete_entry", { id });
 
@@ -201,6 +207,8 @@ export interface EntryExtras {
   hasNotes: boolean;
   created: number;
   modified: number;
+  /** Unix seconds; null = never expires. */
+  expires: number | null;
 }
 
 export type Extra = { kind: "notes" } | { kind: "custom"; index: number };
@@ -326,4 +334,30 @@ export const openUrl = (id: string) => invoke<void>("open_url", { id });
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";
+}
+
+// ----- Expiry dates (local calendar day <-> Unix seconds) -----
+
+/** Local midnight of the day `months` from today, in Unix seconds. */
+export function expiryAfterMonths(months: number): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setMonth(d.getMonth() + months);
+  return Math.floor(d.getTime() / 1000);
+}
+
+/** `YYYY-MM-DD` (local) for an <input type="date">. */
+export function dateInputValue(unix: number): string {
+  const d = new Date(unix * 1000);
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${p(d.getFullYear(), 4)}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Local midnight of a `YYYY-MM-DD` value; null if empty or invalid. */
+export function fromDateInput(value: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const t = Math.floor(d.getTime() / 1000);
+  return Number.isFinite(t) && t >= 0 ? t : null;
 }

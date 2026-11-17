@@ -561,6 +561,25 @@ impl VaultData {
         Ok(())
     }
 
+    /// Copies an entry into the same group (KeePass "Duplicate Entry"). The
+    /// copy gets a fresh id, `title_suffix` appended to its title, fresh
+    /// timestamps and NO history (old passwords are not copied along).
+    pub fn duplicate_entry(&mut self, id: Uuid, title_suffix: &str) -> Result<Uuid> {
+        let src = self.entry(id).ok_or(Error::NotFound)?;
+        let taken: HashSet<Uuid> = self.entries.iter().map(|e| e.id).collect();
+        let mut copy = src.clone();
+        copy.id = fresh_id(&taken);
+        copy.title.push_str(title_suffix);
+        copy.history.clear();
+        let t = now();
+        copy.created = t;
+        copy.modified = t;
+        let new_id = copy.id;
+        self.entries.push(copy);
+        self.touch();
+        Ok(new_id)
+    }
+
     pub fn delete_entry(&mut self, id: Uuid) -> Result<()> {
         let before = self.entries.len();
         self.entries.retain(|e| e.id != id);
@@ -705,6 +724,41 @@ mod tests {
             e.history.last().unwrap().password.expose(),
             format!("pw{}", MAX_HISTORY + 3)
         );
+    }
+
+    #[test]
+    fn duplicate_copies_content_but_not_history() {
+        let mut v = VaultData::new("Test");
+        let g = v.add_group(v.root, "G").unwrap();
+        let mut e = Entry::new(g, "mail");
+        e.password = "pw".into();
+        e.tags = vec!["iş".into()];
+        e.expires = Some(1_900_000_000);
+        e.fields.push(CustomField {
+            name: "PIN".into(),
+            value: "1234".into(),
+            protected: true,
+        });
+        let id = v.add_entry(e).unwrap();
+        v.update_entry(id, |e| e.password = "pw2".into()).unwrap();
+
+        let copy = v.duplicate_entry(id, " - Kopya").unwrap();
+        assert_ne!(copy, id);
+        let (a, b) = (v.entry(id).unwrap(), v.entry(copy).unwrap());
+        assert_eq!(b.title, "mail - Kopya");
+        assert_eq!(b.group, g);
+        assert_eq!(b.password.expose(), "pw2");
+        assert_eq!(b.tags, a.tags);
+        assert_eq!(b.expires, Some(1_900_000_000));
+        assert_eq!(b.fields[0].value.expose(), "1234");
+        assert!(b.history.is_empty(), "old passwords are not copied");
+        assert_eq!(a.history.len(), 1, "original untouched");
+        assert_eq!(v.entries.len(), 2);
+        assert_eq!(v.repair_structure(), 0);
+        assert!(matches!(
+            v.duplicate_entry(Uuid::new_v4(), ""),
+            Err(Error::NotFound)
+        ));
     }
 
     #[test]

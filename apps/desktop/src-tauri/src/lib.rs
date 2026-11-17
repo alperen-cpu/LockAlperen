@@ -347,6 +347,25 @@ async fn move_entry(
     change_and_list(&state, move |s| s.move_entry(&id, &group)).await
 }
 
+/// KeePass "Duplicate Entry": a copy in the same folder, without history.
+#[tauri::command]
+async fn duplicate_entry(id: String, state: State<'_, Shared>) -> Result<Saved, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        shared
+            .with(|s| {
+                let id = s.duplicate_entry(&id)?;
+                Ok(Saved {
+                    id,
+                    entries: s.entries()?,
+                })
+            })
+            .and_then(|r| r)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+}
+
 #[tauri::command]
 async fn delete_group(id: String, state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
     change_and_list(&state, move |s| s.delete_group(&id)).await
@@ -1061,6 +1080,7 @@ pub fn run() {
             entry_form,
             save_entry,
             delete_entry,
+            duplicate_entry,
             generate_password,
             totp_code,
             password_health,

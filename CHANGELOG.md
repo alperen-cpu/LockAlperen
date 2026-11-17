@@ -1,5 +1,15 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Kaydı çoğalt (KeePass'teki gibi, Ctrl+K):** Ayrıntıdaki "Çoğalt" düğmesi kaydın bir
+  kopyasını aynı klasörde "… - Kopya" adıyla oluşturur. Parola, notlar, TOTP, özel alanlar, ekler
+  ve etiketler kopyalanır; **geçmiş (eski parolalar) kopyalanmaz.**
+- **Son kullanma tarihi (KeePass "Expires"):** Düzenleyicide tarih seçilebilir (1/3/6/12 ay hızlı
+  seçimi). Ayrıntıda tarih, süresi geçmişse "Süresi doldu" olarak görünür; parola sağlığı zaten
+  süresi dolanları sayıyordu. KeePass'ten aktarılan tarihler artık düzenlenebilir. Dosya formatı
+  değişmedi (`expires` alanı baştan beri vardı).
+
 ## [0.4.3] - 2026-11-17: pano süresi, Win+L kilidi ayarı, görev çubuğunda kilit, temalı başlık çubuğu
 
 - **Pano süresi seçilebilir:** Ayarlar → Güvenlik: 5–90 saniye (varsayılan 12). "Asla" yok.

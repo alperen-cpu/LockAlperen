@@ -112,6 +112,11 @@ pub const BAD_GENERATOR: &str = "Bu ayarlarla parola üretilemez.";
 pub const TOTP_INVALID: &str =
     "TOTP anahtarı geçersiz. Base32 anahtar ya da otpauth://totp/… bağlantısı girin.";
 pub const NO_TOTP: &str = "Bu kayıtta TOTP yok.";
+pub const BAD_EXPIRY: &str = "Geçersiz son kullanma tarihi.";
+/// Appended to the title of a duplicated entry.
+pub const COPY_SUFFIX: &str = " - Kopya";
+/// Latest accepted expiry: 9999-12-31 23:59:59 UTC (what a date input allows).
+pub const MAX_EXPIRY: i64 = 253_402_300_799;
 
 /// The current one-time code; the secret stays in Rust.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -166,6 +171,9 @@ pub struct EntryForm {
     /// Custom fields; None = keep the entry's fields unchanged.
     #[serde(default)]
     pub fields: Option<Vec<FormField>>,
+    /// Expiry as Unix seconds (KeePass "Expires"); None = never.
+    #[serde(default)]
+    pub expires: Option<i64>,
 }
 
 impl std::fmt::Debug for EntryForm {
@@ -215,6 +223,8 @@ pub struct EntryExtras {
     pub has_notes: bool,
     pub created: i64,
     pub modified: i64,
+    /// Expiry as Unix seconds; None = never.
+    pub expires: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -526,6 +536,7 @@ impl Session {
                     })
                     .collect(),
             ),
+            expires: e.expires,
         })
     }
 
@@ -563,6 +574,10 @@ impl Session {
             return Err(TOTP_INVALID.into());
         }
         let totp = (!totp.is_empty()).then(|| lav_core::SecretString::new(totp));
+        if form.expires.is_some_and(|t| !(0..=MAX_EXPIRY).contains(&t)) {
+            return Err(BAD_EXPIRY.into());
+        }
+        let expires = form.expires;
         let fields: Option<Vec<lav_core::CustomField>> = match &form.fields {
             None => None,
             Some(fs) => {
@@ -596,6 +611,7 @@ impl Session {
                 e.notes = form.notes.as_str().into();
                 e.tags = tags.clone();
                 e.totp = totp.clone();
+                e.expires = expires;
                 if let Some(fs) = &fields {
                     e.fields = fs.clone();
                 }
@@ -926,6 +942,22 @@ impl Session {
         crate::browser::web_address(&e.url).ok_or_else(|| crate::browser::NOT_A_WEB_ADDRESS.into())
     }
 
+    /// Copies an entry into its folder (KeePass "Duplicate Entry", Ctrl+K)
+    /// and saves. The copy has no history. Returns the new id.
+    pub fn duplicate_entry(&mut self, id: &str) -> Result<String, String> {
+        self.commit(|data| {
+            let uuid = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .map(|e| e.id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            data.duplicate_entry(uuid, COPY_SUFFIX)
+                .map(|id| id.to_string())
+                .map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
+    }
+
     pub fn delete_entry(&mut self, id: &str) -> Result<(), String> {
         self.commit(|data| {
             let uuid = data
@@ -1042,6 +1074,7 @@ impl Session {
             has_notes: !e.notes.is_empty(),
             created: e.created,
             modified: e.modified,
+            expires: e.expires,
         })
     }
 
@@ -1571,7 +1604,84 @@ mod tests {
                     protected: false,
                 },
             ]),
+            expires: None,
         }
+    }
+
+    #[test]
+    fn expiry_is_saved_cleared_and_checked() {
+        let (dir, mut s) = opened("expiry");
+        let mut f = form(&s, None, "Süreli");
+        f.expires = Some(1_900_000_000);
+        let id = s.save_entry(&f).unwrap();
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entry_form(&id).unwrap().expires, Some(1_900_000_000));
+        assert_eq!(s.extras(&id).unwrap().expires, Some(1_900_000_000));
+
+        // A past date shows up in the health report as expired.
+        let mut f = s.entry_form(&id).unwrap();
+        f.expires = Some(1_000);
+        s.save_entry(&f).unwrap();
+        let h = s.health(2_000).unwrap();
+        assert!(h.expired >= 1);
+
+        // Out-of-range values are refused and change nothing.
+        for bad in [-1, MAX_EXPIRY + 1, i64::MAX] {
+            let mut f = s.entry_form(&id).unwrap();
+            f.expires = Some(bad);
+            assert_eq!(s.save_entry(&f), Err(BAD_EXPIRY.to_owned()));
+        }
+        assert_eq!(s.entry_form(&id).unwrap().expires, Some(1_000));
+
+        // Clearing it means "never expires".
+        let mut f = s.entry_form(&id).unwrap();
+        f.expires = None;
+        s.save_entry(&f).unwrap();
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entry_form(&id).unwrap().expires, None);
+
+        // An old client that does not send the field reads as "never".
+        let json = r#"{"id":null,"groupId":"x","title":"t","username":"","password":"",
+            "url":"","notes":"","tags":[]}"#;
+        let old: EntryForm = serde_json::from_str(json).unwrap();
+        assert_eq!(old.expires, None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn duplicate_is_saved_without_history() {
+        let (dir, mut s) = opened("dup");
+        let id = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap()
+            .id;
+        // Give the original some history.
+        let mut f = s.entry_form(&id).unwrap();
+        f.password = "ikinci".into();
+        s.save_entry(&f).unwrap();
+        let before = s.entries().unwrap().len();
+
+        let copy = s.duplicate_entry(&id).unwrap();
+        assert_ne!(copy, id);
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entries().unwrap().len(), before + 1);
+        let c = s.entry_form(&copy).unwrap();
+        assert_eq!(c.title, format!("zeta{COPY_SUFFIX}"));
+        assert_eq!(c.password, "ikinci");
+        assert_eq!(c.notes, NOTE);
+        assert_eq!(c.group_id, s.entry_form(&id).unwrap().group_id);
+        assert!(s.extras(&copy).unwrap().history.is_empty());
+        assert_eq!(s.extras(&id).unwrap().history.len(), 1);
+        assert_eq!(s.duplicate_entry("missing"), Err(NO_SUCH_ENTRY.to_owned()));
+        s.lock();
+        assert_eq!(s.duplicate_entry(&id), Err(LOCKED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

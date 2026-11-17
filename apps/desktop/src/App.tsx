@@ -725,17 +725,35 @@ function VaultScreen({
     return () => window.removeEventListener("keydown", onKey);
   }, [navOpen]);
 
-  // Ctrl+N: new entry.
+  // Ctrl+N: new entry. Ctrl+K: duplicate the selected entry (as in KeePass).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "n" && editing === undefined) {
+      if (!e.ctrlKey || e.altKey || editing !== undefined) return;
+      const k = e.key.toLowerCase();
+      if (k === "n") {
         e.preventDefault();
         setEditing(null);
+      } else if (k === "k" && selected !== null) {
+        e.preventDefault();
+        void duplicate(selected);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing]);
+  });
+
+  async function duplicate(id: string) {
+    try {
+      const r = await api.duplicateEntry(id);
+      onEntries(r.entries);
+      setSelected(r.id);
+      setView("detail");
+      const t = r.entries.find((e) => e.id === r.id)?.title ?? "";
+      setToast(`"${t}" oluşturuldu.`);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
 
   // All folders (also empty ones), refreshed whenever the list changes.
   const [allGroups, setAllGroups] = useState<api.GroupView[]>([]);
@@ -1531,6 +1549,14 @@ function VaultScreen({
                   title="Uygulama küçülür; 10 sn içinde hedef pencereye geçin. Başlığı doğrulanmayan pencereye yazılmaz."
                 >
                   Otomatik yaz
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void duplicate(current.id)}
+                  title="Aynı klasörde bir kopyasını oluşturur (Ctrl+K). Geçmiş kopyalanmaz."
+                >
+                  Çoğalt
                 </button>
                 <button
                   type="button"

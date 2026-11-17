@@ -19,6 +19,7 @@ fn main() {
             "entry_form",
             "save_entry",
             "delete_entry",
+            "duplicate_entry",
             "generate_password",
             "totp_code",
             "password_health",

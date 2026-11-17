@@ -20,6 +20,7 @@
     "allow-entry-form",
     "allow-save-entry",
     "allow-delete-entry",
+    "allow-duplicate-entry",
     "allow-generate-password",
     "allow-totp-code",
     "allow-password-health",
