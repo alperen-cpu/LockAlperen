@@ -2,6 +2,9 @@
 
 ## [Yayınlanmamış]
 
+- **Kilitli simge:** Kasa kilitliyken görev çubuğu ve tepsi simgesinin sağ altında kırmızı bir
+  kilit görünür (KeePass gibi); kilit açılınca simge normale döner. Win+L, uyku, otomatik kilit,
+  Ctrl+L ve tepsiden kilitlemenin hepsinde çalışır. Tepsi ipucu da durumu söyler.
 - **Siteyi aç daha esnek:** `localhost:8080`, `intranet:8443/giris`, `site.com:8443` gibi portlu
   adresler ve `kullanici@site.com` gibi kullanıcı bilgisi içeren adresler artık açılıyor (0.3.0'da
   "http(s) adresi değil" diye reddediliyordu). Kullanıcı bilgisi tarayıcıya gönderilmez.

@@ -2609,6 +2609,7 @@ version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",
+ "image",
  "keepass",
  "lav-core",
  "lav-favicon",

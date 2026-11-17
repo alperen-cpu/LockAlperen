@@ -66,6 +66,8 @@ windows-sys = { version = "=0.61.2", features = [
 # examples/verify_release.rs (release workflow). Same version the updater
 # plugin verifies with.
 minisign-verify = "=0.3.0"
+# src/lockicon.rs preview test only (already in the tree via lav-favicon).
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
 # Only to WRITE KDBX 4 fixtures in tests.
 keepass = { version = "=0.17.0", default-features = false, features = ["save_kdbx4"] }
 # keepass uses rust-argon2 (lib name `argon2`); only for KdfConfig in tests.
