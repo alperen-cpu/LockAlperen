@@ -11,18 +11,14 @@ import * as api from "./api";
 import { Editor } from "./Editor";
 import { ImportDialog } from "./Import";
 import { ExtrasView } from "./Extras";
-import { SettingsDialog } from "./Settings";
+import { SettingsPage } from "./Settings";
 import { UpdateBanner } from "./Update";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
   CheckIcon,
-  ClockIcon,
-  CopyIcon,
-  DownloadIcon,
   EyeIcon,
   GearIcon,
   EyeOffIcon,
-  ExternalIcon,
   FileIcon,
   FolderIcon,
   ListIcon,
@@ -202,6 +198,12 @@ function looksLikeWeb(url: string) {
   return !t.includes("://") && !/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(t);
 }
 
+/** "C:\\Users\\a\\Belgeler" -> "Belgeler". */
+function folderName(folder: string) {
+  const parts = folder.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? folder;
+}
+
 function timeAgo(unix: number) {
   const days = Math.floor((Date.now() / 1000 - unix) / 86400);
   if (days <= 0) return "bugün";
@@ -226,11 +228,10 @@ function Side(props: {
     r.fileName === props.current.fileName &&
     r.folder === props.current.folder;
   return (
-    <aside className="unlock-side">
-      <Brand />
+    <section className="unlock-side" aria-label="Kasalar">
       {props.recents.length > 0 && (
         <>
-          <div className="lbl recent-lbl">Son kasalar</div>
+          <div className="recent-lbl muted small">Son kasalar</div>
           <ul className="recents">
             {props.recents.map((r, i) => (
               <li key={`${r.folder}\\${r.fileName}`} className={isCurrent(r) ? "active" : ""}>
@@ -239,15 +240,10 @@ function Side(props: {
                   className="recent"
                   onClick={() => props.onPickRecent(i)}
                   disabled={props.busy}
-                  title={`${r.folder}\\${r.fileName}`}
+                  title={`${r.folder}\\${r.fileName} · ${timeAgo(r.opened)}`}
                 >
-                  <LockIcon size={18} />
-                  <span className="recent-text">
-                    <span className="recent-name ellipsis">{r.fileName}</span>
-                    <span className="recent-sub ellipsis muted">
-                      {r.folder} · {timeAgo(r.opened)}
-                    </span>
-                  </span>
+                  <LockIcon size={16} />
+                  <span className="recent-name ellipsis">{r.fileName}</span>
                 </button>
                 <button
                   type="button"
@@ -265,16 +261,14 @@ function Side(props: {
         </>
       )}
       <div className="side-actions">
-        <button type="button" className="btn btn-left" onClick={props.onCreate} disabled={props.busy}>
-          <PlusIcon />
+        <button type="button" className="link" onClick={props.onChoose} disabled={props.busy}>
+          {props.hasFile ? "Başka bir kasa aç" : "Kasa dosyası aç"}
+        </button>
+        <button type="button" className="link" onClick={props.onCreate} disabled={props.busy}>
           Yeni kasa oluştur
         </button>
-        <button type="button" className="btn btn-left" onClick={props.onChoose} disabled={props.busy}>
-          <FileIcon />
-          {props.hasFile ? "Başka bir kasa aç…" : "Kasa dosyası aç…"}
-        </button>
       </div>
-    </aside>
+    </section>
   );
 }
 
@@ -316,7 +310,6 @@ function CreateScreen(props: {
 
   return (
     <div className="unlock">
-      {props.side}
       <main className="unlock-main">
         <form className="unlock-form" onSubmit={submit}>
           <div className="center">
@@ -403,17 +396,7 @@ function CreateScreen(props: {
           </div>
         </form>
       </main>
-    </div>
-  );
-}
-
-function Brand({ size = 32 }: { size?: number }) {
-  return (
-    <div className="brand">
-      <span className="brand-mark" style={{ width: size, height: size }}>
-        <LockIcon />
-      </span>
-      <span className="brand-name">LockAlperen</span>
+      {props.side}
     </div>
   );
 }
@@ -490,8 +473,6 @@ function UnlockScreen(props: {
 
   return (
     <div className="unlock">
-      {side(busy)}
-
       <main className="unlock-main">
         <form className="unlock-form" onSubmit={submit}>
           <span className="unlock-badge">
@@ -499,10 +480,10 @@ function UnlockScreen(props: {
           </span>
           <div className="center">
             <h1>{file ? file.fileName : "Kasa seçilmedi"}</h1>
-            <p className="muted">
+            <p className="muted ellipsis" title={file?.folder}>
               {file
-                ? "Kasanın kilidini açmak için ana parolanızı girin"
-                : "Başlamak için soldan bir kasa dosyası açın"}
+                ? `${folderName(file.folder)} klasöründe`
+                : "Başlamak için aşağıdan bir kasa dosyası açın"}
             </p>
           </div>
 
@@ -537,7 +518,11 @@ function UnlockScreen(props: {
             {caps && <div className="warn">Caps Lock açık</div>}
           </div>
 
-          <label className="check">
+          <button type="submit" className="btn btn-accent wide" disabled={!file || busy}>
+            {busy ? "Açılıyor…" : "Kilidi aç"}
+          </button>
+
+          <label className="check center-check">
             <input
               type="checkbox"
               checked={useKey}
@@ -556,11 +541,6 @@ function UnlockScreen(props: {
             <p className="warn">Bu kasa bir anahtar dosyası istiyor.</p>
           )}
 
-          <button type="submit" className="btn btn-accent wide" disabled={!file || busy}>
-            {busy ? "Açılıyor…" : "Kilidi aç"}
-            {!busy && <span className="kbd">Enter</span>}
-          </button>
-
           {error && (
             <p className="error" role="alert">
               {error}
@@ -568,12 +548,13 @@ function UnlockScreen(props: {
           )}
 
           {file?.kdf && (
-            <p className="muted small center">
+            <p className="muted small center kdf-line">
               Argon2id · {file.kdf.memoryMib} MiB · {file.kdf.iterations} geçiş
             </p>
           )}
         </form>
       </main>
+      {side(busy)}
     </div>
   );
 }
@@ -910,6 +891,28 @@ function VaultScreen({
     }
   }
 
+  const listTitle =
+    group === null
+      ? "Tüm kayıtlar"
+      : group === "totp"
+        ? "TOTP kodları"
+        : group === "health"
+          ? "Parola sağlığı"
+          : (allGroups.find((g) => g.id === group)?.name ?? "Klasör");
+
+  /** "İş › Geliştirme": the folder and its parents, without the root. */
+  function groupPath(id: string) {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    let cur = allGroups.find((g) => g.id === id);
+    while (cur && cur.parent !== null && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      names.unshift(cur.name);
+      cur = allGroups.find((g) => g.id === cur!.parent);
+    }
+    return names.length ? names.join(" › ") : (cur?.name ?? "");
+  }
+
   const shown = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr");
     return open.entries.filter(
@@ -946,6 +949,16 @@ function VaultScreen({
 
   return (
     <div className={"app" + (navOpen ? " nav-open" : "")} data-view={view}>
+      {settingsOpen ? (
+        <SettingsPage
+          onClose={() => setSettingsOpen(false)}
+          onImport={() => {
+            setSettingsOpen(false);
+            void startImport();
+          }}
+        />
+      ) : (
+      <>
       <header className="topbar">
         <button
           type="button"
@@ -956,26 +969,35 @@ function VaultScreen({
         >
           <MenuIcon />
         </button>
-        <Brand size={32} />
-        <div className="crumb">
-          <span className="muted">{file.folder} ›</span>
-          <strong>{file.fileName}</strong>
+        <div className="brand">
+          <span className="brand-mark" style={{ width: 40, height: 40 }}>
+            <LockIcon />
+          </span>
+          <span className="brand-text">
+            <span className="brand-name">LockAlperen</span>
+            <span className="muted small ellipsis" title={`${file.folder}\\${file.fileName}`}>
+              {file.fileName}
+            </span>
+          </span>
         </div>
+        <label className="search top-search">
+          <SearchIcon />
+          <input
+            ref={searchRef}
+            type="search"
+            placeholder="Kayıtlarda ara"
+            aria-label="Kayıtlarda ara"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <span className="kbd">Ctrl+F</span>
+        </label>
         <div className="topbar-right">
-          <button
-            type="button"
-            className="btn"
-            onClick={startImport}
-            disabled={editing !== undefined}
-            title="KeePass'ten içe aktar (KDBX 4)"
-          >
-            <DownloadIcon />
-            İçe aktar
-          </button>
           {lockIn !== null && (
             <span className="autolock muted" title="Klavye ya da fare kullanılınca sıfırlanır">
-              <ClockIcon />
-              Otomatik kilit {formatClock(lockIn)}
+              Kilit {formatClock(lockIn)}
             </span>
           )}
           <button
@@ -987,16 +1009,13 @@ function VaultScreen({
           >
             <GearIcon />
           </button>
-          <button type="button" className="btn" onClick={onLock}>
+          <button type="button" className="btn btn-dark" onClick={onLock} title="Ctrl+L">
             <LockIcon />
-            Kilitle <span className="kbd">Ctrl+L</span>
+            Kilitle
           </button>
         </div>
       </header>
 
-      {settingsOpen && (
-        <SettingsDialog onClose={() => setSettingsOpen(false)} onEntries={onEntries} />
-      )}
       {importing !== null && (
         <ImportDialog
           fileName={importing}
@@ -1200,42 +1219,65 @@ function VaultScreen({
               onClick={() => setGroup(group === "health" ? null : "health")}
               title="Zayıflık tahmini yalnızca uzunluğa ve karakter türlerine bakar; sözlük kelimelerini ve kalıpları tanımaz."
             >
-              <span className="health-title">
-                <ShieldIcon />
-                Parola sağlığı
-                <span className="count">%{health.okPercent}</span>
-              </span>
+              <span className="muted small">Parola sağlığı</span>
+              <span className="health-score">%{health.okPercent}</span>
               <span className="health-bar">
                 <span style={{ width: `${health.okPercent}%` }} />
               </span>
               <span className="muted small">
-                {health.weak} zayıf · {health.reused} tekrar eden · {health.expired} süresi dolmuş
+                {health.weak} zayıf · {health.reused} tekrar · {health.expired} eski
               </span>
             </button>
           )}
         </nav>
 
         <section className="list-pane" aria-label="Kayıt listesi">
-          <div className="list-tools">
-            <label className="search">
-              <SearchIcon />
-              <input
-                ref={searchRef}
-                type="search"
-                placeholder="Ara…  (Ctrl+F)"
-                aria-label="Kayıtlarda ara"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </label>
-            <button type="button" className="btn btn-accent" onClick={() => setEditing(null)}>
+          <div className="list-head">
+            <div className="list-title">
+              <h2 className="ellipsis">{listTitle}</h2>
+              <span className="muted small">{shown.length} kayıt</span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-accent new-btn"
+              onClick={() => setEditing(null)}
+              title="Ctrl+N"
+            >
               <PlusIcon />
-              Yeni
+              Yeni kayıt
             </button>
           </div>
-          <div className="list-meta muted">{shown.length} kayıt</div>
+          <div className="chips list-chips" role="group" aria-label="Göster">
+            <button
+              type="button"
+              className={"chip-btn" + (group === null ? " on" : "")}
+              aria-pressed={group === null}
+              onClick={() => setGroup(null)}
+            >
+              Tümü
+            </button>
+            {groups
+              .filter(([, g]) => !g.root)
+              .map(([id, g]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={"chip-btn" + (group === id ? " on" : "")}
+                  aria-pressed={group === id}
+                  onClick={() => setGroup(id)}
+                >
+                  {g.name}
+                </button>
+              ))}
+            <button
+              type="button"
+              className={"chip-btn" + (group === "totp" ? " on" : "")}
+              aria-pressed={group === "totp"}
+              onClick={() => setGroup("totp")}
+            >
+              TOTP
+            </button>
+          </div>
           {shown.length === 0 ? (
             <p className="empty muted">
               {open.entries.length === 0 ? "Kasada kayıt yok." : "Sonuç yok."}
@@ -1292,10 +1334,10 @@ function VaultScreen({
                 >
                   <BackIcon />
                 </button>
-                <Avatar title={current.title} size={60} icon={current.icon} />
+                <Avatar title={current.title} size={72} icon={current.icon} />
                 <div className="detail-title">
                   <h1 className="ellipsis">{current.title || "(başlıksız)"}</h1>
-                  <div className="muted">{current.group}</div>
+                  <div className="muted">{groupPath(current.groupId)}</div>
                 </div>
                 <button
                   type="button"
@@ -1310,7 +1352,6 @@ function VaultScreen({
                   className="btn btn-accent"
                   onClick={() => setEditing(current.id)}
                 >
-                  <PencilIcon />
                   Düzenle
                 </button>
               </div>
@@ -1322,13 +1363,12 @@ function VaultScreen({
                   </div>
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="btn pill-btn"
                     aria-label="Kullanıcı adını kopyala"
-                    title="Kopyala"
                     disabled={!current.username}
                     onClick={() => copy("username")}
                   >
-                    <CopyIcon />
+                    Kopyala
                   </button>
                 </div>
                 {/* key: a new entry always starts hidden. */}
@@ -1356,13 +1396,12 @@ function VaultScreen({
                   </div>
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="btn pill-btn"
                     aria-label="Web sitesini tarayıcıda aç"
-                    title="Tarayıcıda aç"
                     disabled={!looksLikeWeb(current.url)}
                     onClick={() => void openSite()}
                   >
-                    <ExternalIcon />
+                    Aç
                   </button>
                 </div>
               </div>
@@ -1379,6 +1418,8 @@ function VaultScreen({
           )}
         </main>
       </div>
+      )}
+      </>
       )}
     </div>
   );
@@ -1413,24 +1454,22 @@ function TotpRow({ id, onCopy }: { id: string; onCopy: () => void }) {
   return (
     <div className="card-row">
       <div className="card-text">
-        <div className="lbl">Tek kullanımlık kod (TOTP)</div>
+        <div className="lbl">Doğrulama kodu</div>
         <div className="value mono totp-code">{failed ? "Kod üretilemedi" : pretty || "…"}</div>
       </div>
       {code && (
         <span className="muted small totp-left" aria-label={`${code.secondsLeft} saniye kaldı`}>
-          <ClockIcon />
           {code.secondsLeft} sn
         </span>
       )}
       <button
         type="button"
-        className="icon-btn"
+        className="btn pill-btn"
         aria-label="Kodu kopyala"
-        title="Kopyala"
         disabled={!code}
         onClick={onCopy}
       >
-        <CopyIcon />
+        Kopyala
       </button>
     </div>
   );
@@ -1470,24 +1509,24 @@ function PasswordRow({ id, onCopy }: { id: string; onCopy: () => void }) {
           {shown ?? "••••••••••••"}
         </div>
       </div>
-      <button
-        type="button"
-        className="icon-btn"
-        aria-label={shown === null ? "Parolayı göster" : "Parolayı gizle"}
-        title={shown === null ? "Göster" : "Gizle"}
-        onClick={toggle}
-      >
-        {shown === null ? <EyeIcon /> : <EyeOffIcon />}
-      </button>
-      <button
-        type="button"
-        className="icon-btn accent"
-        aria-label="Parolayı kopyala"
-        title="Kopyala"
-        onClick={onCopy}
-      >
-        <CopyIcon />
-      </button>
+      <div className="pill-group">
+        <button
+          type="button"
+          className="btn pill-btn"
+          aria-label={shown === null ? "Parolayı göster" : "Parolayı gizle"}
+          onClick={toggle}
+        >
+          {shown === null ? "Göster" : "Gizle"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-accent pill-btn"
+          aria-label="Parolayı kopyala"
+          onClick={onCopy}
+        >
+          Kopyala
+        </button>
+      </div>
     </div>
   );
 }

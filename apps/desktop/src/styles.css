@@ -1549,3 +1549,483 @@ input[type="range"] {
     transition: none;
   }
 }
+
+/* ---- Layout of the design canvas ("LockAlperen Yeni Arayüz") ------------
+   Later in the file than the rules above, so these win where both apply. */
+
+/* Unlock: the card in the middle, recent vaults and links under it. */
+.unlock {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 48px 20px;
+}
+
+.unlock-main {
+  flex: none;
+  width: 100%;
+  padding: 0;
+}
+
+.unlock-side {
+  flex: none;
+  width: 100%;
+  max-width: 440px;
+  padding: 0;
+  gap: 10px;
+}
+
+.recent-lbl {
+  margin: 0;
+  padding: 0 8px;
+}
+
+.recents {
+  flex-direction: row;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.recents li {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 52px;
+  border-radius: 18px;
+}
+
+.recent {
+  height: 100%;
+  padding: 0 4px 0 16px;
+  gap: 10px;
+}
+
+.recent-name {
+  font-size: 14px;
+}
+
+.side-actions {
+  margin: 0;
+  padding: 4px 0 0;
+  flex-direction: row;
+  justify-content: center;
+  gap: 24px;
+}
+
+.side-actions .link {
+  font-size: 14px;
+}
+
+.center-check {
+  justify-content: center;
+  color: var(--muted);
+}
+
+.kdf-line {
+  margin-top: -6px;
+}
+
+/* Top bar: brand with the vault name, search in the middle. */
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 220px;
+  line-height: 1.25;
+}
+
+.top-search {
+  flex: 1 1 320px;
+  max-width: 640px;
+  height: 48px;
+  margin: 0 auto;
+}
+
+.top-search .kbd {
+  color: var(--muted);
+}
+
+.autolock {
+  font-size: 13px;
+}
+
+.btn-dark {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.btn-dark:hover:not(:disabled) {
+  background: var(--fg-2);
+  border-color: var(--fg-2);
+}
+
+/* List column: title and count, "Yeni kayıt". */
+.list-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 14px;
+}
+
+.list-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.list-title h2 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+/* Folder chips: narrow windows only (see below). */
+.list-chips {
+  display: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0 2px 12px;
+}
+
+.chip-btn {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip-btn.on {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.health-card {
+  padding: 20px;
+  gap: 12px;
+}
+
+.health-score {
+  font-family: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Detail: big title, fields as label | value | text buttons. */
+.detail-pane {
+  padding: 40px 48px;
+  gap: 32px;
+}
+
+.detail-head {
+  gap: 20px;
+}
+
+.detail-head .avatar {
+  border-radius: 22px;
+}
+
+.detail-title h1 {
+  font-size: 34px;
+}
+
+.detail-pane .card-row {
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.detail-pane .card-text {
+  flex: 1 1 320px;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+}
+
+.detail-pane .card-text .lbl {
+  flex: 0 0 160px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.detail-pane .card-text .value {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+}
+
+.detail-pane .totp-code {
+  font-size: 26px;
+}
+
+.pill-btn {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--hover);
+}
+
+.pill-btn.btn-accent {
+  background: var(--accent);
+}
+
+.pill-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Settings page. */
+.settings-page {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 32px;
+  padding: 32px 40px;
+}
+
+.settings-nav {
+  flex: 1 1 220px;
+  max-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.back-link:hover {
+  color: var(--fg);
+}
+
+.settings-nav h1 {
+  margin: 8px 16px 16px;
+  font-size: 32px;
+}
+
+.settings-main {
+  flex: 999 1 520px;
+  min-width: 0;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 60px;
+}
+
+.settings-head h2 {
+  font-size: 26px;
+}
+
+.settings-head p {
+  margin: 6px 0 0;
+}
+
+.set-card {
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 8px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-card.pad {
+  padding: 28px;
+  gap: 18px;
+}
+
+.set-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.set-row:last-child {
+  border-bottom: 0;
+}
+
+.set-text {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.set-title {
+  font-weight: 600;
+}
+
+/* In a vertical card the row's flex-basis would become a 260px height. */
+.set-card.pad > .set-text {
+  flex: none;
+}
+
+.set-select {
+  min-width: 190px;
+}
+
+.pill-ok {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--selected);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.set-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.set-field {
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.set-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.set-note {
+  padding: 0 0 18px;
+}
+
+.switch {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 1100px) {
+  .detail-pane {
+    padding: 28px;
+  }
+
+  .detail-pane .card-text .lbl {
+    flex-basis: 120px;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar .brand {
+    display: none;
+  }
+
+  .top-search {
+    order: 10;
+    flex: 1 1 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .top-search .kbd {
+    display: none;
+  }
+
+  .list-chips {
+    display: flex;
+    gap: 8px;
+  }
+
+  .new-btn {
+    position: fixed;
+    right: 16px;
+    bottom: 20px;
+    z-index: 20;
+    height: 56px;
+    padding: 0 22px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .detail-pane {
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .detail-title h1 {
+    font-size: 26px;
+  }
+
+  .detail-pane .card-row {
+    flex-wrap: nowrap;
+  }
+
+  .detail-pane .card-text {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .app[data-view="detail"] .top-search {
+    display: none;
+  }
+
+  .detail-pane .card-text .lbl {
+    flex: none;
+    font-size: 13px;
+  }
+
+  .settings-page {
+    padding: 20px 14px;
+    gap: 16px;
+  }
+
+  .settings-nav {
+    max-width: none;
+  }
+
+  .settings-main {
+    padding-top: 0;
+  }
+
+  .set-card {
+    padding: 4px 18px;
+  }
+
+  .set-card.pad {
+    padding: 20px;
+  }
+}
