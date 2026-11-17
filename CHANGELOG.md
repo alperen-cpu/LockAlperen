@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.4.0] - 2026-11-17: yeni arayüz, koyu tema, duyarlı düzen
 
 - **Yeni arayüz:** Ferah, açık tema varsayılan; yuvarlak düğmeler, kenar çizgisi yerine hafif
   gölgeler, daha geniş boşluklar. Kayıt ayrıntısı tek, sakin bir kart.
