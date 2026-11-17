@@ -28,6 +28,16 @@ export const ExternalIcon = () => (
   </Icon>
 );
 
+export const MoveIcon = () => (
+  <Icon>
+    <path d="M5 9l-3 3 3 3" />
+    <path d="M9 5l3-3 3 3" />
+    <path d="M15 19l-3 3-3-3" />
+    <path d="M19 9l3 3-3 3" />
+    <path d="M2 12h20M12 2v20" />
+  </Icon>
+);
+
 export const LockIcon = ({ size }: { size?: number }) => (
   <Icon size={size}>
     <rect x="4" y="11" width="16" height="10" rx="2" />

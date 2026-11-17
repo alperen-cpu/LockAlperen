@@ -8,6 +8,9 @@
 - **Otomatik yazma kısayolu:** Varsayılan `Ctrl+Alt+A`, Ayarlar'dan değiştirilebilir ya da
   kapatılabilir. Öndeki pencereye uyan tek kaydın kullanıcı adını ve parolasını yazar. Birden
   fazla kayıt uyarsa, hiç uymazsa ya da tuşlar bırakılmazsa hiçbir şey yazmaz.
+- **Klasör taşıma ve sürükle-bırak:** Klasörler girintili ağaç olarak görünür; klasörler ve
+  kayıtlar sürüklenip başka klasöre bırakılabilir ya da "Taşı" menüsüyle taşınabilir. Bir klasör
+  kendi içine ya da alt klasörüne taşınamaz.
 - **Siteyi aç:** Kaydın web sitesi tek tıkla tarayıcıda açılır. Yalnızca `http`/`https` adresleri
   açılır.
 

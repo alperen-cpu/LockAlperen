@@ -333,6 +333,18 @@
           "markdownDescription": "Enables the lock_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the move_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-move-entry",
+          "markdownDescription": "Enables the move_entry command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the move_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-move-group",
+          "markdownDescription": "Enables the move_group command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_url command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-url",
@@ -601,6 +613,18 @@
           "type": "string",
           "const": "deny-lock-status",
           "markdownDescription": "Denies the lock_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the move_entry command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-move-entry",
+          "markdownDescription": "Denies the move_entry command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the move_group command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-move-group",
+          "markdownDescription": "Denies the move_group command without any pre-configured scope."
         },
         {
           "description": "Denies the open_url command without any pre-configured scope.",

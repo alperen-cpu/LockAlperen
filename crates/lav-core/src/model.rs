@@ -307,6 +307,63 @@ impl VaultData {
         Ok(())
     }
 
+    /// Moves a group, with its subgroups and entries, under `new_parent`.
+    ///
+    /// Refused: the root, a missing group or parent, and a parent that is the
+    /// group itself or below it (that would form a cycle and detach the
+    /// subtree from the root). The ancestor walk is bounded, so it also ends
+    /// on corrupted (cyclic) data; anything that is not a clean path to the
+    /// root is refused.
+    pub fn move_group(&mut self, id: Uuid, new_parent: Uuid) -> Result<()> {
+        if id == self.root {
+            return Err(Error::CannotMoveRoot);
+        }
+        if self.group(id).is_none() || self.group(new_parent).is_none() {
+            return Err(Error::NotFound);
+        }
+        let mut cur = new_parent;
+        let mut steps = 0;
+        while cur != self.root {
+            if cur == id || steps > self.groups.len() {
+                return Err(Error::InvalidMove);
+            }
+            steps += 1;
+            cur = match self.group(cur).and_then(|g| g.parent) {
+                Some(p) => p,
+                None => return Err(Error::InvalidMove),
+            };
+        }
+        let g = self
+            .groups
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or(Error::NotFound)?;
+        if g.parent != Some(new_parent) {
+            g.parent = Some(new_parent);
+            g.modified = now();
+            self.touch();
+        }
+        Ok(())
+    }
+
+    /// Moves an entry to another group. Not an edit of its content: no
+    /// history version is added and `modified` is kept.
+    pub fn move_entry(&mut self, id: Uuid, group: Uuid) -> Result<()> {
+        if self.group(group).is_none() {
+            return Err(Error::NotFound);
+        }
+        let e = self
+            .entries
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or(Error::NotFound)?;
+        if e.group != group {
+            e.group = group;
+            self.touch();
+        }
+        Ok(())
+    }
+
     /// Deletes a group together with all of its subgroups and entries.
     ///
     /// Linear time; terminates on corrupted (cyclic) data and NEVER deletes
@@ -529,6 +586,78 @@ mod tests {
         assert!(v.group(a).is_none() && v.group(b).is_none());
         assert_eq!(v.entries.len(), 1);
         assert!(matches!(v.delete_group(root), Err(Error::CannotDeleteRoot)));
+    }
+
+    #[test]
+    fn move_group_keeps_the_tree_connected() {
+        let mut v = VaultData::new("Test");
+        let root = v.root;
+        let a = v.add_group(root, "A").unwrap();
+        let b = v.add_group(a, "B").unwrap();
+        let c = v.add_group(b, "C").unwrap();
+        let x = v.add_group(root, "X").unwrap();
+        v.add_entry(Entry::new(c, "deep")).unwrap();
+
+        // Into itself or anywhere below itself: refused, nothing changes.
+        for target in [a, b, c] {
+            assert!(matches!(v.move_group(a, target), Err(Error::InvalidMove)));
+        }
+        assert!(matches!(v.move_group(b, c), Err(Error::InvalidMove)));
+        assert!(matches!(v.move_group(root, x), Err(Error::CannotMoveRoot)));
+        assert!(matches!(
+            v.move_group(a, Uuid::new_v4()),
+            Err(Error::NotFound)
+        ));
+        assert!(matches!(
+            v.move_group(Uuid::new_v4(), x),
+            Err(Error::NotFound)
+        ));
+        assert_eq!(v.group(a).unwrap().parent, Some(root));
+
+        // A real move takes the whole subtree along.
+        v.move_group(a, x).unwrap();
+        assert_eq!(v.group(a).unwrap().parent, Some(x));
+        assert_eq!(v.group(c).unwrap().parent, Some(b));
+        // Back to the top level.
+        v.move_group(a, root).unwrap();
+        assert_eq!(v.group(a).unwrap().parent, Some(root));
+        assert_eq!(v.repair_structure(), 0, "still a valid tree");
+    }
+
+    #[test]
+    fn move_group_terminates_on_cyclic_data() {
+        let mut v = VaultData::new("Test");
+        let root = v.root;
+        let a = v.add_group(root, "A").unwrap();
+        let p = v.add_group(root, "P").unwrap();
+        let q = v.add_group(root, "Q").unwrap();
+        // Corrupted: P and Q are each other's parent (detached from root).
+        v.groups.iter_mut().find(|g| g.id == p).unwrap().parent = Some(q);
+        v.groups.iter_mut().find(|g| g.id == q).unwrap().parent = Some(p);
+        assert!(matches!(v.move_group(a, p), Err(Error::InvalidMove)));
+        assert_eq!(v.group(a).unwrap().parent, Some(root));
+    }
+
+    #[test]
+    fn move_entry_is_not_an_edit() {
+        let mut v = VaultData::new("Test");
+        let g = v.add_group(v.root, "G").unwrap();
+        let id = v.add_entry(Entry::new(v.root, "x")).unwrap();
+        let before = v.entry(id).unwrap().modified;
+        v.move_entry(id, g).unwrap();
+        let e = v.entry(id).unwrap();
+        assert_eq!(e.group, g);
+        assert!(e.history.is_empty(), "no history version for a move");
+        assert_eq!(e.modified, before);
+        assert!(matches!(
+            v.move_entry(id, Uuid::new_v4()),
+            Err(Error::NotFound)
+        ));
+        assert!(matches!(
+            v.move_entry(Uuid::new_v4(), g),
+            Err(Error::NotFound)
+        ));
+        assert_eq!(v.entry(id).unwrap().group, g);
     }
 
     #[test]

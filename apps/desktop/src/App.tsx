@@ -26,6 +26,7 @@ import {
   FileIcon,
   FolderIcon,
   ListIcon,
+  MoveIcon,
   LockIcon,
   PencilIcon,
   PlusIcon,
@@ -178,6 +179,17 @@ function Screens() {
       side={side}
       onOpened={setOpen}
     />
+  );
+}
+
+/** Display hint only (link look, button enabled); Rust decides what is
+ *  opened (src-tauri/src/browser.rs: http/https only). */
+function looksLikeWeb(url: string) {
+  const t = url.trim();
+  return (
+    t !== "" &&
+    !t.includes("\\") &&
+    (/^https?:\/\//i.test(t) || !/^[a-z][a-z0-9+.-]*:/i.test(t))
   );
 }
 
@@ -724,13 +736,96 @@ function VaultScreen({
   useEffect(() => {
     api.listGroups().then(setAllGroups, () => setAllGroups([]));
   }, [open.entries, groupTick]);
-  const groups = useMemo(
-    () =>
-      allGroups
-        .map((g) => [g.id, { name: g.name, count: g.entries, total: g.totalEntries, root: g.parent === null }] as const)
-        .sort((a, b) => (a[1].root ? -1 : b[1].root ? 1 : a[1].name.localeCompare(b[1].name, "tr"))),
-    [allGroups],
-  );
+  // The folder tree in display order (parents before children, siblings by
+  // name), with each folder's depth for indentation.
+  type GroupRow = {
+    name: string;
+    count: number;
+    total: number;
+    root: boolean;
+    depth: number;
+    parent: string | null;
+  };
+  const groups = useMemo(() => {
+    const kids = new Map<string | null, api.GroupView[]>();
+    for (const g of allGroups) kids.set(g.parent, [...(kids.get(g.parent) ?? []), g]);
+    const out: (readonly [string, GroupRow])[] = [];
+    const seen = new Set<string>();
+    const walk = (parent: string | null, depth: number) => {
+      const list = (kids.get(parent) ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+      for (const g of list) {
+        if (seen.has(g.id)) continue; // Rust repairs cycles; never loop here
+        seen.add(g.id);
+        out.push([
+          g.id,
+          {
+            name: g.name,
+            count: g.entries,
+            total: g.totalEntries,
+            root: g.parent === null,
+            depth,
+            parent: g.parent,
+          },
+        ] as const);
+        walk(g.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  }, [allGroups]);
+
+  /** The folder and everything below it (not valid move targets for it). */
+  function subtree(id: string): Set<string> {
+    const out = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const g of allGroups) {
+        if (g.parent !== null && out.has(g.parent) && !out.has(g.id)) {
+          out.add(g.id);
+          grew = true;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Drag and drop: an entry or a folder onto a folder. Rust checks again.
+  type Drag = { kind: "entry" | "group"; id: string };
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
+
+  function canDrop(d: Drag | null, target: string): boolean {
+    if (!d) return false;
+    if (d.kind === "entry") return open.entries.find((e) => e.id === d.id)?.groupId !== target;
+    const me = allGroups.find((g) => g.id === d.id);
+    return !!me && me.parent !== null && me.parent !== target && !subtree(d.id).has(target);
+  }
+
+  async function moveTo(d: Drag, target: string) {
+    setDrag(null);
+    setDropOn(null);
+    setMoving(null);
+    if (!canDrop(d, target)) return;
+    const name = groups.find(([i]) => i === target)?.[1].name ?? "";
+    try {
+      if (d.kind === "entry") {
+        onEntries(await api.moveEntry(d.id, target));
+        const title = open.entries.find((e) => e.id === d.id)?.title || "(başlıksız)";
+        setToast(`"${title}" → "${name}" klasörüne taşındı.`);
+      } else {
+        const root = allGroups.find((g) => g.parent === null)?.id;
+        const own = allGroups.find((g) => g.id === d.id)?.name ?? "";
+        onEntries(await api.moveGroup(d.id, target === root ? null : target));
+        setToast(`"${own}" klasörü → "${name}" içine taşındı.`);
+      }
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
@@ -929,8 +1024,40 @@ function VaultScreen({
                 />
               </form>
             ) : (
-              <div key={id} className={"nav-item" + (group === id ? " active" : "")}>
-                <button type="button" className="nav" onClick={() => setGroup(id)}>
+              <div
+                key={id}
+                className={
+                  "nav-item" + (group === id ? " active" : "") + (dropOn === id ? " drop-on" : "")
+                }
+                style={{ paddingLeft: g.depth * 14 }}
+                onDragOver={(e) => {
+                  if (!canDrop(drag, id)) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDropOn(id);
+                }}
+                onDragLeave={() => setDropOn((d) => (d === id ? null : d))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (drag) void moveTo(drag, id);
+                }}
+              >
+                <button
+                  type="button"
+                  className="nav"
+                  onClick={() => setGroup(id)}
+                  draggable={!g.root}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", g.name);
+                    setDrag({ kind: "group", id });
+                  }}
+                  onDragEnd={() => {
+                    setDrag(null);
+                    setDropOn(null);
+                  }}
+                  title={g.root ? undefined : "Başka bir klasörün üzerine sürükleyerek taşıyın"}
+                >
                   <FolderIcon />
                   <span className="ellipsis">{g.name}</span>
                   <span className="count">{g.count}</span>
@@ -946,6 +1073,17 @@ function VaultScreen({
                     >
                       <PencilIcon />
                     </button>
+                    {!g.root && (
+                      <button
+                        type="button"
+                        className="ghost-icon tiny"
+                        aria-label="Klasörü taşı"
+                        title="Taşı"
+                        onClick={() => setMoving(moving === id ? null : id)}
+                      >
+                        <MoveIcon />
+                      </button>
+                    )}
                     {!g.root && (
                       <button
                         type="button"
@@ -966,6 +1104,29 @@ function VaultScreen({
                 )}
               </div>
             ),
+          )}
+          {moving && (
+            <div className="nav-form">
+              <select
+                className="text-input small-input"
+                aria-label="Klasörün taşınacağı yer"
+                value=""
+                autoFocus
+                onChange={(e) =>
+                  e.target.value && void moveTo({ kind: "group", id: moving }, e.target.value)
+                }
+                onKeyDown={(e) => e.key === "Escape" && setMoving(null)}
+              >
+                <option value="">Şuraya taşı…</option>
+                {groups
+                  .filter(([t]) => canDrop({ kind: "group", id: moving }, t))
+                  .map(([t, tg]) => (
+                    <option key={t} value={t}>
+                      {"\u00a0\u00a0".repeat(tg.depth) + tg.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
           )}
           {confirmDel && (
             <p className="warn small del-warn">
@@ -1048,6 +1209,16 @@ function VaultScreen({
                     type="button"
                     className={"row" + (e.id === selected ? " active" : "")}
                     onClick={() => setSelected(e.id)}
+                    draggable
+                    onDragStart={(ev) => {
+                      ev.dataTransfer.effectAllowed = "move";
+                      ev.dataTransfer.setData("text/plain", e.title);
+                      setDrag({ kind: "entry", id: e.id });
+                    }}
+                    onDragEnd={() => {
+                      setDrag(null);
+                      setDropOn(null);
+                    }}
                   >
                     <Avatar title={e.title} size={36} icon={e.icon} />
                     <span className="row-text">
@@ -1119,7 +1290,7 @@ function VaultScreen({
                     <div className="lbl">Web sitesi</div>
                     {/* Not an <a href>: the WebView never navigates; Rust opens
                         the entry's own address, http/https only. */}
-                    {current.url ? (
+                    {looksLikeWeb(current.url) ? (
                       <button
                         type="button"
                         className="value link-value ellipsis"
@@ -1129,7 +1300,7 @@ function VaultScreen({
                         {current.url}
                       </button>
                     ) : (
-                      <div className="value ellipsis">—</div>
+                      <div className="value ellipsis">{current.url || "—"}</div>
                     )}
                   </div>
                   <button
@@ -1137,7 +1308,7 @@ function VaultScreen({
                     className="icon-btn"
                     aria-label="Web sitesini tarayıcıda aç"
                     title="Tarayıcıda aç"
-                    disabled={!current.url}
+                    disabled={!looksLikeWeb(current.url)}
                     onClick={() => void openSite()}
                   >
                     <ExternalIcon />

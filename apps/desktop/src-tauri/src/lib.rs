@@ -312,6 +312,24 @@ async fn rename_group(
 }
 
 #[tauri::command]
+async fn move_group(
+    id: String,
+    parent: Option<String>,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.move_group(&id, parent.as_deref())).await
+}
+
+#[tauri::command]
+async fn move_entry(
+    id: String,
+    group: String,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.move_entry(&id, &group)).await
+}
+
+#[tauri::command]
 async fn delete_group(id: String, state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
     change_and_list(&state, move |s| s.delete_group(&id)).await
 }
@@ -1035,6 +1053,8 @@ pub fn run() {
             fetch_icons,
             auto_type,
             open_url,
+            move_group,
+            move_entry,
             hotkey_active,
             app_version,
             check_update,

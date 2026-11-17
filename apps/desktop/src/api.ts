@@ -120,6 +120,15 @@ export interface GenOptions {
 
 export const listGroups = () => invoke<GroupView[]>("list_groups");
 
+/** Moves a folder (with its subfolders and entries); null = top level.
+ *  Rust refuses moving the root or into itself / its subfolders. */
+export const moveGroup = (id: string, parent: string | null) =>
+  invoke<EntrySummary[]>("move_group", { id, parent });
+
+/** Moves an entry to another folder (not an edit: no history version). */
+export const moveEntry = (id: string, group: string) =>
+  invoke<EntrySummary[]>("move_entry", { id, group });
+
 /** Sends the entry's secrets: only when the editor opens. */
 export const entryForm = (id: string) => invoke<EntryForm>("entry_form", { id });
 
