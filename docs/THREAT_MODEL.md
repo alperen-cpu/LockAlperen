@@ -1,7 +1,8 @@
 # Tehdit Modeli
 
-LockAlperen, tek kullanıcının kendi Windows bilgisayarında çalışan, yerel ve çevrimdışı
-bir parola yöneticisidir.
+LockAlperen, tek kullanıcının kendi Windows bilgisayarında çalışan yerel bir parola yöneticisidir.
+Sunucusu ve hesabı yoktur; kasa hiçbir yere gönderilmez. Ağa yalnızca site ikonu indirmek ve
+yeni sürümü denetlemek için çıkar (aşağıda "İlkeler").
 
 ## Korunan varlıklar
 
@@ -23,6 +24,7 @@ bir parola yöneticisidir.
 | Açık bırakılan oturumda kasanın ele geçirilmesi | Ana parola değişimi mevcut parolayı zorunlu tutar |
 | Parola değiştikten sonra eski yedeğin açılması | Eski parolalı `.bak` silinir |
 | Ekran paylaşımı ve pano geçmişi | Pencere ekran yakalamadan hariç tutulur, pano geçmişi kapatılır *(uygulama katmanı)* |
+| Kayıttaki adres üzerinden program başlatma (`file:`, `ms-msdt:` gibi protokol işleyicileri; içe aktarılan kasadan gelebilir) | Yalnızca `http`/`https` açılır, adresi Rust okur (`src/browser.rs`, testli) |
 | Favicon üzerinden yerel ağ taraması veya kötü niyetli resim | Yalnızca HTTPS, yerel adresler yasak, resim yeniden kodlanır (`lav-favicon`) |
 | Sahte ya da eski güncelleme (MITM, kurcalanmış `latest.json`) | Yalnızca HTTPS; kurulum dosyası gömülü anahtarla imza doğrulanmadan çalıştırılmaz; imza sürüme bağlı, sürüm düşürme yok; indirme adresi bu reponun Releases'ı ([UPDATES.md](UPDATES.md)). **Kapsam dışı:** imza anahtarı ve parolasının birlikte çalınması |
 
@@ -88,6 +90,7 @@ Windows'ta dizin `FlushFileBuffers`'ının rename'i kalıcı yaptığı belgelen
 3. Yanlış parola ile bozuk dosya kullanıcıya aynı hatayı verir (`Error::user_message`). Saldırgana
    ipucu vermeyiz. v2'den itibaren key commitment, bir dosyanın birden fazla parolayla doğrulanmasını
    da engeller.
-4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı yerler yalnızca kullanıcının kapatabileceği
-   site ikonu indirme ile ileride gelecek HIBP k-anonymity kontrolüdür (yalnızca SHA-1 özetinin
-   ilk 5 karakteri gönderilir). Ayrıntı: [SECURITY.md](../SECURITY.md).
+4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı iki yer var: site ikonu indirme (doğrudan
+   sitenin kendisinden; şu an kapatılamıyor) ve GitHub Releases üzerinden sürüm denetimi
+   (Ayarlar'dan kapatılabilir). Sızıntı kontrolü (HIBP) yoktur. Ayrıntı:
+   [SECURITY.md](../SECURITY.md), [UPDATES.md](UPDATES.md).

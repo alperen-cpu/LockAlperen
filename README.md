@@ -6,8 +6,11 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
   `.lav` dosyasıdır ve hiçbir sunucuya gönderilmez.
 - **Modern kriptografi:** Argon2id, HKDF-SHA256 ve XChaCha20-Poly1305 ([format](docs/FORMAT.md))
 - **KeePass'ten geçiş:** `.kdbx` (KDBX 4) dosyalarını içe aktarma
-- **Günlük kullanım:** Kayıt ekleme ve düzenleme, klasörler, parola üretici, TOTP kodları, otomatik
-  yazma, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
+- **Günlük kullanım:** Kayıt ekleme ve düzenleme, klasör ağacı (sürükle-bırak ile taşıma), parola
+  üretici, TOTP kodları, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
+- **Otomatik yazma:** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
+  doğrulanan pencereye yazar
+- **Sistem tepsisi:** Kapatınca tepside çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
 - **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano 12 sn sonra temizlenir ve pano
   geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
 - **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf
@@ -39,12 +42,14 @@ Ağa çıkan yalnızca iki işlem var: site ikonlarının indirilmesi ve GitHub'
 | 1b | Güvenlik sıkılaştırması ([SECURITY.md](SECURITY.md)), `lav-favicon` | ✅ |
 | 2 | Masaüstü uygulama (Tauri 2 + React): [apps/desktop](apps/desktop/README.md) | ✅ |
 | 3 | KeePass içe aktarma (KDBX 4), CSV dışa aktarma | ✅ KDBX 3.1 ve CSV içe aktarma yok |
-| 4 | TOTP, otomatik yazma | ✅ |
+| 4 | TOTP, otomatik yazma (düğme ve global kısayol) | ✅ |
 | 5 | İmzalı sürümler ve uygulama içi güncelleme ([UPDATES.md](docs/UPDATES.md)) | ✅ |
+| 6 | Sistem tepsisi, tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
 
 **Bilinçli olarak yapılmayanlar ve eksikler:**
 - Windows Hello yok (proje sahibinin kararı).
 - Sızıntı kontrolü yok.
+- Site ikonu indirme kapatılamıyor (şirket proxy'si kasadaki siteleri görebilir).
 - Windows kod imzası yok.
 - Mobil uygulama ve senkron sunucusu planlanmıyor.
 

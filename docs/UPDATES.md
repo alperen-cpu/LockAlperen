@@ -45,6 +45,11 @@ Ayarlar `src-tauri/tauri.conf.json` → `plugins.updater` içindedir. Bunların 
 
 ## Bir kerelik kurulum (proje sahibi)
 
+> **Durum (2026-11-16):** Yapıldı. Repo herkese açık, anahtar üretildi, açık anahtar
+> `tauri.conf.json`'da, özel anahtar ve parolası GitHub Secrets'ta. Adımlar, anahtarı yenilemek
+> gerekirse diye duruyor. Anahtar değişirse kurulu kopyalar yeni anahtarla imzalanmış sürümü
+> kuramaz; kullanıcıların o sürümü bir kez elle kurması gerekir.
+
 1. **Repo herkese açık olmalı.** Uygulama Releases'tan parolasız indirir. Gizli bir repoda
    `latest.json` 404 döner ve güncelleme hiç görünmez.
 2. İmza anahtarını üretin (parola sorar, **güçlü bir parola** verin):
@@ -90,6 +95,9 @@ desteklenmez.
 
 - ✅ Birim testleri: indirme adresi izin listesi, anahtar yokken ağa çıkılmaması, sevk edilen
   yapılandırmanın sıkılığı, eski `settings.json`'un korunması.
+- ✅ 0.2.0 gerçek anahtarla yayınlandı (2026-11-16): CI'daki `verify_release` adımı geçti; indirilen
+  kurulum dosyası yerelde de uygulamanın açık anahtarıyla doğrulandı; `latest.json` herkese açık
+  adresten 200 dönüyor.
 - ✅ Yerelde, **geçici bir test anahtarıyla**: `tauri build` + `tauri.release.conf.json`,
   `.sig` dosyasını üretiyor ve imzaya sürümü yazıyor. `verify_release` doğru anahtarı kabul
   ediyor, başka anahtarı ve yanlış sürümü reddediyor.

@@ -1,7 +1,7 @@
 # LockAlperen masaüstü
 
 Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, klasörler, parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma, CSV dışa aktarma, anahtar dosyası, özel alanlar, ekler, kayıt geçmişi, otomatik yazma, site ikonları, ana parola değiştirme, uygulama içi güncelleme.
+ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/sil, klasörler (ağaç, taşıma, sürükle-bırak), parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma, CSV dışa aktarma, anahtar dosyası, özel alanlar, ekler, kayıt geçmişi, otomatik yazma (düğme ve global kısayol), siteyi tarayıcıda açma, site ikonları, ana parola değiştirme, sistem tepsisi, tek örnek, uygulama içi güncelleme.
 
 ## Geliştirme
 
@@ -23,7 +23,7 @@ var.
 
 | Konu | Uygulama |
 |---|---|
-| IPC yüzeyi | WebView yalnızca uygulamanın kendi komutlarını çağırabilir (43 komut, tek tek `capabilities/main.json`'da listeli). Core, dosya sistemi, shell ya da diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı, yetki verilmeyen komut reddedilir. |
+| IPC yüzeyi | WebView yalnızca uygulamanın kendi komutlarını çağırabilir (47 komut, tek tek `capabilities/main.json`'da listeli). Core, dosya sistemi, shell ya da diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı, yetki verilmeyen komut reddedilir. |
 | Dosya yolu | Kasa yolu yalnızca Rust tarafında tutulur. Dosya seçme penceresini Rust açar. WebView hiçbir zaman yol göndermez, bu yüzden WebView'e enjekte edilen bir betik başka bir dosyayı açtıramaz. |
 | Sırlar | Liste yanıtında parola, not, TOTP, özel alan ve ek **yok** (`EntrySummary`). Test, IPC'ye giden JSON'u kontrol ediyor. |
 | Ana parola | React state'inde tutulmaz. Kontrolsüz input kullanılır, gönderilirken okunup hemen temizlenir. Rust tarafında `Zeroizing<String>` içinde tutulur. |
@@ -62,7 +62,7 @@ var.
 
 ## Doğrulananlar
 
-- `cargo test`: 50 test (masaüstü) + çekirdekte sayfa kilidi testi (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
+- `cargo test`: 66 test (masaüstü, 2026-11-17) + çekirdekte sayfa kilidi testi (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
   (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
   temizleniyor, sonradan kopyalanan içerik silinmiyor.
 - KeePass içe aktarma elle denendi: yanlış parolada genel mesaj; doğru parolayla 3 kayıt, 1 klasör,
@@ -92,8 +92,17 @@ var.
 - Pano elle de denendi: kopya → 13 sn sonra boş; araya kullanıcı kopyası girince korunuyor;
   Ctrl+L panoyu hemen temizliyor.
 - `cargo clippy -D warnings` ve `fmt` temiz. `npm audit` 0 açık.
-- `cargo audit`: bilinen açık yok. İki uyarı var: `proc-macro-error` bakımsız, `glib` unsound. İkisi
-  de yalnızca Linux GTK yolunda; `cargo tree` ile Windows hedefinde olmadıkları doğrulandı.
+- `cargo audit`: bilinen açık yok. Uyarılar yalnızca Linux derlemesine giren bağımlılıklarda:
+  `proc-macro-error` bakımsız, `glib` unsound (GTK yolu) ve `zvariant`/`zbus_names`/`zvariant_derive`
+  bakımsız (tek örnek eklentisinin D-Bus yolu). `cargo tree` ile Windows hedefinde olmadıkları
+  doğrulandı; CI'daki istisnalar gerekçeleriyle `ci.yml`'de.
+- **Gerçek uygulamada otomasyonla denenenler (2026-11-17, debug derleme, geçici test kasası):**
+  - Tepsi: kapatınca pencere gizleniyor ve süreç sürüyor; ikinci açılış yeni süreç başlatmadan
+    pencereyi geri getiriyor; ayar kapalıyken kapatmak çıkıyor.
+  - Otomatik yazma kısayolu: tek eşleşme doğru metni yazdı; iki eşleşme, eşleşme yokluğu, `Ctrl`
+    basılı kalması ve kilitli kasa hiçbir şey yazmadı. Tuşlara sentetik girdiyle basıldı.
+  - Sürükle-bırak (gerçek fare hareketiyle): kayıt klasöre taşındı, klasör başka klasörün altına
+    taşındı, kendi alt klasörüne bırakılan klasörde hiçbir şey değişmedi.
 - **Elle denenenler (debug derleme, Windows 10, GNU):**
   - dosya seçme;
   - yanlış parolada genel mesaj ve alanın temizlenmesi;

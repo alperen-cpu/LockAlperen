@@ -1,5 +1,12 @@
 # LockAlperen Güvenlik Denetim Raporu — Kasım 2026
 
+> **Durum (2026-11-17):** Bu rapor yazıldığı günün anlık görüntüsüdür. Sonradan: **R2** uygulandı
+> (format v2, key commitment; [FORMAT.md](FORMAT.md)). **R4** kısmen kapandı: türetilmiş anahtar
+> sayfası `VirtualLock` ile kilitli, çözülmüş içerik kilitli değil. **R1** açık: yalnızca prototip
+> (`prototypes/r1-rollback`). Masaüstü uygulaması bu denetimin kapsamında değildi; güvenlik
+> kararları ve doğrulamaları [apps/desktop/README.md](../apps/desktop/README.md) ve
+> [SECURITY.md](../SECURITY.md)'de.
+
 | | |
 |---|---|
 | **Kapsam** | `lav-core` (format, kriptografi, anahtar yönetimi, veri modeli, dosya işlemleri, yedekler), `lav-favicon` (ağ, HTML ve resim işleme), CI ve bağımlılıklar |
