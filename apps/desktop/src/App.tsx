@@ -1116,8 +1116,20 @@ function VaultScreen({
                 <div className="card-row">
                   <div className="card-text">
                     <div className="lbl">Web sitesi</div>
-                    {/* Plain text, not a link: Rust opens it (http/https only). */}
-                    <div className="value ellipsis">{current.url || "—"}</div>
+                    {/* Not an <a href>: the WebView never navigates; Rust opens
+                        the entry's own address, http/https only. */}
+                    {current.url ? (
+                      <button
+                        type="button"
+                        className="value link-value ellipsis"
+                        title="Tarayıcıda aç"
+                        onClick={() => void openSite()}
+                      >
+                        {current.url}
+                      </button>
+                    ) : (
+                      <div className="value ellipsis">—</div>
+                    )}
                   </div>
                   <button
                     type="button"
