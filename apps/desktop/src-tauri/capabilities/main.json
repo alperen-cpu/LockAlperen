@@ -45,6 +45,8 @@
     "allow-fetch-icons",
     "allow-auto-type",
     "allow-open-url",
+    "allow-move-group",
+    "allow-move-entry",
     "allow-hotkey-active",
     "allow-app-version",
     "allow-check-update",

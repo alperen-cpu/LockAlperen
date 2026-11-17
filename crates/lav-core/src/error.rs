@@ -81,6 +81,14 @@ pub enum Error {
     #[error("the root group cannot be deleted")]
     CannotDeleteRoot,
 
+    #[error("the root group cannot be moved")]
+    CannotMoveRoot,
+
+    /// Moving a group into itself or one of its own subgroups would cut that
+    /// subtree off the root (a cycle).
+    #[error("a group cannot be moved into itself or its subgroups")]
+    InvalidMove,
+
     #[error("the vault file was changed on disk since it was opened")]
     FileChangedOnDisk,
 

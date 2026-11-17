@@ -48,7 +48,7 @@ var.
 | Özel alanlar, ekler, geçmiş | Ayrıntıda gizli alan değerleri ve notlar gönderilmez; tıklanınca tek tek istenir, 15 sn sonra düşer. Kopyalama Rust'ta (pano kuralları aynı). Ekler "Kaydet…" ile diske **şifresiz** yazılır (arayüz söylüyor). Geçmiş yalnızca üst veri gösterir. Düzenleyicide özel alan ekle/sil; `fields` gönderilmezse mevcut alanlar korunur. |
 | Ayarlar | `%LOCALAPPDATA%\...\settings.json`: otomatik kilit süresi, açılışta güncelleme denetimi ve kapatınca tepsiye gizleme; geçersiz değer varsayılana (5 dk) düşer, eksik alan varsayılanını alır (eski dosyadaki değerler korunur). |
 | Güncellemeler | `tauri-plugin-updater`: açılışta (kapatılabilir) ya da Ayarlar'dan elle denetlenir; kurulum onayla. HTTPS, gömülü anahtarla minisign doğrulaması, imza sürüme bağlı, sürüm düşürme yok, indirme adresi bu reponun Releases'ı. Kurulumdan önce kasa kilitlenir ve pano temizlenir. WebView yalnızca `check_update`/`install_update` çağırabilir. Ayrıntı: [docs/UPDATES.md](../../docs/UPDATES.md). |
-| Klasörler | Oluştur, yeniden adlandır, sil. Silme klasörü, alt klasörlerini **ve içindeki kayıtları** siler: arayüz sayıyı gösterir, iki kez onay ister. Ana klasör silinemez. |
+| Klasörler | Girintili ağaç. Oluştur, yeniden adlandır, taşı, sil. **Taşıma:** sürükle-bırak ya da "Taşı" menüsü (klavyeyle de kullanılabilir). Kayıtlar da klasörlerin üzerine sürüklenebilir; bu bir düzenleme sayılmaz, geçmişe sürüm eklenmez. Çekirdek (`move_group`) kök klasörün taşınmasını ve bir klasörün kendi içine ya da alt klasörüne taşınmasını (döngü) reddeder; bozuk veride de sonsuz döngüye girmez. Pencerede `dragDropEnabled: false`: Tauri'nin dosya bırakma işleyicisi kapalı, uygulama dışarıdan dosya kabul etmez. Testli. Silme: Silme klasörü, alt klasörlerini **ve içindeki kayıtları** siler: arayüz sayıyı gösterir, iki kez onay ister. Ana klasör silinemez. |
 | Ana parola değiştirme | Mevcut parola yeniden istenir (KeePassXC CVE-2023-35866 dersi). Yeni tuz ve anahtar; eski `.bak` silinir. Kayıt başarısız olursa eski parola geri konur (bellek ve disk aynı kalır). Anahtar dosyası varsa korunur. |
 | Dışa aktarma | CSV; ana parola yeniden doğrulanır; hücreler kaçışlanır ve formül olarak çalışmaz; dosya şifresizdir (arayüz söyler). |
 | Otomatik yazma | Hedef pencere doğrulanmadan yazmaz (başka süreç + başlıkta kayıt adı ya da site). Pencere değişirse durur. `unsafe` kod `src/autotype.rs`'te. |
@@ -129,7 +129,6 @@ var.
 
 - **Windows Hello:** proje sahibinin kararıyla yapılmıyor.
 - **Kod imzası:** sertifika gerekiyor. Kurulum dosyası (NSIS) imzasız.
-- **Klasör taşıma:** klasörler oluşturulup yeniden adlandırılıp silinebiliyor; başka klasörün altına taşınamıyor (kayıtlar düzenleyiciden taşınabiliyor).
 - **Tasarımdaki iki ifade bilinçli olarak alınmadı:**
   - "Kasanız bu bilgisayardan hiç çıkmaz": kasa OneDrive'daysa doğru değil.
   - "Sızıntılarda bulunmadı": ağ erişimi gerektiriyor ve bu özellik henüz yok.

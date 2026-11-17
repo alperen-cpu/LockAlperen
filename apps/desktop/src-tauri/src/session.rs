@@ -78,6 +78,8 @@ pub const NO_SUCH_ENTRY: &str = "Kayıt bulunamadı.";
 pub const NO_SUCH_ITEM: &str = "Öğe bulunamadı.";
 pub const WRONG_CURRENT: &str = "Mevcut ana parola (ya da anahtar dosyası) yanlış.";
 pub const CANNOT_DELETE_ROOT: &str = "Ana klasör silinemez.";
+pub const CANNOT_MOVE_ROOT: &str = "Ana klasör taşınamaz.";
+pub const INVALID_MOVE: &str = "Bir klasör kendi içine ya da alt klasörlerinden birine taşınamaz.";
 pub const EMPTY_GROUP_NAME: &str = "Klasör adı boş olamaz.";
 pub const ATTACHMENT_TOO_LARGE: &str = "Ek en fazla 16 MiB olabilir.";
 pub const MAX_ATTACHMENT_BYTES: u64 = 16 * 1024 * 1024;
@@ -657,6 +659,37 @@ impl Session {
         })
     }
 
+    /// Moves a folder (with its subfolders and entries) under `parent`
+    /// (None = the root). The core refuses cycles and moving the root.
+    pub fn move_group(&mut self, id: &str, parent: Option<&str>) -> Result<(), String> {
+        self.commit(|data| {
+            let g = Self::group_uuid(data, id)?;
+            let p = match parent {
+                Some(p) => Self::group_uuid(data, p)?,
+                None => data.root,
+            };
+            data.move_group(g, p).map_err(|e| match e {
+                CoreError::CannotMoveRoot => CANNOT_MOVE_ROOT.to_owned(),
+                CoreError::InvalidMove => INVALID_MOVE.to_owned(),
+                _ => NO_SUCH_GROUP.to_owned(),
+            })
+        })
+    }
+
+    /// Moves an entry to another folder (no history version: not an edit).
+    pub fn move_entry(&mut self, id: &str, group: &str) -> Result<(), String> {
+        self.commit(|data| {
+            let g = Self::group_uuid(data, group)?;
+            let e = data
+                .entries
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .map(|e| e.id)
+                .ok_or(NO_SUCH_ENTRY)?;
+            data.move_entry(e, g).map_err(|_| NO_SUCH_ENTRY.to_owned())
+        })
+    }
+
     /// Restores an older version (index in the newest-first list the UI
     /// shows). The current state goes into the history, so nothing is lost.
     pub fn restore_version(&mut self, id: &str, newest_first_index: usize) -> Result<(), String> {
@@ -1158,6 +1191,73 @@ mod tests {
         s.lock();
         assert!(!s.is_unlocked());
         assert_eq!(s.entries(), Err(LOCKED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn folders_and_entries_move_and_are_saved() {
+        let dir = temp_dir("move");
+        let path = make_vault(&dir);
+        let mut s = Session::default();
+        s.select(path.clone());
+        s.unlock(PASSWORD).unwrap();
+        let a = s.add_group(None, "A").unwrap();
+        let b = s.add_group(Some(&a), "B").unwrap();
+        let x = s.add_group(None, "X").unwrap();
+        let root = s
+            .groups()
+            .unwrap()
+            .into_iter()
+            .find(|g| g.parent.is_none())
+            .unwrap()
+            .id;
+        let zeta = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap()
+            .id;
+
+        assert_eq!(s.move_group(&a, Some(&b)), Err(INVALID_MOVE.to_owned()));
+        assert_eq!(s.move_group(&a, Some(&a)), Err(INVALID_MOVE.to_owned()));
+        assert_eq!(
+            s.move_group(&root, Some(&x)),
+            Err(CANNOT_MOVE_ROOT.to_owned())
+        );
+        assert_eq!(
+            s.move_group(&a, Some("nope")),
+            Err(NO_SUCH_GROUP.to_owned())
+        );
+        assert_eq!(s.move_entry("nope", &x), Err(NO_SUCH_ENTRY.to_owned()));
+        assert_eq!(s.move_entry(&zeta, "nope"), Err(NO_SUCH_GROUP.to_owned()));
+
+        s.move_group(&a, Some(&x)).unwrap();
+        s.move_entry(&zeta, &b).unwrap();
+        s.move_group(&x, None).unwrap(); // already at the top: no-op
+
+        // Saved to disk: a fresh session sees the same tree.
+        s.lock();
+        let mut t = Session::default();
+        t.select(path);
+        t.unlock(PASSWORD).unwrap();
+        let parent_of = |id: &str| {
+            t.groups()
+                .unwrap()
+                .into_iter()
+                .find(|g| g.id == id)
+                .unwrap()
+                .parent
+        };
+        assert_eq!(parent_of(&a), Some(x.clone()));
+        assert_eq!(parent_of(&b), Some(a.clone()));
+        let moved = t
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == zeta)
+            .unwrap();
+        assert_eq!(moved.group_id, b);
         let _ = std::fs::remove_dir_all(dir);
     }
 
