@@ -79,6 +79,16 @@ pub const NO_SUCH_ITEM: &str = "Öğe bulunamadı.";
 pub const WRONG_CURRENT: &str = "Mevcut ana parola (ya da anahtar dosyası) yanlış.";
 pub const CANNOT_DELETE_ROOT: &str = "Ana klasör silinemez.";
 pub const CANNOT_MOVE_ROOT: &str = "Ana klasör taşınamaz.";
+pub const BAD_ICON: &str = "Geçersiz simge.";
+
+/// A folder icon is a short name the app knows ("briefcase"); anything else
+/// in a file (e.g. from another program) is ignored, never shown as markup.
+pub fn icon_name_ok(name: &str) -> bool {
+    (1..=40).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
 pub const INVALID_MOVE: &str = "Bir klasör kendi içine ya da alt klasörlerinden birine taşınamaz.";
 pub const EMPTY_GROUP_NAME: &str = "Klasör adı boş olamaz.";
 pub const ATTACHMENT_TOO_LARGE: &str = "Ek en fazla 16 MiB olabilir.";
@@ -123,6 +133,8 @@ pub struct GroupView {
     pub entries: usize,
     /// Entries in this folder and all its subfolders (what a delete removes).
     pub total_entries: usize,
+    /// Icon name chosen in the app (Font Awesome key), or None.
+    pub icon: Option<String>,
 }
 
 /// CSV cell: always quoted, quotes doubled, and a leading = + - @ tab or CR
@@ -475,6 +487,7 @@ impl Session {
                 parent: g.parent.map(|p| p.to_string()),
                 entries: direct(g.id),
                 total_entries: total(g.id),
+                icon: g.icon.clone().filter(|i| icon_name_ok(i)),
             })
             .collect();
         list.sort_by_cached_key(|g| g.name.to_lowercase());
@@ -656,6 +669,18 @@ impl Session {
                 CoreError::CannotDeleteRoot => CANNOT_DELETE_ROOT.to_owned(),
                 _ => NO_SUCH_GROUP.to_owned(),
             })
+        })
+    }
+
+    /// Sets the folder's icon (None = the default folder icon).
+    pub fn set_group_icon(&mut self, id: &str, icon: Option<&str>) -> Result<(), String> {
+        if icon.is_some_and(|i| !icon_name_ok(i)) {
+            return Err(BAD_ICON.into());
+        }
+        self.commit(|data| {
+            let g = Self::group_uuid(data, id)?;
+            data.set_group_icon(g, icon.map(str::to_owned))
+                .map_err(|_| NO_SUCH_GROUP.to_owned())
         })
     }
 
@@ -1191,6 +1216,40 @@ mod tests {
         s.lock();
         assert!(!s.is_unlocked());
         assert_eq!(s.entries(), Err(LOCKED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn folder_icons_are_validated_and_saved() {
+        let dir = temp_dir("icons");
+        let path = make_vault(&dir);
+        let mut s = Session::default();
+        s.select(path.clone());
+        s.unlock(PASSWORD).unwrap();
+        let g = s.add_group(None, "İş").unwrap();
+        for bad in ["", "Briefcase", "<svg>", "a b", "../x", &"a".repeat(41)] {
+            assert_eq!(
+                s.set_group_icon(&g, Some(bad)),
+                Err(BAD_ICON.to_owned()),
+                "{bad:?}"
+            );
+        }
+        s.set_group_icon(&g, Some("building-columns")).unwrap();
+        s.lock();
+        let mut t = Session::default();
+        t.select(path);
+        t.unlock(PASSWORD).unwrap();
+        let icon = |t: &Session| {
+            t.groups()
+                .unwrap()
+                .into_iter()
+                .find(|v| v.id == g)
+                .unwrap()
+                .icon
+        };
+        assert_eq!(icon(&t).as_deref(), Some("building-columns"));
+        t.set_group_icon(&g, None).unwrap();
+        assert_eq!(icon(&t), None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

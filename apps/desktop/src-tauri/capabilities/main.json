@@ -47,6 +47,7 @@
     "allow-open-url",
     "allow-move-group",
     "allow-move-entry",
+    "allow-set-group-icon",
     "allow-hotkey-active",
     "allow-app-version",
     "allow-check-update",

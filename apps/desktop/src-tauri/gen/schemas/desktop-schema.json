@@ -441,6 +441,12 @@
           "markdownDescription": "Enables the select_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_group_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-group-icon",
+          "markdownDescription": "Enables the set_group_icon command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-settings",
@@ -721,6 +727,12 @@
           "type": "string",
           "const": "deny-select-recent",
           "markdownDescription": "Denies the select_recent command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_group_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-group-icon",
+          "markdownDescription": "Denies the set_group_icon command without any pre-configured scope."
         },
         {
           "description": "Denies the set_settings command without any pre-configured scope.",

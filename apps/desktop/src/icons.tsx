@@ -91,6 +91,44 @@ export const BackIcon = () => (
   </Icon>
 );
 
+export const RowsIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="6" rx="2" />
+    <rect x="3" y="14" width="18" height="6" rx="2" />
+  </Icon>
+);
+
+export const CompactIcon = () => (
+  <Icon>
+    <path d="M3 5h18M3 10h18M3 15h18M3 20h18" />
+  </Icon>
+);
+
+export const GridIcon = () => (
+  <Icon>
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </Icon>
+);
+
+export const TableIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 10h18M3 15h18M9 10v10" />
+  </Icon>
+);
+
+export const PaletteIcon = () => (
+  <Icon>
+    <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.8-.5-1-.1-2.2 1.1-2.2H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z" />
+    <circle cx="7.5" cy="11" r="1" />
+    <circle cx="10.5" cy="7" r="1" />
+    <circle cx="15" cy="7.5" r="1" />
+  </Icon>
+);
+
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

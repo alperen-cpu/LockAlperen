@@ -1937,6 +1937,282 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+/* ---- List styles: list | compact | grid | table (Settings: listStyle) ---- */
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 12px;
+}
+
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.view-btn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.view-btn:hover {
+  color: var(--fg);
+}
+
+.view-btn.on {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.list-head {
+  align-items: center;
+  padding-bottom: 8px;
+}
+
+/* Field rows follow the width of the detail card itself (it narrows next
+   to the grid / table and in small windows). */
+.detail-pane {
+  container-type: inline-size;
+}
+
+@container (max-width: 620px) {
+  .detail-pane .card-row {
+    flex-wrap: nowrap;
+  }
+
+  .detail-pane .card-text {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .detail-pane .card-text .lbl {
+    flex: none;
+    font-size: 13px;
+  }
+}
+
+/* Grid and table need room: the list column grows, the detail narrows. */
+.app[data-list="grid"] .list-pane,
+.app[data-list="table"] .list-pane {
+  flex: 1 1 520px;
+  max-width: none;
+}
+
+.app[data-list="grid"] .detail-pane,
+.app[data-list="table"] .detail-pane {
+  flex: 1 1 380px;
+  max-width: 560px;
+}
+
+/* Compact: one line per entry. */
+.entries.style-compact {
+  gap: 4px;
+}
+
+.entries.style-compact .row {
+  padding: 6px 12px;
+  gap: 12px;
+  border-radius: 12px;
+}
+
+.entries.style-compact .avatar {
+  border-radius: 8px;
+}
+
+.entries.style-compact .row-text {
+  flex: 1;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.entries.style-compact .row-title {
+  flex: 0 1 auto;
+  font-size: 14px;
+}
+
+.entries.style-compact .row-sub {
+  flex: 1;
+}
+
+/* Grid: tiles. */
+.entries.style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.entries.style-grid .row {
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 20px 14px 16px;
+  border-radius: 20px;
+  text-align: center;
+}
+
+.entries.style-grid .avatar {
+  border-radius: 18px;
+}
+
+.entries.style-grid .row-text {
+  width: 100%;
+  align-items: center;
+}
+
+.entries.style-grid .badge {
+  margin: 0;
+}
+
+/* Table. */
+.table-box {
+  overflow: auto;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.entry-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+
+.entry-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  text-align: left;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.entry-table th:first-child,
+.entry-table td:first-child {
+  width: 36%;
+}
+
+.th-btn {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-btn:hover {
+  color: var(--fg);
+}
+
+.entry-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  max-width: 0;
+}
+
+.entry-table tbody tr {
+  cursor: pointer;
+}
+
+.entry-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.entry-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.entry-table tbody tr.active {
+  background: var(--selected);
+}
+
+.cell-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cell-btn .avatar {
+  border-radius: 8px;
+}
+
+/* Folder icon picker (Font Awesome icons). */
+.icon-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 4px 0;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.icon-choice {
+  height: 38px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-choice:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.icon-choice.on {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 @media (max-width: 1100px) {
   .detail-pane {
     padding: 28px;
@@ -2027,5 +2303,24 @@ input[type="range"] {
 
   .set-card.pad {
     padding: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .app[data-list="grid"] .list-pane,
+  .app[data-list="table"] .list-pane {
+    flex: 1 1 auto;
+  }
+
+  .entries.style-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+
+  .entry-table {
+    min-width: 560px;
+  }
+
+  .view-switch {
+    margin-left: 0;
   }
 }

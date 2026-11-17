@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Klasör simgeleri:** Klasör araçlarındaki "Simge" düğmesiyle 48 Font Awesome simgesinden biri
+  seçilebilir (ev, iş, banka, e-posta, sunucu, oyun…). Simgeler uygulamaya gömülü; ağdan bir şey
+  indirilmez. Dosya formatı değişmedi (klasörlerin `icon` alanı baştan beri vardı).
+- **Listeleme stilleri:** Liste, kompakt liste, kartlar ve tablo. Tabloda sütun başlığına tıklayınca
+  sıralama. Seçim hatırlanır.
+- Kilit açma ekranındaki "Argon2id · 64 MiB · 3 geçiş" satırı kaldırıldı.
+
 ## [0.4.1] - 2026-11-17: arayüz yerleşimi tasarımla aynı, ayarlar tam sayfa
 
 - **Arayüz tasarıma uyduruldu:** Kilit açma ekranında ortada tek kart, son kasalar altında.

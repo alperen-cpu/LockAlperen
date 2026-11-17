@@ -79,3 +79,4 @@ Adımlar [docs/UPDATES.md](docs/UPDATES.md)'de.
 - [Güncellemeler ve sürüm yayınlama](docs/UPDATES.md)
 - [Masaüstü uygulamanın güvenlik kararları](apps/desktop/README.md)
 - [Sürüm notları](CHANGELOG.md)
+- [Üçüncü taraf bildirimleri](THIRD_PARTY_NOTICES.md) (Font Awesome simgeleri, CC BY 4.0)

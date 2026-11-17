@@ -46,6 +46,7 @@ fn main() {
             "open_url",
             "move_group",
             "move_entry",
+            "set_group_icon",
             "hotkey_active",
             "app_version",
             "check_update",
