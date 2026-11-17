@@ -307,6 +307,22 @@ impl VaultData {
         Ok(())
     }
 
+    /// Sets or clears a group's icon (an icon name chosen in the app; the
+    /// field has been in the format from the start).
+    pub fn set_group_icon(&mut self, id: Uuid, icon: Option<String>) -> Result<()> {
+        let g = self
+            .groups
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or(Error::NotFound)?;
+        if g.icon != icon {
+            g.icon = icon;
+            g.modified = now();
+            self.touch();
+        }
+        Ok(())
+    }
+
     /// Moves a group, with its subgroups and entries, under `new_parent`.
     ///
     /// Refused: the root, a missing group or parent, and a parent that is the
@@ -636,6 +652,20 @@ mod tests {
         v.groups.iter_mut().find(|g| g.id == q).unwrap().parent = Some(p);
         assert!(matches!(v.move_group(a, p), Err(Error::InvalidMove)));
         assert_eq!(v.group(a).unwrap().parent, Some(root));
+    }
+
+    #[test]
+    fn group_icon_is_set_and_cleared() {
+        let mut v = VaultData::new("Test");
+        let g = v.add_group(v.root, "G").unwrap();
+        v.set_group_icon(g, Some("briefcase".into())).unwrap();
+        assert_eq!(v.group(g).unwrap().icon.as_deref(), Some("briefcase"));
+        v.set_group_icon(g, None).unwrap();
+        assert_eq!(v.group(g).unwrap().icon, None);
+        assert!(matches!(
+            v.set_group_icon(Uuid::new_v4(), None),
+            Err(Error::NotFound)
+        ));
     }
 
     #[test]

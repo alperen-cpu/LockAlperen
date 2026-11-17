@@ -313,6 +313,15 @@ async fn rename_group(
 }
 
 #[tauri::command]
+async fn set_group_icon(
+    id: String,
+    icon: Option<String>,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.set_group_icon(&id, icon.as_deref())).await
+}
+
+#[tauri::command]
 async fn move_group(
     id: String,
     parent: Option<String>,
@@ -1063,6 +1072,7 @@ pub fn run() {
             open_url,
             move_group,
             move_entry,
+            set_group_icon,
             hotkey_active,
             app_version,
             check_update,

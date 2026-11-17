@@ -12,6 +12,7 @@ import { Editor } from "./Editor";
 import { ImportDialog } from "./Import";
 import { ExtrasView } from "./Extras";
 import { SettingsPage } from "./Settings";
+import { FOLDER_ICONS, FaIcon, folderIconDef } from "./folderIcons";
 import { UpdateBanner } from "./Update";
 import type { EntrySummary, SelectedFile, VaultInfo } from "./api";
 import {
@@ -23,6 +24,11 @@ import {
   FolderIcon,
   ListIcon,
   MenuIcon,
+  RowsIcon,
+  CompactIcon,
+  GridIcon,
+  TableIcon,
+  PaletteIcon,
   BackIcon,
   MoveIcon,
   LockIcon,
@@ -547,11 +553,6 @@ function UnlockScreen(props: {
             </p>
           )}
 
-          {file?.kdf && (
-            <p className="muted small center kdf-line">
-              Argon2id · {file.kdf.memoryMib} MiB · {file.kdf.iterations} geçiş
-            </p>
-          )}
         </form>
       </main>
       {side(busy)}
@@ -585,6 +586,8 @@ function Avatar({ title, size, icon }: { title: string; size: number; icon?: str
     </span>
   );
 }
+
+const AVATAR_SIZE: Record<api.ListStyle, number> = { list: 42, compact: 28, grid: 56, table: 28 };
 
 const ISSUE_LABEL: Record<api.Issue, string> = {
   weak: "Zayıf",
@@ -749,6 +752,7 @@ function VaultScreen({
     root: boolean;
     depth: number;
     parent: string | null;
+    icon: string | null;
   };
   const groups = useMemo(() => {
     const kids = new Map<string | null, api.GroupView[]>();
@@ -771,6 +775,7 @@ function VaultScreen({
             root: g.parent === null,
             depth,
             parent: g.parent,
+            icon: g.icon,
           },
         ] as const);
         walk(g.id, depth + 1);
@@ -801,6 +806,39 @@ function VaultScreen({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
+  // Folder whose icon picker is open.
+  const [iconFor, setIconFor] = useState<string | null>(null);
+
+  async function chooseIcon(id: string, key: string | null) {
+    setIconFor(null);
+    try {
+      onEntries(await api.setGroupIcon(id, key));
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
+
+  // Entry list style (Settings: listStyle), remembered across starts.
+  const [listStyle, setListStyle] = useState<api.ListStyle>("list");
+  useEffect(() => {
+    api.getSettings().then((s) => setListStyle(s.listStyle), () => {});
+  }, []);
+  async function changeListStyle(style: api.ListStyle) {
+    setListStyle(style);
+    try {
+      const s = await api.getSettings();
+      await api.setSettings({ ...s, listStyle: style });
+    } catch {
+      /* the choice still applies until the app restarts */
+    }
+  }
+
+  // Table sorting (table style only).
+  type SortKey = "title" | "username" | "url" | "group";
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "title", dir: 1 });
+  function sortBy(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
+  }
 
   function canDrop(d: Drag | null, target: string): boolean {
     if (!d) return false;
@@ -927,6 +965,12 @@ function VaultScreen({
     );
   }, [open.entries, query, group, issuesOf]);
 
+  const sortedShown = useMemo(() => {
+    const list = shown.slice();
+    list.sort((a, b) => sort.dir * a[sort.key].localeCompare(b[sort.key], "tr"));
+    return list;
+  }, [shown, sort]);
+
   const current = open.entries.find((e) => e.id === selected) ?? null;
 
   useEffect(() => {
@@ -948,7 +992,7 @@ function VaultScreen({
   }
 
   return (
-    <div className={"app" + (navOpen ? " nav-open" : "")} data-view={view}>
+    <div className={"app" + (navOpen ? " nav-open" : "")} data-view={view} data-list={listStyle}>
       {settingsOpen ? (
         <SettingsPage
           onClose={() => setSettingsOpen(false)}
@@ -1117,12 +1161,22 @@ function VaultScreen({
                   }}
                   title={g.root ? undefined : "Başka bir klasörün üzerine sürükleyerek taşıyın"}
                 >
-                  <FolderIcon />
+                  {folderIconDef(g.icon) ? <FaIcon def={folderIconDef(g.icon)!} /> : <FolderIcon />}
                   <span className="ellipsis">{g.name}</span>
                   <span className="count">{g.count}</span>
                 </button>
                 {group === id && (
                   <span className="nav-tools">
+                    <button
+                      type="button"
+                      className="ghost-icon tiny"
+                      aria-label="Klasör simgesi seç"
+                      title="Simge"
+                      aria-expanded={iconFor === id}
+                      onClick={() => setIconFor(iconFor === id ? null : id)}
+                    >
+                      <PaletteIcon />
+                    </button>
                     <button
                       type="button"
                       className="ghost-icon tiny"
@@ -1163,6 +1217,40 @@ function VaultScreen({
                 )}
               </div>
             ),
+          )}
+          {iconFor && (
+            <div
+              className="icon-picker"
+              role="group"
+              aria-label="Klasör simgesi"
+              onKeyDown={(e) => e.key === "Escape" && setIconFor(null)}
+            >
+              <button
+                type="button"
+                className="icon-choice"
+                title="Varsayılan"
+                aria-label="Varsayılan klasör simgesi"
+                onClick={() => void chooseIcon(iconFor, null)}
+                autoFocus
+              >
+                <FolderIcon />
+              </button>
+              {FOLDER_ICONS.map((i) => (
+                <button
+                  key={i.key}
+                  type="button"
+                  className={
+                    "icon-choice" +
+                    (groups.find(([gid]) => gid === iconFor)?.[1].icon === i.key ? " on" : "")
+                  }
+                  title={i.label}
+                  aria-label={i.label}
+                  onClick={() => void chooseIcon(iconFor, i.key)}
+                >
+                  <FaIcon def={i.def} size={18} />
+                </button>
+              ))}
+            </div>
           )}
           {moving && (
             <div className="nav-form">
@@ -1235,7 +1323,6 @@ function VaultScreen({
           <div className="list-head">
             <div className="list-title">
               <h2 className="ellipsis">{listTitle}</h2>
-              <span className="muted small">{shown.length} kayıt</span>
             </div>
             <button
               type="button"
@@ -1246,6 +1333,31 @@ function VaultScreen({
               <PlusIcon />
               Yeni kayıt
             </button>
+          </div>
+          <div className="list-toolbar">
+            <span className="muted small">{shown.length} kayıt</span>
+              <div className="view-switch" role="group" aria-label="Görünüm">
+                {(
+                  [
+                    ["list", "Liste", <RowsIcon key="l" />],
+                    ["compact", "Kompakt liste", <CompactIcon key="c" />],
+                    ["grid", "Kartlar", <GridIcon key="g" />],
+                    ["table", "Tablo", <TableIcon key="t" />],
+                  ] as [api.ListStyle, string, ReactNode][]
+                ).map(([style, label, icon]) => (
+                  <button
+                    key={style}
+                    type="button"
+                    className={"view-btn" + (listStyle === style ? " on" : "")}
+                    aria-label={label}
+                    title={label}
+                    aria-pressed={listStyle === style}
+                    onClick={() => void changeListStyle(style)}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
           </div>
           <div className="chips list-chips" role="group" aria-label="Göster">
             <button
@@ -1266,6 +1378,7 @@ function VaultScreen({
                   aria-pressed={group === id}
                   onClick={() => setGroup(id)}
                 >
+                  {folderIconDef(g.icon) && <FaIcon def={folderIconDef(g.icon)!} size={13} />}
                   {g.name}
                 </button>
               ))}
@@ -1283,7 +1396,78 @@ function VaultScreen({
               {open.entries.length === 0 ? "Kasada kayıt yok." : "Sonuç yok."}
             </p>
           ) : (
-            <ul className="entries">
+            listStyle === "table" ? (
+              <div className="table-box">
+                <table className="entry-table">
+                  <thead>
+                    <tr>
+                      {(
+                        [
+                          ["title", "Başlık"],
+                          ["username", "Kullanıcı adı"],
+                          ["url", "Web sitesi"],
+                          ["group", "Klasör"],
+                        ] as [SortKey, string][]
+                      ).map(([key, label]) => (
+                        <th
+                          key={key}
+                          scope="col"
+                          aria-sort={
+                            sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : "none"
+                          }
+                        >
+                          <button type="button" className="th-btn" onClick={() => sortBy(key)}>
+                            {label}
+                            {sort.key === key && <span aria-hidden="true">{sort.dir === 1 ? " ↑" : " ↓"}</span>}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedShown.map((e) => (
+                      <tr
+                        key={e.id}
+                        className={e.id === selected ? "active" : ""}
+                        onClick={() => {
+                          setSelected(e.id);
+                          setView("detail");
+                        }}
+                        draggable
+                        onDragStart={(ev) => {
+                          ev.dataTransfer.effectAllowed = "move";
+                          ev.dataTransfer.setData("text/plain", e.title);
+                          setDrag({ kind: "entry", id: e.id });
+                        }}
+                        onDragEnd={() => {
+                          setDrag(null);
+                          setDropOn(null);
+                        }}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="cell-btn"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setSelected(e.id);
+                              setView("detail");
+                            }}
+                          >
+                            <Avatar title={e.title} size={28} icon={e.icon} />
+                            <span className="ellipsis">{e.title || "(başlıksız)"}</span>
+                          </button>
+                        </td>
+                        <td className="ellipsis">{e.username}</td>
+                        <td className="ellipsis muted">{e.url}</td>
+                        <td className="ellipsis muted">{e.group}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+            <ul className={"entries style-" + listStyle}>
               {shown.map((e) => (
                 // Text only: React escapes it; no innerHTML anywhere.
                 <li key={e.id}>
@@ -1305,7 +1489,7 @@ function VaultScreen({
                       setDropOn(null);
                     }}
                   >
-                    <Avatar title={e.title} size={42} icon={e.icon} />
+                    <Avatar title={e.title} size={AVATAR_SIZE[listStyle]} icon={e.icon} />
                     <span className="row-text">
                       <span className="row-title ellipsis">{e.title || "(başlıksız)"}</span>
                       <span className="row-sub ellipsis muted">{e.username}</span>
@@ -1319,6 +1503,7 @@ function VaultScreen({
                 </li>
               ))}
             </ul>
+            )
           )}
         </section>
 

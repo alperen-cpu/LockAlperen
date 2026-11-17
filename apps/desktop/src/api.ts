@@ -85,6 +85,8 @@ export interface GroupView {
   parent: string | null;
   entries: number;
   totalEntries: number;
+  /** Font Awesome key chosen in the app, or null. */
+  icon: string | null;
 }
 
 /** Holds secrets while the editor is open. */
@@ -119,6 +121,11 @@ export interface GenOptions {
 }
 
 export const listGroups = () => invoke<GroupView[]>("list_groups");
+
+/** Sets a folder's icon (a key from folderIcons.tsx; null = default). Rust
+ *  accepts only short lowercase names. */
+export const setGroupIcon = (id: string, icon: string | null) =>
+  invoke<EntrySummary[]>("set_group_icon", { id, icon });
 
 /** Moves a folder (with its subfolders and entries); null = top level.
  *  Rust refuses moving the root or into itself / its subfolders. */
@@ -219,7 +226,10 @@ export interface Settings {
   autotypeShortcut: Shortcut;
   /** "system" follows Windows. */
   theme: Theme;
+  listStyle: ListStyle;
 }
+
+export type ListStyle = "list" | "compact" | "grid" | "table";
 
 export type Theme = "system" | "light" | "dark";
 

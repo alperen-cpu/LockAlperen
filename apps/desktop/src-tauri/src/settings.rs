@@ -77,6 +77,33 @@ impl Theme {
 
 static THEME: AtomicU8 = AtomicU8::new(Theme::System as u8);
 
+/// How the entry list is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ListStyle {
+    #[default]
+    List = 0,
+    Compact = 1,
+    Grid = 2,
+    Table = 3,
+}
+
+impl ListStyle {
+    fn from_u8(v: u8) -> ListStyle {
+        [
+            ListStyle::List,
+            ListStyle::Compact,
+            ListStyle::Grid,
+            ListStyle::Table,
+        ]
+        .into_iter()
+        .find(|t| *t as u8 == v)
+        .unwrap_or_default()
+    }
+}
+
+static LIST_STYLE: AtomicU8 = AtomicU8::new(ListStyle::List as u8);
+
 /// An unknown value (e.g. from a newer version) means the default for this
 /// field only, instead of failing the whole file.
 fn lenient<'de, D, T>(d: D) -> Result<T, D::Error>
@@ -100,6 +127,8 @@ pub struct Settings {
     pub autotype_shortcut: Shortcut,
     #[serde(deserialize_with = "lenient")]
     pub theme: Theme,
+    #[serde(deserialize_with = "lenient")]
+    pub list_style: ListStyle,
 }
 
 impl Default for Settings {
@@ -110,6 +139,7 @@ impl Default for Settings {
             close_to_tray: true,
             autotype_shortcut: Shortcut::CtrlAltA,
             theme: Theme::System,
+            list_style: ListStyle::List,
         }
     }
 }
@@ -127,6 +157,7 @@ impl Settings {
             close_to_tray: self.close_to_tray,
             autotype_shortcut: self.autotype_shortcut,
             theme: self.theme,
+            list_style: self.list_style,
         }
     }
 }
@@ -142,6 +173,7 @@ pub fn apply(s: Settings) {
     CLOSE_TO_TRAY.store(s.close_to_tray, Ordering::Relaxed);
     AUTOTYPE_SHORTCUT.store(s.autotype_shortcut as u8, Ordering::Relaxed);
     THEME.store(s.theme as u8, Ordering::Relaxed);
+    LIST_STYLE.store(s.list_style as u8, Ordering::Relaxed);
 }
 
 pub fn autotype_shortcut() -> Shortcut {
@@ -159,6 +191,7 @@ pub fn current() -> Settings {
         close_to_tray: close_to_tray(),
         autotype_shortcut: autotype_shortcut(),
         theme: Theme::from_u8(THEME.load(Ordering::Relaxed)),
+        list_style: ListStyle::from_u8(LIST_STYLE.load(Ordering::Relaxed)),
     }
 }
 
@@ -240,6 +273,7 @@ mod tests {
                 close_to_tray: false,
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
                 theme: Theme::Dark,
+                list_style: ListStyle::Grid,
             },
         )
         .unwrap();
@@ -251,6 +285,7 @@ mod tests {
                 close_to_tray: false,
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
                 theme: Theme::Dark,
+                list_style: ListStyle::Grid,
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -274,6 +309,7 @@ mod tests {
                 close_to_tray: true,
                 autotype_shortcut: Shortcut::CtrlAltA,
                 theme: Theme::System,
+                list_style: ListStyle::List,
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
@@ -310,6 +346,11 @@ mod tests {
         let s: Settings = serde_json::from_slice(br#"{"theme": "dark"}"#).unwrap();
         assert_eq!(s.theme, Theme::Dark);
         assert_eq!(serde_json::to_value(Theme::Light).unwrap(), "light");
+        // List style: unknown -> the plain list; others kept.
+        let s: Settings = serde_json::from_slice(br#"{"listStyle": "mosaic"}"#).unwrap();
+        assert_eq!(s.list_style, ListStyle::List);
+        let s: Settings = serde_json::from_slice(br#"{"listStyle": "table"}"#).unwrap();
+        assert_eq!(s.list_style, ListStyle::Table);
         assert_eq!(
             serde_json::to_value(Shortcut::CtrlAltShiftK).unwrap(),
             "ctrl-alt-shift-k"
