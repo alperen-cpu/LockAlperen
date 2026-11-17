@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.4.1] - 2026-11-17: arayüz yerleşimi tasarımla aynı, ayarlar tam sayfa
 
 - **Arayüz tasarıma uyduruldu:** Kilit açma ekranında ortada tek kart, son kasalar altında.
   Üst çubukta arama ortada, kasa adı logonun altında. Liste başlığı ve "Yeni kayıt" düğmesi.
