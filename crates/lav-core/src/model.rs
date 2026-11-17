@@ -45,6 +45,26 @@ pub struct VaultData {
     pub entries: Vec<Entry>,
     pub created: Timestamp,
     pub modified: Timestamp,
+    /// The recycle bin folder (KeePass "Recycle Bin"), created on the first
+    /// delete. Optional field added later: older files read as None, and
+    /// older app versions ignore it (the bin is then an ordinary folder).
+    #[serde(default)]
+    #[zeroize(skip)]
+    pub recycle_bin: Option<Uuid>,
+}
+
+/// Name of the recycle bin folder when it is created.
+pub const RECYCLE_BIN_NAME: &str = "Geri Dönüşüm Kutusu";
+/// Folder icon of the recycle bin (an app icon name).
+pub const RECYCLE_BIN_ICON: &str = "trash";
+
+/// What a delete did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removal {
+    /// Moved into the recycle bin; can be restored.
+    Recycled,
+    /// Gone for good (it was already in the bin).
+    Deleted,
 }
 
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -260,6 +280,7 @@ impl VaultData {
             entries: Vec::new(),
             created: t,
             modified: t,
+            recycle_bin: None,
         }
     }
 
@@ -409,8 +430,99 @@ impl VaultData {
         }
         self.groups.retain(|g| !doomed.contains(&g.id));
         self.entries.retain(|e| !doomed.contains(&e.group));
+        if self.recycle_bin.is_some_and(|b| doomed.contains(&b)) {
+            self.recycle_bin = None;
+        }
         self.touch();
         Ok(())
+    }
+
+    // ----- recycle bin -----
+
+    /// True if `group` is the recycle bin or a folder inside it. Bounded
+    /// walk, so it also ends on corrupted (cyclic) data.
+    pub fn in_recycle_bin(&self, group: Uuid) -> bool {
+        let Some(bin) = self.recycle_bin else {
+            return false;
+        };
+        let mut cur = Some(group);
+        let mut steps = 0;
+        while let Some(g) = cur {
+            if g == bin {
+                return true;
+            }
+            if steps > self.groups.len() {
+                return false;
+            }
+            steps += 1;
+            cur = self.group(g).and_then(|g| g.parent);
+        }
+        false
+    }
+
+    /// The recycle bin, created under the root if it does not exist yet.
+    pub fn ensure_recycle_bin(&mut self) -> Uuid {
+        if let Some(b) = self.recycle_bin.filter(|b| self.group(*b).is_some()) {
+            return b;
+        }
+        let root = self.root;
+        let id = self
+            .add_group(root, RECYCLE_BIN_NAME)
+            .expect("the root group always exists");
+        if let Some(g) = self.groups.iter_mut().find(|g| g.id == id) {
+            g.icon = Some(RECYCLE_BIN_ICON.into());
+        }
+        self.recycle_bin = Some(id);
+        id
+    }
+
+    /// KeePass-style delete: an entry outside the bin moves into it; an
+    /// entry already in the bin is deleted for good. Moving is not an edit
+    /// (no history version, `modified` kept).
+    pub fn remove_entry(&mut self, id: Uuid) -> Result<Removal> {
+        let group = self.entry(id).ok_or(Error::NotFound)?.group;
+        if self.in_recycle_bin(group) {
+            self.delete_entry(id)?;
+            return Ok(Removal::Deleted);
+        }
+        let bin = self.ensure_recycle_bin();
+        self.move_entry(id, bin)?;
+        Ok(Removal::Recycled)
+    }
+
+    /// KeePass-style folder delete: a folder outside the bin moves into it
+    /// with everything below it; the bin itself or a folder inside it is
+    /// deleted for good. The root is never removed.
+    pub fn remove_group(&mut self, id: Uuid) -> Result<Removal> {
+        if id == self.root {
+            return Err(Error::CannotDeleteRoot);
+        }
+        if self.group(id).is_none() {
+            return Err(Error::NotFound);
+        }
+        if self.in_recycle_bin(id) {
+            self.delete_group(id)?;
+            return Ok(Removal::Deleted);
+        }
+        let bin = self.ensure_recycle_bin();
+        self.move_group(id, bin)?;
+        Ok(Removal::Recycled)
+    }
+
+    /// Deletes everything inside the recycle bin for good; the bin folder
+    /// itself stays. Returns the number of entries deleted.
+    pub fn empty_recycle_bin(&mut self) -> usize {
+        let Some(bin) = self.recycle_bin.filter(|b| self.group(*b).is_some()) else {
+            return 0;
+        };
+        let before = self.entries.len();
+        let kids: Vec<Uuid> = self.children(bin).map(|g| g.id).collect();
+        for k in kids {
+            let _ = self.delete_group(k);
+        }
+        self.entries.retain(|e| e.group != bin);
+        self.touch();
+        before - self.entries.len()
     }
 
     /// Restores structural invariants on data read from disk WITHOUT deleting
@@ -504,7 +616,16 @@ impl VaultData {
             }
         }
 
-        // 4. Entries must live in an existing group.
+        // 4. The recycle bin must be an existing group other than the root.
+        if self
+            .recycle_bin
+            .is_some_and(|b| b == root || !reached.contains(&b))
+        {
+            self.recycle_bin = None;
+            fixes += 1;
+        }
+
+        // 5. Entries must live in an existing group.
         for e in self
             .entries
             .iter_mut()
@@ -759,6 +880,89 @@ mod tests {
             v.duplicate_entry(Uuid::new_v4(), ""),
             Err(Error::NotFound)
         ));
+    }
+
+    #[test]
+    fn recycle_bin_moves_then_deletes() {
+        let mut v = VaultData::new("Test");
+        let root = v.root;
+        let a = v.add_group(root, "A").unwrap();
+        let sub = v.add_group(a, "Sub").unwrap();
+        let e1 = v.add_entry(Entry::new(root, "one")).unwrap();
+        let e2 = v.add_entry(Entry::new(sub, "two")).unwrap();
+        assert!(v.recycle_bin.is_none(), "created lazily");
+
+        // First delete: into the bin, no history, created on demand.
+        let before = v.entry(e1).unwrap().modified;
+        assert_eq!(v.remove_entry(e1).unwrap(), Removal::Recycled);
+        let bin = v.recycle_bin.unwrap();
+        assert_eq!(v.group(bin).unwrap().name, RECYCLE_BIN_NAME);
+        assert_eq!(v.group(bin).unwrap().parent, Some(root));
+        assert_eq!(v.entry(e1).unwrap().group, bin);
+        assert!(v.entry(e1).unwrap().history.is_empty());
+        assert_eq!(v.entry(e1).unwrap().modified, before);
+
+        // A folder goes in with its subtree; still one bin.
+        assert_eq!(v.remove_group(a).unwrap(), Removal::Recycled);
+        assert_eq!(v.group(a).unwrap().parent, Some(bin));
+        assert!(v.in_recycle_bin(sub));
+        assert_eq!(v.entry(e2).unwrap().group, sub);
+        assert_eq!(
+            v.groups.iter().filter(|g| g.parent == Some(root)).count(),
+            1
+        );
+
+        // Deleting from inside the bin is permanent.
+        assert_eq!(v.remove_entry(e1).unwrap(), Removal::Deleted);
+        assert!(v.entry(e1).is_none());
+        assert_eq!(v.remove_group(sub).unwrap(), Removal::Deleted);
+        assert!(v.entry(e2).is_none() && v.group(sub).is_none());
+
+        // Emptying keeps the bin; deleting the bin itself forgets it.
+        let e3 = v.add_entry(Entry::new(root, "three")).unwrap();
+        v.remove_entry(e3).unwrap();
+        assert_eq!(v.empty_recycle_bin(), 1);
+        assert!(v.group(bin).is_some() && v.group(a).is_none());
+        assert_eq!(v.remove_group(bin).unwrap(), Removal::Deleted);
+        assert!(v.recycle_bin.is_none());
+        assert!(matches!(v.remove_group(root), Err(Error::CannotDeleteRoot)));
+        assert_eq!(v.repair_structure(), 0);
+    }
+
+    /// A payload written before `recycle_bin` existed still decodes (None),
+    /// and a new payload keeps the bin.
+    #[test]
+    fn recycle_bin_field_is_optional_in_cbor() {
+        let mut v = VaultData::new("Test");
+        let e = v.add_entry(Entry::new(v.root, "x")).unwrap();
+        v.remove_entry(e).unwrap();
+        let bin = v.recycle_bin;
+        let mut buf = Vec::new();
+        ciborium::into_writer(&v, &mut buf).unwrap();
+        let back: VaultData = ciborium::from_reader(buf.as_slice()).unwrap();
+        assert_eq!(back.recycle_bin, bin);
+
+        let mut value: ciborium::Value = ciborium::from_reader(buf.as_slice()).unwrap();
+        if let ciborium::Value::Map(m) = &mut value {
+            m.retain(|(k, _)| k.as_text() != Some("recycle_bin"));
+        }
+        let mut old = Vec::new();
+        ciborium::into_writer(&value, &mut old).unwrap();
+        let back: VaultData = ciborium::from_reader(old.as_slice()).unwrap();
+        assert!(back.recycle_bin.is_none());
+        assert_eq!(back.entries.len(), 1);
+    }
+
+    #[test]
+    fn repair_drops_a_bad_recycle_bin() {
+        let mut v = VaultData::new("Test");
+        v.recycle_bin = Some(Uuid::new_v4());
+        assert_eq!(v.repair_structure(), 1);
+        assert!(v.recycle_bin.is_none());
+        v.recycle_bin = Some(v.root);
+        assert_eq!(v.repair_structure(), 1);
+        assert!(v.recycle_bin.is_none());
+        assert!(!v.in_recycle_bin(v.root));
     }
 
     #[test]

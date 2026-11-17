@@ -36,6 +36,7 @@ fn main() {
             "add_group",
             "rename_group",
             "delete_group",
+            "empty_recycle_bin",
             "restore_version",
             "add_attachment",
             "remove_attachment",

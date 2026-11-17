@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use lav_core::format::{HEADER_LEN, TAG_LEN};
-use lav_core::{Entry, Error as CoreError, KdfParams, PasswordOptions, Vault, VaultData};
+use lav_core::{Entry, Error as CoreError, KdfParams, PasswordOptions, Removal, Vault, VaultData};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -30,6 +30,10 @@ pub struct EntrySummary {
     pub has_totp: bool,
     /// `data:image/png;base64,...` of the sanitized, re-encoded icon.
     pub icon: Option<String>,
+    /// In the recycle bin (left out of "Tüm kayıtlar", TOTP and auto-type).
+    pub in_recycle_bin: bool,
+    /// Expiry as Unix seconds; None = never.
+    pub expires: Option<i64>,
 }
 
 /// What the unlock screen shows about the chosen file. The KDF values come
@@ -140,6 +144,8 @@ pub struct GroupView {
     pub total_entries: usize,
     /// Icon name chosen in the app (Font Awesome key), or None.
     pub icon: Option<String>,
+    /// This folder is the recycle bin.
+    pub recycle_bin: bool,
 }
 
 /// CSV cell: always quoted, quotes doubled, and a leading = + - @ tab or CR
@@ -498,6 +504,7 @@ impl Session {
                 entries: direct(g.id),
                 total_entries: total(g.id),
                 icon: g.icon.clone().filter(|i| icon_name_ok(i)),
+                recycle_bin: data.recycle_bin == Some(g.id),
             })
             .collect();
         list.sort_by_cached_key(|g| g.name.to_lowercase());
@@ -678,14 +685,25 @@ impl Session {
 
     /// Deletes a folder, its subfolders AND their entries (the UI asks twice
     /// and shows the count). The root cannot be deleted.
-    pub fn delete_group(&mut self, id: &str) -> Result<(), String> {
+    /// KeePass-style: moves the folder into the recycle bin; the bin itself
+    /// or a folder inside it is deleted for good. Returns true if deleted
+    /// for good.
+    pub fn delete_group(&mut self, id: &str) -> Result<bool, String> {
         self.commit(|data| {
             let g = Self::group_uuid(data, id)?;
-            data.delete_group(g).map_err(|e| match e {
-                CoreError::CannotDeleteRoot => CANNOT_DELETE_ROOT.to_owned(),
-                _ => NO_SUCH_GROUP.to_owned(),
-            })
+            data.remove_group(g)
+                .map(|r| r == Removal::Deleted)
+                .map_err(|e| match e {
+                    CoreError::CannotDeleteRoot => CANNOT_DELETE_ROOT.to_owned(),
+                    _ => NO_SUCH_GROUP.to_owned(),
+                })
         })
+    }
+
+    /// Deletes everything in the recycle bin for good. Returns the number of
+    /// entries deleted.
+    pub fn empty_recycle_bin(&mut self) -> Result<usize, String> {
+        self.commit(|data| Ok(data.empty_recycle_bin()))
     }
 
     /// Sets the folder's icon (None = the default folder icon).
@@ -928,6 +946,8 @@ impl Session {
             .data
             .entries
             .iter()
+            // Deleted entries never auto-type (as in KeePass).
+            .filter(|e| !vault.data.in_recycle_bin(e.group))
             .filter(|e| {
                 let markers = crate::autotype::expected_markers(&e.title, &e.url);
                 crate::autotype::title_matches(window_title, &markers)
@@ -958,7 +978,9 @@ impl Session {
         })
     }
 
-    pub fn delete_entry(&mut self, id: &str) -> Result<(), String> {
+    /// KeePass-style: moves the entry into the recycle bin; an entry already
+    /// in the bin is deleted for good. Returns true if deleted for good.
+    pub fn delete_entry(&mut self, id: &str) -> Result<bool, String> {
         self.commit(|data| {
             let uuid = data
                 .entries
@@ -966,7 +988,8 @@ impl Session {
                 .find(|e| e.id.to_string() == id)
                 .map(|e| e.id)
                 .ok_or(NO_SUCH_ENTRY)?;
-            data.delete_entry(uuid)
+            data.remove_entry(uuid)
+                .map(|r| r == Removal::Deleted)
                 .map_err(|_| NO_SUCH_ENTRY.to_owned())
         })
     }
@@ -1025,7 +1048,14 @@ impl Session {
 
     pub fn health(&self, now: i64) -> Result<crate::health::Report, String> {
         let vault = self.vault.as_ref().ok_or(LOCKED)?;
-        Ok(crate::health::check(&vault.data.entries, now))
+        // Entries in the recycle bin are not counted.
+        let live: Vec<&Entry> = vault
+            .data
+            .entries
+            .iter()
+            .filter(|e| !vault.data.in_recycle_bin(e.group))
+            .collect();
+        Ok(crate::health::check_refs(&live, now))
     }
 
     fn entry_ref(&self, id: &str) -> Result<&Entry, String> {
@@ -1161,6 +1191,8 @@ impl Session {
                         base64::engine::general_purpose::STANDARD.encode(&i.png)
                     )
                 }),
+                in_recycle_bin: data.in_recycle_bin(e.group),
+                expires: e.expires,
                 title: e.title.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
@@ -1720,10 +1752,57 @@ mod tests {
         s.unlock(PASSWORD).unwrap();
         assert_eq!(s.entry_form(&id).unwrap().title, "zeta 2");
 
-        s.delete_entry(&id).unwrap();
+        // First delete: into the recycle bin (persisted), still there.
+        assert_eq!(s.delete_entry(&id), Ok(false));
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        let e = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == id)
+            .unwrap();
+        assert!(e.in_recycle_bin);
+        let bin = s
+            .groups()
+            .unwrap()
+            .into_iter()
+            .find(|g| g.recycle_bin)
+            .unwrap();
+        assert_eq!(e.group_id, bin.id);
+        assert_eq!(bin.icon.as_deref(), Some("trash"));
+
+        // Second delete, from the bin: gone for good.
+        assert_eq!(s.delete_entry(&id), Ok(true));
         s.lock();
         s.unlock(PASSWORD).unwrap();
         assert_eq!(s.entry_form(&id), Err(NO_SUCH_ENTRY.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn recycle_bin_is_left_out_of_health_and_auto_type() {
+        let (dir, mut s) = opened("bin-health");
+        let id = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap()
+            .id;
+        let checked = s.health(0).unwrap().checked;
+        assert_eq!(s.autotype_matches("zeta - Chrome").unwrap().len(), 1);
+        s.delete_entry(&id).unwrap();
+        assert_eq!(s.health(0).unwrap().checked, checked - 1);
+        assert!(s.autotype_matches("zeta - Chrome").unwrap().is_empty());
+
+        // Emptying deletes for good and keeps the bin folder.
+        let before = s.entries().unwrap().len();
+        s.empty_recycle_bin().unwrap();
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        assert_eq!(s.entries().unwrap().len(), before - 1);
+        assert!(s.groups().unwrap().iter().any(|g| g.recycle_bin));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1923,8 +2002,19 @@ mod tests {
         s.rename_group(&g, "Banka").unwrap();
         assert_eq!(s.delete_group(&root), Err(CANNOT_DELETE_ROOT.to_owned()));
         let before = s.entries().unwrap().len();
-        s.delete_group(&g).unwrap();
-        // Persisted: reopen and check folder and its entry are gone.
+        // First delete: the folder moves into the recycle bin with its entry.
+        assert_eq!(s.delete_group(&g), Ok(false));
+        s.lock();
+        s.unlock(PASSWORD).unwrap();
+        let gv = s.groups().unwrap();
+        let bin = gv.iter().find(|x| x.recycle_bin).unwrap();
+        assert_eq!(
+            gv.iter().find(|x| x.id == g).unwrap().parent,
+            Some(bin.id.clone())
+        );
+        assert_eq!(s.entries().unwrap().len(), before);
+        // Deleting it again (from the bin): gone with its entry, persisted.
+        assert_eq!(s.delete_group(&g), Ok(true));
         s.lock();
         s.unlock(PASSWORD).unwrap();
         assert!(!s.groups().unwrap().iter().any(|x| x.id == g || x.id == sub));

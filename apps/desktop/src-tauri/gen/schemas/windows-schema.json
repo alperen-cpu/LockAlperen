@@ -255,6 +255,12 @@
           "markdownDescription": "Enables the duplicate_entry command without any pre-configured scope."
         },
         {
+          "description": "Enables the empty_recycle_bin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-empty-recycle-bin",
+          "markdownDescription": "Enables the empty_recycle_bin command without any pre-configured scope."
+        },
+        {
           "description": "Enables the entry_extras command without any pre-configured scope.",
           "type": "string",
           "const": "allow-entry-extras",
@@ -553,6 +559,12 @@
           "type": "string",
           "const": "deny-duplicate-entry",
           "markdownDescription": "Denies the duplicate_entry command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the empty_recycle_bin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-empty-recycle-bin",
+          "markdownDescription": "Denies the empty_recycle_bin command without any pre-configured scope."
         },
         {
           "description": "Denies the entry_extras command without any pre-configured scope.",

@@ -27,6 +27,10 @@ export interface EntrySummary {
   hasTotp: boolean;
   /** data: URL of a sanitized PNG, or null. */
   icon: string | null;
+  /** In the recycle bin: left out of "Tüm kayıtlar" and TOTP. */
+  inRecycleBin: boolean;
+  /** Unix seconds; null = never expires. */
+  expires: number | null;
 }
 
 /** Opens the native file picker. Returns null if the user cancelled. */
@@ -87,7 +91,24 @@ export interface GroupView {
   totalEntries: number;
   /** Font Awesome key chosen in the app, or null. */
   icon: string | null;
+  /** This folder is the recycle bin. */
+  recycleBin: boolean;
 }
+
+/** True if the folder is the recycle bin or inside it. */
+export function inRecycleBin(groupId: string, groups: GroupView[]): boolean {
+  const seen = new Set<string>();
+  let cur = groups.find((g) => g.id === groupId);
+  while (cur && !seen.has(cur.id)) {
+    if (cur.recycleBin) return true;
+    seen.add(cur.id);
+    cur = groups.find((g) => g.id === cur!.parent);
+  }
+  return false;
+}
+
+/** Deletes everything in the recycle bin for good. */
+export const emptyRecycleBin = () => invoke<EntrySummary[]>("empty_recycle_bin");
 
 /** Holds secrets while the editor is open. */
 export interface EntryForm {
@@ -239,7 +260,33 @@ export interface Settings {
   clipboardSeconds: number;
   /** Lock on Win+L, sleep, disconnect and logoff. */
   lockOnSystemEvents: boolean;
+  // ----- From KeePass "Options" -----
+  lockOnMinimize: boolean;
+  exitInsteadOfLock: boolean;
+  minimizeAfterCopy: boolean;
+  minimizeOnLock: boolean;
+  alwaysOnTop: boolean;
+  minimizeToTray: boolean;
+  startMinimized: boolean;
+  showWindowShortcut: ShowShortcut;
+  /** Mirrors the HKCU Run key (Rust reads and writes it). */
+  runAtStartup: boolean;
+  showExpiredOnOpen: boolean;
+  autoGeneratePassword: boolean;
+  generator: GenOptions;
 }
+
+export type ShowShortcut = "off" | "ctrl-alt-k" | "ctrl-alt-shift-w";
+
+export const SHOW_SHORTCUTS: { value: ShowShortcut; label: string }[] = [
+  { value: "ctrl-alt-k", label: "Ctrl+Alt+K (KeePass ile aynı)" },
+  { value: "ctrl-alt-shift-w", label: "Ctrl+Alt+Shift+W" },
+  { value: "off", label: "Kapalı" },
+];
+
+/** Generator length limits (Rust clamps to the same). */
+export const GEN_MIN_LENGTH = 8;
+export const GEN_MAX_LENGTH = 128;
 
 export const CLIPBOARD_CHOICES = [5, 10, 12, 15, 20, 30, 45, 60, 90];
 
@@ -281,7 +328,10 @@ export const SHORTCUTS: { value: Shortcut; label: string }[] = [
 ];
 
 /** False if the shortcut is off, or another program already owns it. */
-export const hotkeyActive = () => invoke<boolean>("hotkey_active");
+/** Whether each global shortcut is registered (false: off, or taken by
+ *  another program). */
+export const hotkeyActive = () =>
+  invoke<{ autotype: boolean; showWindow: boolean }>("hotkey_active");
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
 

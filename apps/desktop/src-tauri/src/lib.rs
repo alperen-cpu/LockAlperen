@@ -13,6 +13,7 @@ mod lockicon;
 mod recent;
 mod session;
 mod settings;
+mod startup;
 mod titlebar;
 mod totp;
 mod tray;
@@ -36,9 +37,39 @@ const INTERNAL: &str = "Beklenmeyen bir hata oluştu.";
 #[derive(Default, Clone)]
 struct SettingsFile(Arc<Mutex<Option<std::path::PathBuf>>>);
 
+/// The app, for threads started before Tauri (idle lock) and for locking
+/// paths that have no window at hand.
+static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+fn main_window() -> Option<tauri::WebviewWindow> {
+    use tauri::Manager;
+    APP.get()?.get_webview_window("main")
+}
+
+/// Until this time (ms since the Unix epoch) a minimize is our own (auto-type,
+/// "minimize after copy") and must not lock the vault.
+static QUIET_MINIMIZE_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Minimizes without triggering "lock when minimized".
+fn minimize_quietly(window: &tauri::WebviewWindow) {
+    QUIET_MINIMIZE_UNTIL.store(now_ms() + 1500, std::sync::atomic::Ordering::Relaxed);
+    let _ = window.minimize();
+}
+
 #[tauri::command]
 fn get_settings() -> settings::Settings {
-    settings::current()
+    // The Run key is the truth for "start with Windows".
+    settings::Settings {
+        run_at_startup: startup::enabled(),
+        ..settings::current()
+    }
 }
 
 /// Applies at once (the auto-lock thread reads it every second) and saves.
@@ -46,10 +77,19 @@ fn get_settings() -> settings::Settings {
 fn set_settings(
     value: settings::Settings,
     file: State<'_, SettingsFile>,
+    window: tauri::WebviewWindow,
 ) -> Result<settings::Settings, String> {
-    let value = value.sanitized();
+    let mut value = value.sanitized();
+    if value.run_at_startup != startup::enabled() {
+        if let Err(e) = startup::set(value.run_at_startup) {
+            value.run_at_startup = startup::enabled();
+            settings::apply(value);
+            return Err(e.to_owned());
+        }
+    }
     settings::apply(value);
     hotkey::refresh();
+    let _ = window.set_always_on_top(value.always_on_top);
     if let Some(path) = file.0.lock().ok().and_then(|g| g.clone()) {
         settings::save(&path, value).map_err(|_| "Ayarlar kaydedilemedi.".to_owned())?;
     }
@@ -67,8 +107,18 @@ fn set_titlebar(dark: bool, window: tauri::WebviewWindow) {
 /// Whether the global auto-type shortcut is registered (Settings shows a
 /// warning if it is on but another program owns Ctrl+Alt+A).
 #[tauri::command]
-fn hotkey_active() -> bool {
-    hotkey::active()
+fn hotkey_active() -> HotkeyStatus {
+    HotkeyStatus {
+        autotype: hotkey::active(),
+        show_window: hotkey::show_active(),
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HotkeyStatus {
+    autotype: bool,
+    show_window: bool,
 }
 
 /// A message for the UI from outside a command (the auto-type shortcut),
@@ -368,7 +418,13 @@ async fn duplicate_entry(id: String, state: State<'_, Shared>) -> Result<Saved, 
 
 #[tauri::command]
 async fn delete_group(id: String, state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
-    change_and_list(&state, move |s| s.delete_group(&id)).await
+    change_and_list(&state, move |s| s.delete_group(&id).map(|_| ())).await
+}
+
+/// Deletes everything in the recycle bin for good (the UI asks twice).
+#[tauri::command]
+async fn empty_recycle_bin(state: State<'_, Shared>) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| s.empty_recycle_bin().map(|_| ())).await
 }
 
 #[tauri::command]
@@ -542,7 +598,7 @@ async fn auto_type(
     if markers.is_empty() {
         return Err("Bu kaydın başlığı ya da web sitesi yok; hedef pencere doğrulanamaz.".into());
     }
-    let _ = window.minimize();
+    minimize_quietly(&window);
     tauri::async_runtime::spawn_blocking(move || {
         let target = autotype::wait_for_target(&markers)?;
         autotype::type_into(
@@ -585,9 +641,19 @@ async fn copy_extra(
     what: session::Extra,
     state: State<'_, Shared>,
     last: State<'_, LastCopy>,
+    window: tauri::WebviewWindow,
 ) -> Result<u64, String> {
     let value = state.with(|s| s.extra(&id, what)).and_then(|r| r)?;
-    copy_and_schedule_clear(&value, &last)
+    let secs = copy_and_schedule_clear(&value, &last)?;
+    after_copy(&window);
+    Ok(secs)
+}
+
+/// KeePass "Drop to background after copying data to the clipboard".
+fn after_copy(window: &tauri::WebviewWindow) {
+    if settings::minimize_after_copy() {
+        minimize_quietly(window);
+    }
 }
 
 /// Writes an attachment where the user chooses (Rust save dialog). The file
@@ -865,9 +931,12 @@ async fn copy_field(
     field: Field,
     state: State<'_, Shared>,
     last: State<'_, LastCopy>,
+    window: tauri::WebviewWindow,
 ) -> Result<u64, String> {
     let value = state.with(|s| s.field(&id, field)).and_then(|r| r)?;
-    copy_and_schedule_clear(&value, &last)
+    let secs = copy_and_schedule_clear(&value, &last)?;
+    after_copy(&window);
+    Ok(secs)
 }
 
 /// Puts `value` on the clipboard (marked private) and clears it after the
@@ -895,7 +964,16 @@ fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> 
 /// Ctrl+L, idle timeout and Windows session/power events alike.
 fn lock_all(shared: &Shared, last: &LastCopy) {
     last.clear();
+    let was_open = shared.with(|s| s.is_unlocked()).unwrap_or(false);
     let _ = shared.with(Session::lock);
+    // KeePass "Minimize main window after locking the workspace".
+    if was_open && settings::minimize_on_lock() {
+        if let Some(w) = main_window() {
+            if w.is_visible().unwrap_or(false) {
+                let _ = w.minimize();
+            }
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -973,6 +1051,13 @@ fn start_autolock(shared: Shared, last: LastCopy) {
             let unlocked = shared.with(|s| s.is_unlocked()).unwrap_or(false);
             if unlocked && autolock::system_idle() >= autolock::idle_timeout() {
                 lock_all(&shared, &last);
+                // KeePass "Exit instead of locking the workspace after the
+                // specified time": locked first, then the app quits.
+                if settings::exit_instead_of_lock() {
+                    if let Some(app) = APP.get() {
+                        app.exit(0);
+                    }
+                }
             }
         })
         .expect("idle thread");
@@ -1013,11 +1098,38 @@ pub fn run() {
         .on_window_event(|window, event| {
             // The close button hides the window to the tray (if enabled and
             // the tray icon exists); "Kilitle ve çık" in the tray quits.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" && settings::close_to_tray() && tray::can_hide() {
-                    api.prevent_close();
-                    let _ = window.hide();
+            if window.label() != "main" {
+                return;
+            }
+            use tauri::Manager;
+            let lock_now = |w: &tauri::Window| {
+                let app = w.app_handle();
+                lock_all(&app.state::<Shared>(), &app.state::<LastCopy>());
+            };
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if settings::close_to_tray() && tray::can_hide() {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        // Hiding to the tray counts as minimizing (KeePass).
+                        if settings::lock_on_minimize() {
+                            lock_now(window);
+                        }
+                    }
                 }
+                tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => {
+                    let ours =
+                        now_ms() < QUIET_MINIMIZE_UNTIL.load(std::sync::atomic::Ordering::Relaxed);
+                    // KeePass "Lock workspace when minimizing main window".
+                    if settings::lock_on_minimize() && !ours {
+                        lock_now(window);
+                    }
+                    // KeePass "Minimize to tray instead of taskbar".
+                    if settings::minimize_to_tray() && tray::can_hide() && !ours {
+                        let _ = window.hide();
+                    }
+                }
+                _ => {}
             }
         })
         .setup(|app| {
@@ -1047,12 +1159,29 @@ pub fn run() {
                     *g = (Some(file), list);
                 }
             }
+            let _ = APP.set(app.handle().clone());
             {
                 let handle = app.handle().clone();
-                hotkey::start(move |target| on_autotype_hotkey(&handle, target));
+                let show = app.handle().clone();
+                hotkey::start(
+                    move |target| on_autotype_hotkey(&handle, target),
+                    move || tray::show_main(&show),
+                );
             }
             if tray::create(app.handle()).is_err() {
                 eprintln!("LockAlperen: tray icon could not be created");
+            }
+            if let Some(w) = app.get_webview_window("main") {
+                let s = settings::current();
+                let _ = w.set_always_on_top(s.always_on_top);
+                // KeePass "Start minimized and locked" (it always starts locked).
+                if s.start_minimized {
+                    if s.minimize_to_tray && tray::can_hide() {
+                        let _ = w.hide();
+                    } else {
+                        minimize_quietly(&w);
+                    }
+                }
             }
             // Red padlock on the window and tray icon while locked.
             {
@@ -1097,6 +1226,7 @@ pub fn run() {
             add_group,
             rename_group,
             delete_group,
+            empty_recycle_bin,
             restore_version,
             add_attachment,
             remove_attachment,

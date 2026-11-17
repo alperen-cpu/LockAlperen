@@ -9,6 +9,21 @@
   seçimi). Ayrıntıda tarih, süresi geçmişse "Süresi doldu" olarak görünür; parola sağlığı zaten
   süresi dolanları sayıyordu. KeePass'ten aktarılan tarihler artık düzenlenebilir. Dosya formatı
   değişmedi (`expires` alanı baştan beri vardı).
+- **Geri Dönüşüm Kutusu (KeePass'teki gibi):** Silinen kayıt ya da klasör önce "Geri Dönüşüm
+  Kutusu" klasörüne taşınır (ilk silmede oluşur). Oradan "Geri yükle" ile ya da sürükleyerek geri
+  alınır. Kutunun içinden silmek ve "Boşalt" kalıcıdır, iki kez onay ister. Kutudaki kayıtlar "Tüm
+  kayıtlar", TOTP, parola sağlığı ve otomatik yazmaya girmez. **Dosya formatı:** kasaya isteğe
+  bağlı `recycle_bin` alanı eklendi (`schema` aynı; eski dosyalar açılır, eski sürümler kutuyu
+  sıradan klasör olarak gösterir).
+- **KeePass Seçenekleri'nden gelen ayarlar** (hepsi varsayılan olarak kapalı, bugünkü davranış
+  değişmez; KeePass'te varsayılan açık olan "yeni kayda parola üret" ve "Ctrl+Alt+K" hariç):
+  - Güvenlik: küçültünce kilitle; süre dolunca kilitlemek yerine kapat; açınca süresi dolan ya da
+    7 gün içinde dolacak kayıtları bildir.
+  - Pencere: küçültünce tepsiye gizle; kopyaladıktan sonra küçült; kilitleyince küçült; her zaman
+    üstte; küçültülmüş başlat; Windows açılışında başlat (yalnızca kullanıcının `Run` anahtarı);
+    pencereyi gösterme kısayolu (Ctrl+Alt+K ya da Ctrl+Alt+Shift+W, KeePass açıksa çakışır ve
+    Ayarlar uyarır).
+  - Parola üretici: yeni kayda otomatik parola, varsayılan uzunluk (8–128) ve karakter türleri.
 
 ## [0.4.3] - 2026-11-17: pano süresi, Win+L kilidi ayarı, görev çubuğunda kilit, temalı başlık çubuğu
 

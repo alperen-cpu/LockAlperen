@@ -37,6 +37,7 @@
     "allow-add-group",
     "allow-rename-group",
     "allow-delete-group",
+    "allow-empty-recycle-bin",
     "allow-restore-version",
     "allow-add-attachment",
     "allow-remove-attachment",

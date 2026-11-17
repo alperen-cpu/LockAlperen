@@ -112,6 +112,75 @@ impl ListStyle {
 
 static LIST_STYLE: AtomicU8 = AtomicU8::new(ListStyle::List as u8);
 
+/// Global shortcut that brings the window forward (KeePass "Show KeePass
+/// window", default Ctrl+Alt+K there too).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShowShortcut {
+    Off = 0,
+    #[default]
+    CtrlAltK = 1,
+    CtrlAltShiftW = 2,
+}
+
+impl ShowShortcut {
+    #[cfg(test)]
+    pub const ALL: [ShowShortcut; 3] = [
+        ShowShortcut::Off,
+        ShowShortcut::CtrlAltK,
+        ShowShortcut::CtrlAltShiftW,
+    ];
+}
+
+/// Password generator defaults (KeePass "Auto-generated passwords for new
+/// entries" profile). Bounds are the core generator's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Generator {
+    pub length: usize,
+    pub lowercase: bool,
+    pub uppercase: bool,
+    pub digits: bool,
+    pub symbols: bool,
+    pub exclude_ambiguous: bool,
+}
+
+impl Default for Generator {
+    fn default() -> Self {
+        Generator {
+            length: 20,
+            lowercase: true,
+            uppercase: true,
+            digits: true,
+            symbols: true,
+            exclude_ambiguous: false,
+        }
+    }
+}
+
+impl Generator {
+    /// Length within the generator's limits and at least one character set.
+    pub fn sanitized(self) -> Generator {
+        let mut g = self;
+        g.length = g.length.clamp(MIN_GEN_LENGTH, MAX_GEN_LENGTH);
+        if !(g.lowercase || g.uppercase || g.digits || g.symbols) {
+            g = Generator {
+                length: g.length,
+                ..Generator::default()
+            };
+        }
+        g
+    }
+}
+
+pub const MIN_GEN_LENGTH: usize = 8;
+pub const MAX_GEN_LENGTH: usize = 128;
+
+/// The full settings in effect (the atomics above are kept for the hot
+/// paths that read single values from other threads).
+static CURRENT: std::sync::LazyLock<std::sync::RwLock<Settings>> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(Settings::default()));
+
 /// An unknown value (e.g. from a newer version) means the default for this
 /// field only, instead of failing the whole file.
 fn lenient<'de, D, T>(d: D) -> Result<T, D::Error>
@@ -139,6 +208,34 @@ pub struct Settings {
     pub list_style: ListStyle,
     pub clipboard_seconds: u32,
     pub lock_on_system_events: bool,
+    // ----- From KeePass "Options" (all off unless KeePass has them on by
+    // default), so an older settings.json keeps today's behaviour. -----
+    /// Security: lock when the window is minimized (taskbar or tray).
+    pub lock_on_minimize: bool,
+    /// Security: quit instead of locking when the idle time runs out.
+    pub exit_instead_of_lock: bool,
+    /// Interface: minimize the window after copying a value.
+    pub minimize_after_copy: bool,
+    /// Interface: minimize the window after locking.
+    pub minimize_on_lock: bool,
+    /// Interface: the window stays above other windows.
+    pub always_on_top: bool,
+    /// Interface: the minimize button hides the window to the tray.
+    pub minimize_to_tray: bool,
+    /// Advanced: start minimized (and locked: it always starts locked).
+    pub start_minimized: bool,
+    /// Integration: global "show window" shortcut.
+    #[serde(deserialize_with = "lenient")]
+    pub show_window_shortcut: ShowShortcut,
+    /// Integration: start with Windows. The Run key in the registry is the
+    /// truth; this mirrors it for the UI.
+    pub run_at_startup: bool,
+    /// Advanced: after unlocking, show entries that expired or expire soon.
+    pub show_expired_on_open: bool,
+    /// Generator: new entries start with a generated password (as KeePass).
+    pub auto_generate_password: bool,
+    #[serde(deserialize_with = "lenient")]
+    pub generator: Generator,
 }
 
 impl Default for Settings {
@@ -152,6 +249,18 @@ impl Default for Settings {
             list_style: ListStyle::List,
             clipboard_seconds: DEFAULT_CLIPBOARD_SECONDS,
             lock_on_system_events: true,
+            lock_on_minimize: false,
+            exit_instead_of_lock: false,
+            minimize_after_copy: false,
+            minimize_on_lock: false,
+            always_on_top: false,
+            minimize_to_tray: false,
+            start_minimized: false,
+            show_window_shortcut: ShowShortcut::CtrlAltK,
+            run_at_startup: false,
+            show_expired_on_open: false,
+            auto_generate_password: true,
+            generator: Generator::default(),
         }
     }
 }
@@ -176,8 +285,33 @@ impl Settings {
                 DEFAULT_CLIPBOARD_SECONDS
             },
             lock_on_system_events: self.lock_on_system_events,
+            generator: self.generator.sanitized(),
+            ..self
         }
     }
+}
+
+fn read() -> Settings {
+    CURRENT.read().map(|s| *s).unwrap_or_default()
+}
+
+pub fn lock_on_minimize() -> bool {
+    read().lock_on_minimize
+}
+pub fn exit_instead_of_lock() -> bool {
+    read().exit_instead_of_lock
+}
+pub fn minimize_after_copy() -> bool {
+    read().minimize_after_copy
+}
+pub fn minimize_on_lock() -> bool {
+    read().minimize_on_lock
+}
+pub fn minimize_to_tray() -> bool {
+    read().minimize_to_tray
+}
+pub fn show_window_shortcut() -> ShowShortcut {
+    read().show_window_shortcut
 }
 
 pub fn idle_minutes() -> u32 {
@@ -194,6 +328,9 @@ pub fn apply(s: Settings) {
     LIST_STYLE.store(s.list_style as u8, Ordering::Relaxed);
     CLIPBOARD_SECONDS.store(s.clipboard_seconds, Ordering::Relaxed);
     LOCK_ON_SYSTEM_EVENTS.store(s.lock_on_system_events, Ordering::Relaxed);
+    if let Ok(mut g) = CURRENT.write() {
+        *g = s;
+    }
 }
 
 pub fn clipboard_seconds() -> u32 {
@@ -222,6 +359,7 @@ pub fn current() -> Settings {
         list_style: ListStyle::from_u8(LIST_STYLE.load(Ordering::Relaxed)),
         clipboard_seconds: clipboard_seconds(),
         lock_on_system_events: lock_on_system_events(),
+        ..read()
     }
 }
 
@@ -306,6 +444,7 @@ mod tests {
                 list_style: ListStyle::Grid,
                 clipboard_seconds: 30,
                 lock_on_system_events: false,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -320,6 +459,7 @@ mod tests {
                 list_style: ListStyle::Grid,
                 clipboard_seconds: 30,
                 lock_on_system_events: false,
+                ..Default::default()
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -346,6 +486,7 @@ mod tests {
                 list_style: ListStyle::List,
                 clipboard_seconds: DEFAULT_CLIPBOARD_SECONDS,
                 lock_on_system_events: true,
+                ..Default::default()
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
@@ -408,6 +549,71 @@ mod tests {
         assert_eq!(
             serde_json::to_value(Shortcut::CtrlAltShiftK).unwrap(),
             "ctrl-alt-shift-k"
+        );
+    }
+
+    /// KeePass options: an older file gets today's behaviour, values round
+    /// trip, and a bad generator profile is repaired.
+    #[test]
+    fn keepass_options() {
+        let s: Settings = serde_json::from_slice(br#"{"idleMinutes": 30}"#).unwrap();
+        assert!(!s.lock_on_minimize && !s.exit_instead_of_lock && !s.minimize_after_copy);
+        assert!(!s.minimize_on_lock && !s.always_on_top && !s.minimize_to_tray);
+        assert!(!s.start_minimized && !s.run_at_startup && !s.show_expired_on_open);
+        assert!(s.auto_generate_password);
+        assert_eq!(s.show_window_shortcut, ShowShortcut::CtrlAltK);
+        assert_eq!(s.generator, Generator::default());
+
+        let s: Settings = serde_json::from_slice(
+            br#"{"minimizeAfterCopy": true, "showWindowShortcut": "ctrl-f9",
+                "generator": {"length": 20, "symbols": false}}"#,
+        )
+        .unwrap();
+        assert!(s.minimize_after_copy);
+        assert_eq!(
+            s.show_window_shortcut,
+            ShowShortcut::CtrlAltK,
+            "unknown: default"
+        );
+        assert_eq!(s.generator.length, 20);
+        assert!(!s.generator.symbols && s.generator.digits);
+
+        for (len, want) in [(0, MIN_GEN_LENGTH), (9999, MAX_GEN_LENGTH), (32, 32)] {
+            let g = Generator {
+                length: len,
+                ..Generator::default()
+            }
+            .sanitized();
+            assert_eq!(g.length, want);
+        }
+        let none = Generator {
+            lowercase: false,
+            uppercase: false,
+            digits: false,
+            symbols: false,
+            length: 30,
+            exclude_ambiguous: true,
+        }
+        .sanitized();
+        assert_eq!(
+            none,
+            Generator {
+                length: 30,
+                ..Generator::default()
+            }
+        );
+
+        let v = Settings {
+            lock_on_minimize: true,
+            always_on_top: true,
+            show_window_shortcut: ShowShortcut::Off,
+            ..Default::default()
+        };
+        let back: Settings = serde_json::from_value(serde_json::to_value(v).unwrap()).unwrap();
+        assert_eq!(back, v);
+        assert_eq!(
+            serde_json::to_value(ShowShortcut::CtrlAltShiftW).unwrap(),
+            "ctrl-alt-shift-w"
         );
     }
 }
