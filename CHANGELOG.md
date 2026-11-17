@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.5.0] - 2026-11-17: Geri Dönüşüm Kutusu, kayıt çoğaltma, son kullanma tarihi, KeePass seçenekleri
 
 - **Kaydı çoğalt (KeePass'teki gibi, Ctrl+K):** Ayrıntıdaki "Çoğalt" düğmesi kaydın bir
   kopyasını aynı klasörde "… - Kopya" adıyla oluşturur. Parola, notlar, TOTP, özel alanlar, ekler
