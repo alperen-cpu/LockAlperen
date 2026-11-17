@@ -2605,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "lockalperen-desktop"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",

@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.4.3] - 2026-11-17: pano süresi, Win+L kilidi ayarı, görev çubuğunda kilit, temalı başlık çubuğu
 
 - **Pano süresi seçilebilir:** Ayarlar → Güvenlik: 5–90 saniye (varsayılan 12). "Asla" yok.
 - **Bilgisayar kilitlenince kasayı da kilitle:** Win+L, uyku ve oturum kapatmada kilitleme artık
