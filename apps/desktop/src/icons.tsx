@@ -79,6 +79,18 @@ export const ListIcon = () => (
   </Icon>
 );
 
+export const MenuIcon = () => (
+  <Icon>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Icon>
+);
+
+export const BackIcon = () => (
+  <Icon>
+    <path d="M15 18l-6-6 6-6" />
+  </Icon>
+);
+
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

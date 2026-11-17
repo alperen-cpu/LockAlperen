@@ -1,5 +1,16 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Yeni arayüz:** Ferah, açık tema varsayılan; yuvarlak düğmeler, kenar çizgisi yerine hafif
+  gölgeler, daha geniş boşluklar. Kayıt ayrıntısı tek, sakin bir kart.
+- **Koyu tema:** Ayarlar → Görünüm: "Windows ile aynı" (varsayılan), "Açık" ya da "Koyu".
+- **Duyarlı düzen:** Geniş pencerede klasörler, liste ve ayrıntı yan yana. Daha dar pencerede
+  klasörler soldan açılan bir çekmecede (☰). En dar pencerede liste ya da ayrıntı, geri düğmesiyle.
+  Pencere 380 piksele kadar daraltılabilir.
+- **Siteyi aç:** `javascript:`, `mailto:` gibi değerler artık bağlantı gibi görünmüyor ve
+  açılmaya çalışılmıyor; `localhost:8080` gibi portlu adresler açılmaya devam ediyor.
+
 ## [0.3.1] - 2026-11-17: kilitli simge, esnek site açma
 
 - **Kilitli simge:** Kasa kilitliyken görev çubuğu ve tepsi simgesinin sağ altında kırmızı bir

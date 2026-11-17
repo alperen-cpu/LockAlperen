@@ -18,6 +18,19 @@ pub const NOT_A_WEB_ADDRESS: &str =
     "Bu adres tarayıcıda açılamaz: yalnızca web adresleri (http/https) açılır.";
 pub const OPEN_FAILED: &str = "Tarayıcı açılamadı.";
 
+/// "javascript:…", "mailto:…": a scheme without "//". "localhost:8080" is not
+/// one: what follows the colon is a port.
+fn has_non_web_scheme(raw: &str) -> bool {
+    let Some((head, rest)) = raw.split_once(':') else {
+        return false;
+    };
+    let scheme_like = head.starts_with(|c: char| c.is_ascii_alphabetic())
+        && head
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'));
+    scheme_like && !rest.starts_with(|c: char| c.is_ascii_digit())
+}
+
 /// The address to open, or None if it is not a web address.
 pub fn web_address(raw: &str) -> Option<url::Url> {
     let raw = raw.trim();
@@ -26,6 +39,8 @@ pub fn web_address(raw: &str) -> Option<url::Url> {
     }
     let mut u = if raw.contains("://") {
         url::Url::parse(raw).ok()?
+    } else if has_non_web_scheme(raw) {
+        return None;
     } else {
         url::Url::parse(&format!("https://{raw}")).ok()?
     };
@@ -126,6 +141,9 @@ mod tests {
             "cmd://calc.exe",
             "ftp://x.com",
             "https://",
+            "javascript:alert(1)",
+            "mailto:a@b.com",
+            "ms-msdt:/id PCWDiagnostic",
         ] {
             assert_eq!(ok(refused), None, "{refused:?}");
         }
