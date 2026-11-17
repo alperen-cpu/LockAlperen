@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.3.1] - 2026-11-17: kilitli simge, esnek site açma
 
 - **Kilitli simge:** Kasa kilitliyken görev çubuğu ve tepsi simgesinin sağ altında kırmızı bir
   kilit görünür (KeePass gibi); kilit açılınca simge normale döner. Win+L, uyku, otomatik kilit,
