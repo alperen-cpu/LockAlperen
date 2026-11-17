@@ -43,6 +43,7 @@ fn main() {
             "pick_import_keyfile",
             "fetch_icons",
             "auto_type",
+            "open_url",
             "app_version",
             "check_update",
             "install_update",

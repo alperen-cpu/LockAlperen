@@ -19,6 +19,9 @@ static IDLE_MINUTES: AtomicU32 = AtomicU32::new(DEFAULT_IDLE_MINUTES);
 /// Whether to look for a new version at startup (docs/UPDATES.md).
 static CHECK_UPDATES: AtomicBool = AtomicBool::new(true);
 
+/// Whether the window's close button hides it to the tray (src/tray.rs).
+static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
+
 /// Missing fields take their default, so a file written by an older version
 /// keeps the values it has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +29,7 @@ static CHECK_UPDATES: AtomicBool = AtomicBool::new(true);
 pub struct Settings {
     pub idle_minutes: u32,
     pub check_updates: bool,
+    pub close_to_tray: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +37,7 @@ impl Default for Settings {
         Settings {
             idle_minutes: DEFAULT_IDLE_MINUTES,
             check_updates: true,
+            close_to_tray: true,
         }
     }
 }
@@ -47,6 +52,7 @@ impl Settings {
                 DEFAULT_IDLE_MINUTES
             },
             check_updates: self.check_updates,
+            close_to_tray: self.close_to_tray,
         }
     }
 }
@@ -59,12 +65,18 @@ pub fn apply(s: Settings) {
     let s = s.sanitized();
     IDLE_MINUTES.store(s.idle_minutes, Ordering::Relaxed);
     CHECK_UPDATES.store(s.check_updates, Ordering::Relaxed);
+    CLOSE_TO_TRAY.store(s.close_to_tray, Ordering::Relaxed);
+}
+
+pub fn close_to_tray() -> bool {
+    CLOSE_TO_TRAY.load(Ordering::Relaxed)
 }
 
 pub fn current() -> Settings {
     Settings {
         idle_minutes: idle_minutes(),
         check_updates: CHECK_UPDATES.load(Ordering::Relaxed),
+        close_to_tray: close_to_tray(),
     }
 }
 
@@ -143,6 +155,7 @@ mod tests {
             Settings {
                 idle_minutes: 30,
                 check_updates: false,
+                close_to_tray: false,
             },
         )
         .unwrap();
@@ -150,7 +163,8 @@ mod tests {
             load(&file),
             Settings {
                 idle_minutes: 30,
-                check_updates: false
+                check_updates: false,
+                close_to_tray: false,
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -170,11 +184,20 @@ mod tests {
             s,
             Settings {
                 idle_minutes: 30,
-                check_updates: true
+                check_updates: true,
+                close_to_tray: true,
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
         assert_eq!(s.idle_minutes, DEFAULT_IDLE_MINUTES);
         assert!(!s.check_updates);
+        assert!(s.close_to_tray);
+        // A file written by 0.2.0 (before "closeToTray").
+        let s: Settings =
+            serde_json::from_slice(br#"{"idleMinutes": 15, "checkUpdates": false}"#).unwrap();
+        assert_eq!(
+            (s.idle_minutes, s.check_updates, s.close_to_tray),
+            (15, false, true)
+        );
     }
 }

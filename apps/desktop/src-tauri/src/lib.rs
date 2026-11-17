@@ -3,6 +3,7 @@
 
 mod autolock;
 mod autotype;
+mod browser;
 mod clipboard;
 mod hardening;
 mod health;
@@ -11,6 +12,7 @@ mod recent;
 mod session;
 mod settings;
 mod totp;
+mod tray;
 mod update;
 
 use std::sync::{Arc, Mutex};
@@ -74,6 +76,14 @@ async fn install_update(
 ) -> Result<(), String> {
     let (shared, last) = (state.inner().clone(), last.inner().clone());
     update::install(&app, move || lock_all(&shared, &last)).await
+}
+
+/// Opens the entry's web site in the default browser. The WebView sends only
+/// the entry id; Rust reads the address and opens nothing but http(s).
+#[tauri::command]
+fn open_url(id: String, state: State<'_, Shared>) -> Result<(), String> {
+    let u = state.with(|s| s.web_address(&id)).and_then(|r| r)?;
+    browser::open(&u).map_err(str::to_owned)
 }
 
 /// "Son kasalar": the list and the file it lives in (set at startup).
@@ -835,6 +845,11 @@ pub fn run() {
     let last = LastCopy::default();
     start_autolock(shared.clone(), last.clone());
     tauri::Builder::default()
+        // First, so that a second start exits before doing anything else.
+        // Its arguments are ignored: it only brings this window forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main(app)
+        }))
         .plugin(tauri_plugin_dialog::init())
         // Its own JS commands are not granted to the WebView (capabilities);
         // only ours below (check_update, install_update) are.
@@ -849,6 +864,16 @@ pub fn run() {
         .manage(Recent::default())
         .manage(SettingsFile::default())
         .manage(update::Pending::default())
+        .on_window_event(|window, event| {
+            // The close button hides the window to the tray (if enabled and
+            // the tray icon exists); "Kilitle ve çık" in the tray quits.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && settings::close_to_tray() && tray::can_hide() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             use tauri::Manager;
             // Keep the window out of screenshots and screen sharing. Debug
@@ -875,6 +900,9 @@ pub fn run() {
                 if let Ok(mut g) = app.state::<Recent>().0.lock() {
                     *g = (Some(file), list);
                 }
+            }
+            if tray::create(app.handle()).is_err() {
+                eprintln!("LockAlperen: tray icon could not be created");
             }
             Ok(())
         })
@@ -919,6 +947,7 @@ pub fn run() {
             pick_import_keyfile,
             fetch_icons,
             auto_type,
+            open_url,
             app_version,
             check_update,
             install_update

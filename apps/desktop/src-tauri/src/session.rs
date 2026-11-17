@@ -846,6 +846,12 @@ impl Session {
         ))
     }
 
+    /// The entry's web site, if it is an address that may be opened.
+    pub fn web_address(&self, id: &str) -> Result<url::Url, String> {
+        let e = self.entry_ref(id)?;
+        crate::browser::web_address(&e.url).ok_or_else(|| crate::browser::NOT_A_WEB_ADDRESS.into())
+    }
+
     pub fn delete_entry(&mut self, id: &str) -> Result<(), String> {
         self.commit(|data| {
             let uuid = data

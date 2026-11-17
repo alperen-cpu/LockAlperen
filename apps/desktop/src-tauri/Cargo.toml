@@ -19,8 +19,10 @@ tauri-build = { version = "=2.7.4", features = [] }
 [dependencies]
 lav-core = { path = "../../../crates/lav-core" }
 # No "devtools" feature: the inspector exists only in debug builds.
-tauri = { version = "=2.12.5", features = [] }
+tauri = { version = "=2.12.5", features = ["tray-icon"] }
 tauri-plugin-dialog = "=2.8.4"
+# A second start only brings the running window forward (src/tray.rs).
+tauri-plugin-single-instance = "=2.5.5"
 # Self-update (src/update.rs): minisign-verified NSIS installer from this
 # repo's GitHub Releases. No "zip" feature (only for macOS/Linux bundles).
 # system-proxy: company networks often allow the web only through a proxy.
@@ -52,6 +54,7 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_System_RemoteDesktop",
     "Win32_System_SystemInformation",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Security",
     "Win32_Security_Authorization",

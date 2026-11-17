@@ -22,6 +22,7 @@ import {
   EyeIcon,
   GearIcon,
   EyeOffIcon,
+  ExternalIcon,
   FileIcon,
   FolderIcon,
   ListIcon,
@@ -770,6 +771,15 @@ function VaultScreen({
     }
   }
 
+  async function openSite() {
+    if (!current) return;
+    try {
+      await api.openUrl(current.id);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
+
   async function autoType() {
     if (!current) return;
     setToast("Hedef pencereye geçin (10 sn). Pencere başlığı doğrulanınca yazılacak.");
@@ -1106,9 +1116,19 @@ function VaultScreen({
                 <div className="card-row">
                   <div className="card-text">
                     <div className="lbl">Web sitesi</div>
-                    {/* Plain text, not a link: opening URLs is not enabled yet. */}
+                    {/* Plain text, not a link: Rust opens it (http/https only). */}
                     <div className="value ellipsis">{current.url || "—"}</div>
                   </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Web sitesini tarayıcıda aç"
+                    title="Tarayıcıda aç"
+                    disabled={!current.url}
+                    onClick={() => void openSite()}
+                  >
+                    <ExternalIcon />
+                  </button>
                 </div>
               </div>
               <ExtrasView id={current.id} version={open.entries} onToast={setToast} onEntries={onEntries} />

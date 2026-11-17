@@ -327,6 +327,12 @@
           "markdownDescription": "Enables the lock_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-url",
+          "markdownDescription": "Enables the open_url command without any pre-configured scope."
+        },
+        {
           "description": "Enables the password_health command without any pre-configured scope.",
           "type": "string",
           "const": "allow-password-health",
@@ -583,6 +589,12 @@
           "type": "string",
           "const": "deny-lock-status",
           "markdownDescription": "Denies the lock_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-url",
+          "markdownDescription": "Denies the open_url command without any pre-configured scope."
         },
         {
           "description": "Denies the password_health command without any pre-configured scope.",
