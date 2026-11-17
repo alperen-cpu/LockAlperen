@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.3.0] - 2026-11-17: tepsi, otomatik yazma kısayolu, klasör taşıma
 
 - **Sistem tepsisi:** Kapat düğmesi pencereyi tepsiye gizler (Ayarlar'dan kapatılabilir). Tepsi
   menüsünde göster, kilitle, kilitle ve çık var. Kilit kuralları gizliyken de geçerli.
