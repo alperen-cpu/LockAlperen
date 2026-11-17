@@ -47,6 +47,7 @@ fn main() {
             "move_group",
             "move_entry",
             "set_group_icon",
+            "set_titlebar",
             "hotkey_active",
             "app_version",
             "check_update",

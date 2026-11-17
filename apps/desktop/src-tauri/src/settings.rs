@@ -11,10 +11,18 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// Allowed auto-lock choices in minutes. There is deliberately no "never".
 pub const IDLE_CHOICES: [u32; 7] = [1, 2, 5, 10, 15, 30, 60];
 pub const DEFAULT_IDLE_MINUTES: u32 = 5;
+/// Seconds before a copied value is cleared. There is deliberately no "never".
+pub const CLIPBOARD_CHOICES: [u32; 9] = [5, 10, 12, 15, 20, 30, 45, 60, 90];
+pub const DEFAULT_CLIPBOARD_SECONDS: u32 = 12;
 const MAX_FILE_BYTES: u64 = 16 * 1024;
 
 /// The idle timeout in effect, read by the auto-lock thread.
 static IDLE_MINUTES: AtomicU32 = AtomicU32::new(DEFAULT_IDLE_MINUTES);
+
+static CLIPBOARD_SECONDS: AtomicU32 = AtomicU32::new(DEFAULT_CLIPBOARD_SECONDS);
+
+/// Whether Win+L, sleep, disconnect and logoff lock the vault (default on).
+static LOCK_ON_SYSTEM_EVENTS: AtomicBool = AtomicBool::new(true);
 
 /// Whether to look for a new version at startup (docs/UPDATES.md).
 static CHECK_UPDATES: AtomicBool = AtomicBool::new(true);
@@ -129,6 +137,8 @@ pub struct Settings {
     pub theme: Theme,
     #[serde(deserialize_with = "lenient")]
     pub list_style: ListStyle,
+    pub clipboard_seconds: u32,
+    pub lock_on_system_events: bool,
 }
 
 impl Default for Settings {
@@ -140,6 +150,8 @@ impl Default for Settings {
             autotype_shortcut: Shortcut::CtrlAltA,
             theme: Theme::System,
             list_style: ListStyle::List,
+            clipboard_seconds: DEFAULT_CLIPBOARD_SECONDS,
+            lock_on_system_events: true,
         }
     }
 }
@@ -158,6 +170,12 @@ impl Settings {
             autotype_shortcut: self.autotype_shortcut,
             theme: self.theme,
             list_style: self.list_style,
+            clipboard_seconds: if CLIPBOARD_CHOICES.contains(&self.clipboard_seconds) {
+                self.clipboard_seconds
+            } else {
+                DEFAULT_CLIPBOARD_SECONDS
+            },
+            lock_on_system_events: self.lock_on_system_events,
         }
     }
 }
@@ -174,6 +192,16 @@ pub fn apply(s: Settings) {
     AUTOTYPE_SHORTCUT.store(s.autotype_shortcut as u8, Ordering::Relaxed);
     THEME.store(s.theme as u8, Ordering::Relaxed);
     LIST_STYLE.store(s.list_style as u8, Ordering::Relaxed);
+    CLIPBOARD_SECONDS.store(s.clipboard_seconds, Ordering::Relaxed);
+    LOCK_ON_SYSTEM_EVENTS.store(s.lock_on_system_events, Ordering::Relaxed);
+}
+
+pub fn clipboard_seconds() -> u32 {
+    CLIPBOARD_SECONDS.load(Ordering::Relaxed)
+}
+
+pub fn lock_on_system_events() -> bool {
+    LOCK_ON_SYSTEM_EVENTS.load(Ordering::Relaxed)
 }
 
 pub fn autotype_shortcut() -> Shortcut {
@@ -192,6 +220,8 @@ pub fn current() -> Settings {
         autotype_shortcut: autotype_shortcut(),
         theme: Theme::from_u8(THEME.load(Ordering::Relaxed)),
         list_style: ListStyle::from_u8(LIST_STYLE.load(Ordering::Relaxed)),
+        clipboard_seconds: clipboard_seconds(),
+        lock_on_system_events: lock_on_system_events(),
     }
 }
 
@@ -274,6 +304,8 @@ mod tests {
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
                 theme: Theme::Dark,
                 list_style: ListStyle::Grid,
+                clipboard_seconds: 30,
+                lock_on_system_events: false,
             },
         )
         .unwrap();
@@ -286,6 +318,8 @@ mod tests {
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
                 theme: Theme::Dark,
                 list_style: ListStyle::Grid,
+                clipboard_seconds: 30,
+                lock_on_system_events: false,
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -310,6 +344,8 @@ mod tests {
                 autotype_shortcut: Shortcut::CtrlAltA,
                 theme: Theme::System,
                 list_style: ListStyle::List,
+                clipboard_seconds: DEFAULT_CLIPBOARD_SECONDS,
+                lock_on_system_events: true,
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
@@ -351,6 +387,24 @@ mod tests {
         assert_eq!(s.list_style, ListStyle::List);
         let s: Settings = serde_json::from_slice(br#"{"listStyle": "table"}"#).unwrap();
         assert_eq!(s.list_style, ListStyle::Table);
+        // Clipboard time: only listed choices, no "never"; older files keep
+        // the defaults (12 s, lock on Win+L / sleep / logoff).
+        assert_eq!(s.clipboard_seconds, DEFAULT_CLIPBOARD_SECONDS);
+        assert!(s.lock_on_system_events);
+        for bad in [0u32, 1, 3600, u32::MAX] {
+            let s = Settings {
+                clipboard_seconds: bad,
+                ..Default::default()
+            }
+            .sanitized();
+            assert_eq!(s.clipboard_seconds, DEFAULT_CLIPBOARD_SECONDS, "{bad}");
+        }
+        let s = Settings {
+            clipboard_seconds: 45,
+            ..Default::default()
+        }
+        .sanitized();
+        assert_eq!(s.clipboard_seconds, 45);
         assert_eq!(
             serde_json::to_value(Shortcut::CtrlAltShiftK).unwrap(),
             "ctrl-alt-shift-k"

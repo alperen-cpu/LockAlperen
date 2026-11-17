@@ -1,5 +1,17 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Pano süresi seçilebilir:** Ayarlar → Güvenlik: 5–90 saniye (varsayılan 12). "Asla" yok.
+- **Bilgisayar kilitlenince kasayı da kilitle:** Win+L, uyku ve oturum kapatmada kilitleme artık
+  açılıp kapatılabilir (varsayılan açık; kapatınca uyarı gösterilir).
+- **Görev çubuğunda kilit:** Kasa kilitliyken görev çubuğu düğmesinde de kırmızı kilit rozeti
+  görünür (KeePass gibi).
+- **Başlık çubuğu:** Pencerenin başlık çubuğu uygulamanın açık ya da koyu temasıyla aynı renkte
+  (Windows 11).
+- **Kartlar:** Uzun başlıklar ve kullanıcı adları kartın dışına taşmıyor.
+- Ayarlar'daki "Pencere ve tepsi" bölümü "Pencere" oldu; açıklaması sadeleşti.
+
 ## [0.4.2] - 2026-11-17: klasör simgeleri, listeleme stilleri
 
 - **Klasör simgeleri:** Klasör araçlarındaki "Simge" düğmesiyle 48 Font Awesome simgesinden biri

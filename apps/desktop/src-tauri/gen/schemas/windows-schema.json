@@ -453,6 +453,12 @@
           "markdownDescription": "Enables the set_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_titlebar command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-titlebar",
+          "markdownDescription": "Enables the set_titlebar command without any pre-configured scope."
+        },
+        {
           "description": "Enables the totp_code command without any pre-configured scope.",
           "type": "string",
           "const": "allow-totp-code",
@@ -739,6 +745,12 @@
           "type": "string",
           "const": "deny-set-settings",
           "markdownDescription": "Denies the set_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_titlebar command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-titlebar",
+          "markdownDescription": "Denies the set_titlebar command without any pre-configured scope."
         },
         {
           "description": "Denies the totp_code command without any pre-configured scope.",

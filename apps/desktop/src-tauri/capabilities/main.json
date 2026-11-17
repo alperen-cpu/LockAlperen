@@ -48,6 +48,7 @@
     "allow-move-group",
     "allow-move-entry",
     "allow-set-group-icon",
+    "allow-set-titlebar",
     "allow-hotkey-active",
     "allow-app-version",
     "allow-check-update",
