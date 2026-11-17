@@ -291,6 +291,12 @@
           "markdownDescription": "Enables the get_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the hotkey_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-hotkey-active",
+          "markdownDescription": "Enables the hotkey_active command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_kdbx command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-kdbx",
@@ -553,6 +559,12 @@
           "type": "string",
           "const": "deny-get-settings",
           "markdownDescription": "Denies the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the hotkey_active command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-hotkey-active",
+          "markdownDescription": "Denies the hotkey_active command without any pre-configured scope."
         },
         {
           "description": "Denies the import_kdbx command without any pre-configured scope.",

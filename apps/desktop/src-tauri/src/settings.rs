@@ -4,9 +4,9 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Allowed auto-lock choices in minutes. There is deliberately no "never".
 pub const IDLE_CHOICES: [u32; 7] = [1, 2, 5, 10, 15, 30, 60];
@@ -22,6 +22,47 @@ static CHECK_UPDATES: AtomicBool = AtomicBool::new(true);
 /// Whether the window's close button hides it to the tray (src/tray.rs).
 static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 
+/// The global auto-type shortcut (src/hotkey.rs), as `Shortcut as u8`.
+static AUTOTYPE_SHORTCUT: AtomicU8 = AtomicU8::new(Shortcut::CtrlAltA as u8);
+
+/// Choices for the global auto-type shortcut. A fixed list: another program
+/// may already own one, so the user picks a free one (Settings warns).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Shortcut {
+    Off = 0,
+    /// KeePass's default.
+    #[default]
+    CtrlAltA = 1,
+    CtrlAltShiftA = 2,
+    CtrlAltShiftK = 3,
+    CtrlAltShiftL = 4,
+}
+
+impl Shortcut {
+    pub const ALL: [Shortcut; 5] = [
+        Shortcut::Off,
+        Shortcut::CtrlAltA,
+        Shortcut::CtrlAltShiftA,
+        Shortcut::CtrlAltShiftK,
+        Shortcut::CtrlAltShiftL,
+    ];
+
+    fn from_u8(v: u8) -> Shortcut {
+        Self::ALL
+            .into_iter()
+            .find(|s| *s as u8 == v)
+            .unwrap_or_default()
+    }
+}
+
+/// An unknown value (e.g. from a newer version) means the default for this
+/// field only, instead of failing the whole file.
+fn lenient_shortcut<'de, D: Deserializer<'de>>(d: D) -> Result<Shortcut, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
+}
+
 /// Missing fields take their default, so a file written by an older version
 /// keeps the values it has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +71,8 @@ pub struct Settings {
     pub idle_minutes: u32,
     pub check_updates: bool,
     pub close_to_tray: bool,
+    #[serde(deserialize_with = "lenient_shortcut")]
+    pub autotype_shortcut: Shortcut,
 }
 
 impl Default for Settings {
@@ -38,6 +81,7 @@ impl Default for Settings {
             idle_minutes: DEFAULT_IDLE_MINUTES,
             check_updates: true,
             close_to_tray: true,
+            autotype_shortcut: Shortcut::CtrlAltA,
         }
     }
 }
@@ -53,6 +97,7 @@ impl Settings {
             },
             check_updates: self.check_updates,
             close_to_tray: self.close_to_tray,
+            autotype_shortcut: self.autotype_shortcut,
         }
     }
 }
@@ -66,6 +111,11 @@ pub fn apply(s: Settings) {
     IDLE_MINUTES.store(s.idle_minutes, Ordering::Relaxed);
     CHECK_UPDATES.store(s.check_updates, Ordering::Relaxed);
     CLOSE_TO_TRAY.store(s.close_to_tray, Ordering::Relaxed);
+    AUTOTYPE_SHORTCUT.store(s.autotype_shortcut as u8, Ordering::Relaxed);
+}
+
+pub fn autotype_shortcut() -> Shortcut {
+    Shortcut::from_u8(AUTOTYPE_SHORTCUT.load(Ordering::Relaxed))
 }
 
 pub fn close_to_tray() -> bool {
@@ -77,6 +127,7 @@ pub fn current() -> Settings {
         idle_minutes: idle_minutes(),
         check_updates: CHECK_UPDATES.load(Ordering::Relaxed),
         close_to_tray: close_to_tray(),
+        autotype_shortcut: autotype_shortcut(),
     }
 }
 
@@ -156,6 +207,7 @@ mod tests {
                 idle_minutes: 30,
                 check_updates: false,
                 close_to_tray: false,
+                autotype_shortcut: Shortcut::CtrlAltShiftL,
             },
         )
         .unwrap();
@@ -165,6 +217,7 @@ mod tests {
                 idle_minutes: 30,
                 check_updates: false,
                 close_to_tray: false,
+                autotype_shortcut: Shortcut::CtrlAltShiftL,
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -186,6 +239,7 @@ mod tests {
                 idle_minutes: 30,
                 check_updates: true,
                 close_to_tray: true,
+                autotype_shortcut: Shortcut::CtrlAltA,
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
@@ -198,6 +252,25 @@ mod tests {
         assert_eq!(
             (s.idle_minutes, s.check_updates, s.close_to_tray),
             (15, false, true)
+        );
+        assert_eq!(
+            s.autotype_shortcut,
+            Shortcut::CtrlAltA,
+            "new setting: default"
+        );
+        // An unknown shortcut (newer version) resets only that field.
+        let s: Settings =
+            serde_json::from_slice(br#"{"idleMinutes": 30, "autotypeShortcut": "ctrl-f13"}"#)
+                .unwrap();
+        assert_eq!(
+            (s.idle_minutes, s.autotype_shortcut),
+            (30, Shortcut::CtrlAltA)
+        );
+        let s: Settings = serde_json::from_slice(br#"{"autotypeShortcut": "off"}"#).unwrap();
+        assert_eq!(s.autotype_shortcut, Shortcut::Off);
+        assert_eq!(
+            serde_json::to_value(Shortcut::CtrlAltShiftK).unwrap(),
+            "ctrl-alt-shift-k"
         );
     }
 }

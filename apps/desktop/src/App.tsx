@@ -659,6 +659,7 @@ function VaultScreen({
         if (!alive) return;
         if (!st.unlocked) onAutoLocked();
         else setLockIn(st.lockInSecs);
+        if (st.notice) setToast(st.notice);
       } catch {
         /* next tick retries */
       }

@@ -7,6 +7,7 @@ mod browser;
 mod clipboard;
 mod hardening;
 mod health;
+mod hotkey;
 mod import;
 mod recent;
 mod session;
@@ -46,10 +47,88 @@ fn set_settings(
 ) -> Result<settings::Settings, String> {
     let value = value.sanitized();
     settings::apply(value);
+    hotkey::refresh();
     if let Some(path) = file.0.lock().ok().and_then(|g| g.clone()) {
         settings::save(&path, value).map_err(|_| "Ayarlar kaydedilemedi.".to_owned())?;
     }
     Ok(value)
+}
+
+/// Whether the global auto-type shortcut is registered (Settings shows a
+/// warning if it is on but another program owns Ctrl+Alt+A).
+#[tauri::command]
+fn hotkey_active() -> bool {
+    hotkey::active()
+}
+
+/// A message for the UI from outside a command (the auto-type shortcut),
+/// shown once: `lock_status` hands it over.
+#[derive(Default, Clone)]
+struct Notice(Arc<Mutex<Option<String>>>);
+
+impl Notice {
+    fn set(&self, text: impl Into<String>) {
+        if let Ok(mut g) = self.0.lock() {
+            *g = Some(text.into());
+        }
+    }
+    fn take(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|mut g| g.take())
+    }
+}
+
+/// Ctrl+Alt+A (src/hotkey.rs), on the hotkey thread. Types into `target`
+/// only if exactly one entry matches its title, after the keys are released
+/// and while it is still the foreground window.
+fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::HWND) {
+    use tauri::Manager;
+    if target.is_null() || autotype::pid_of(target) == std::process::id() {
+        return;
+    }
+    let (shared, notice) = (app.state::<Shared>(), app.state::<Notice>());
+    let title = autotype::window_title(target);
+    let found = match shared.with(|s| s.autotype_matches(&title)) {
+        Ok(Ok(found)) => found,
+        // Locked: bring the window forward to unlock; nothing is typed.
+        _ => return tray::show_main(app),
+    };
+    let tell = |text: String| {
+        notice.set(text);
+        tray::show_main(app);
+    };
+    let id = match found.as_slice() {
+        [(id, _)] => id.clone(),
+        [] => {
+            return tell(format!(
+                "\"{title}\" penceresine uyan kayıt yok; hiçbir şey yazılmadı."
+            ))
+        }
+        many => {
+            let names: Vec<&str> = many.iter().take(5).map(|(_, t)| t.as_str()).collect();
+            return tell(format!(
+                "{} kayıt bu pencereye uyuyor ({}); hiçbir şey yazılmadı. Kaydı seçip \"Otomatik yaz\" düğmesini kullanın.",
+                many.len(),
+                names.join(", ")
+            ));
+        }
+    };
+    let typed = (|| -> Result<(), String> {
+        let (user, pw, _) = shared.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
+        hotkey::wait_for_release()?;
+        autotype::type_into(
+            target,
+            &[
+                autotype::Step::Text(&user),
+                autotype::Step::Tab,
+                autotype::Step::Text(&pw),
+                autotype::Step::Enter,
+            ],
+        )?;
+        Ok(())
+    })();
+    if let Err(e) = typed {
+        tell(e);
+    }
 }
 
 /// The running version, shown in Settings.
@@ -769,14 +848,17 @@ struct LockStatus {
     unlocked: bool,
     /// Seconds until the idle lock (system-wide input resets it).
     lock_in_secs: u64,
+    /// One-off message from the auto-type shortcut, if any.
+    notice: Option<String>,
 }
 
 /// Polled by the UI for the countdown and to notice an automatic lock.
 #[tauri::command]
-fn lock_status(state: State<'_, Shared>) -> Result<LockStatus, String> {
+fn lock_status(state: State<'_, Shared>, notice: State<'_, Notice>) -> Result<LockStatus, String> {
     Ok(LockStatus {
         unlocked: state.with(|s| s.is_unlocked())?,
         lock_in_secs: autolock::seconds_left(autolock::system_idle(), autolock::idle_timeout()),
+        notice: notice.take(),
     })
 }
 
@@ -864,6 +946,7 @@ pub fn run() {
         .manage(Recent::default())
         .manage(SettingsFile::default())
         .manage(update::Pending::default())
+        .manage(Notice::default())
         .on_window_event(|window, event| {
             // The close button hides the window to the tray (if enabled and
             // the tray icon exists); "Kilitle ve çık" in the tray quits.
@@ -900,6 +983,10 @@ pub fn run() {
                 if let Ok(mut g) = app.state::<Recent>().0.lock() {
                     *g = (Some(file), list);
                 }
+            }
+            {
+                let handle = app.handle().clone();
+                hotkey::start(move |target| on_autotype_hotkey(&handle, target));
             }
             if tray::create(app.handle()).is_err() {
                 eprintln!("LockAlperen: tray icon could not be created");
@@ -948,6 +1035,7 @@ pub fn run() {
             fetch_icons,
             auto_type,
             open_url,
+            hotkey_active,
             app_version,
             check_update,
             install_update
