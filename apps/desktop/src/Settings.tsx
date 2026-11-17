@@ -72,12 +72,22 @@ export function SettingsDialog(props: {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // null = not known yet.
+  const [hotkeyOk, setHotkeyOk] = useState<boolean | null>(null);
+  const refreshHotkey = () =>
+    // The hotkey thread applies the setting asynchronously.
+    window.setTimeout(() => api.hotkeyActive().then(setHotkeyOk, () => setHotkeyOk(null)), 300);
+  useEffect(() => {
+    refreshHotkey();
+  }, []);
+
   async function change(patch: Partial<api.Settings>) {
     if (settings === null) return;
     const next = { ...settings, ...patch };
     setSettingsState(next);
     try {
       setSettingsState(await api.setSettings(next));
+      refreshHotkey();
       setError(null);
     } catch (e) {
       setError(api.errorText(e));
@@ -115,7 +125,33 @@ export function SettingsDialog(props: {
           />
           Kapat düğmesi uygulamayı sistem tepsisine gizlesin
         </label>
+        <div className="field">
+          <label className="lbl" htmlFor="s-hotkey">
+            Otomatik yazma kısayolu (öndeki pencereye)
+          </label>
+          <select
+            id="s-hotkey"
+            className="text-input"
+            value={settings?.autotypeShortcut ?? ""}
+            disabled={settings === null}
+            onChange={(e) => void change({ autotypeShortcut: e.target.value as api.Shortcut })}
+          >
+            {api.SHORTCUTS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          {settings !== null && settings.autotypeShortcut !== "off" && hotkeyOk === false && (
+            <p className="warn small">
+              Bu kısayol başka bir program tarafından kullanılıyor, bu yüzden çalışmıyor. Başka
+              bir kısayol seçin.
+            </p>
+          )}
+        </div>
         <p className="muted small">
+          Kısayol, öndeki pencerenin başlığına uyan tek kaydın kullanıcı adını ve parolasını
+          yazar. Birden fazla kayıt uyarsa ya da hiç uymazsa hiçbir şey yazılmaz.
           Tepsideyken de kilit kuralları geçerlidir. Tamamen çıkmak için tepsi simgesinde
           "Kilitle ve çık". Windows kilitlenince, oturum kapanınca ya da uyku moduna geçilince kasa her zaman hemen
           kilitlenir. Kopyalanan değerler 12 saniye sonra panodan silinir.

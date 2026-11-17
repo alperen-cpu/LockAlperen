@@ -64,14 +64,14 @@ pub fn title_matches(window_title: &str, markers: &[String]) -> bool {
     !markers.is_empty() && markers.iter().any(|m| w.contains(m.as_str()))
 }
 
-fn window_title(h: HWND) -> String {
+pub fn window_title(h: HWND) -> String {
     let mut buf = [0u16; 512];
     // SAFETY: buffer and its length are passed together.
     let n = unsafe { GetWindowTextW(h, buf.as_mut_ptr(), buf.len() as i32) };
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
-fn pid_of(h: HWND) -> u32 {
+pub fn pid_of(h: HWND) -> u32 {
     let mut pid = 0u32;
     // SAFETY: valid out-pointer.
     unsafe { GetWindowThreadProcessId(h, &mut pid) };

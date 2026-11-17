@@ -44,6 +44,7 @@ fn main() {
             "fetch_icons",
             "auto_type",
             "open_url",
+            "hotkey_active",
             "app_version",
             "check_update",
             "install_update",

@@ -51,6 +51,8 @@ export const revealPassword = (id: string) => invoke<string>("reveal_password", 
 export interface LockStatus {
   unlocked: boolean;
   lockInSecs: number;
+  /** One-off message from the auto-type shortcut. */
+  notice: string | null;
 }
 
 /** Rust decides when to lock (idle, Windows lock, sleep); the UI only polls. */
@@ -204,7 +206,22 @@ export interface Settings {
   checkUpdates: boolean;
   /** The close button hides the window to the system tray. */
   closeToTray: boolean;
+  /** Global shortcut that types into the window in front (one matching entry). */
+  autotypeShortcut: Shortcut;
 }
+
+export type Shortcut = "off" | "ctrl-alt-a" | "ctrl-alt-shift-a" | "ctrl-alt-shift-k" | "ctrl-alt-shift-l";
+
+export const SHORTCUTS: { value: Shortcut; label: string }[] = [
+  { value: "ctrl-alt-a", label: "Ctrl+Alt+A (KeePass ile aynı)" },
+  { value: "ctrl-alt-shift-a", label: "Ctrl+Alt+Shift+A" },
+  { value: "ctrl-alt-shift-k", label: "Ctrl+Alt+Shift+K" },
+  { value: "ctrl-alt-shift-l", label: "Ctrl+Alt+Shift+L" },
+  { value: "off", label: "Kapalı" },
+];
+
+/** False if the shortcut is off, or another program already owns it. */
+export const hotkeyActive = () => invoke<boolean>("hotkey_active");
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
 

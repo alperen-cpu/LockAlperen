@@ -5,6 +5,9 @@
 - **Sistem tepsisi:** Kapat düğmesi pencereyi tepsiye gizler (Ayarlar'dan kapatılabilir). Tepsi
   menüsünde göster, kilitle, kilitle ve çık var. Kilit kuralları gizliyken de geçerli.
 - **Tek örnek:** Uygulama ikinci kez açılınca mevcut pencere öne gelir.
+- **Otomatik yazma kısayolu:** Varsayılan `Ctrl+Alt+A`, Ayarlar'dan değiştirilebilir ya da
+  kapatılabilir. Öndeki pencereye uyan tek kaydın kullanıcı adını ve parolasını yazar. Birden
+  fazla kayıt uyarsa, hiç uymazsa ya da tuşlar bırakılmazsa hiçbir şey yazmaz.
 - **Siteyi aç:** Kaydın web sitesi tek tıkla tarayıcıda açılır. Yalnızca `http`/`https` adresleri
   açılır.
 

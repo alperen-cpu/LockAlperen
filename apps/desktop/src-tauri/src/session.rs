@@ -846,6 +846,22 @@ impl Session {
         ))
     }
 
+    /// Entries whose title or site appears in `window_title`, by the same
+    /// rule as the auto-type button: (id, entry title).
+    pub fn autotype_matches(&self, window_title: &str) -> Result<Vec<(String, String)>, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        Ok(vault
+            .data
+            .entries
+            .iter()
+            .filter(|e| {
+                let markers = crate::autotype::expected_markers(&e.title, &e.url);
+                crate::autotype::title_matches(window_title, &markers)
+            })
+            .map(|e| (e.id.to_string(), e.title.clone()))
+            .collect())
+    }
+
     /// The entry's web site, if it is an address that may be opened.
     pub fn web_address(&self, id: &str) -> Result<url::Url, String> {
         let e = self.entry_ref(id)?;
@@ -1142,6 +1158,51 @@ mod tests {
         s.lock();
         assert!(!s.is_unlocked());
         assert_eq!(s.entries(), Err(LOCKED.to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn autotype_matches_and_web_address() {
+        let dir = temp_dir("hotkey");
+        let mut s = Session::default();
+        s.select(make_vault(&dir));
+        assert_eq!(s.autotype_matches("Example Domain"), Err(LOCKED.to_owned()));
+        s.unlock(PASSWORD).unwrap();
+        let ids = |title: &str| -> Vec<String> {
+            s.autotype_matches(title)
+                .unwrap()
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect()
+        };
+        // "zeta" has https://example.com; "Alpha" has no site.
+        assert_eq!(ids("Example Domain - Microsoft Edge"), ["zeta"]);
+        assert_eq!(ids("Alpha Bank - Google Chrome"), ["Alpha"]);
+        assert_eq!(ids("alpha | example.com"), ["zeta", "Alpha"]);
+        assert!(ids("Notepad").is_empty());
+
+        let zeta = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "zeta")
+            .unwrap();
+        let alpha = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == "Alpha")
+            .unwrap();
+        assert_eq!(
+            s.web_address(&zeta.id).unwrap().as_str(),
+            "https://example.com/"
+        );
+        assert_eq!(
+            s.web_address(&alpha.id),
+            Err(crate::browser::NOT_A_WEB_ADDRESS.to_owned())
+        );
+        s.lock();
+        assert_eq!(s.web_address(&zeta.id), Err(LOCKED.to_owned()));
         let _ = std::fs::remove_dir_all(dir);
     }
 
