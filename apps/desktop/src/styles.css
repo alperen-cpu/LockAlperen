@@ -1258,3 +1258,25 @@ input[type="range"] {
   display: flex;
   gap: 8px;
 }
+
+/* A web site shown as a link; opened by Rust (open_url), not navigated to. */
+.link-value {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-soft);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-value:hover {
+  text-decoration: underline;
+}
+
+.link-value:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

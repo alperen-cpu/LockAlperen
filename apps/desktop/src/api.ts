@@ -202,6 +202,8 @@ export interface Settings {
   idleMinutes: number;
   /** Look for a new version at startup (Rust decides where and verifies). */
   checkUpdates: boolean;
+  /** The close button hides the window to the system tray. */
+  closeToTray: boolean;
 }
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
@@ -248,6 +250,9 @@ export const fetchIcons = () =>
   );
 /** Minimizes the app; types into the verified window the user switches to. */
 export const autoType = (id: string) => invoke<void>("auto_type", { id });
+
+/** Rust opens the entry's own address, and only if it is http(s). */
+export const openUrl = (id: string) => invoke<void>("open_url", { id });
 
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {

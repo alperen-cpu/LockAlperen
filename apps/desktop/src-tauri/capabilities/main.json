@@ -44,6 +44,7 @@
     "allow-pick-import-keyfile",
     "allow-fetch-icons",
     "allow-auto-type",
+    "allow-open-url",
     "allow-app-version",
     "allow-check-update",
     "allow-install-update"

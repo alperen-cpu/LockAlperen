@@ -106,8 +106,18 @@ export function SettingsDialog(props: {
             ))}
           </select>
         </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings?.closeToTray ?? true}
+            disabled={settings === null}
+            onChange={(e) => void change({ closeToTray: e.target.checked })}
+          />
+          Kapat düğmesi uygulamayı sistem tepsisine gizlesin
+        </label>
         <p className="muted small">
-          Windows kilitlenince, oturum kapanınca ya da uyku moduna geçilince kasa her zaman hemen
+          Tepsideyken de kilit kuralları geçerlidir. Tamamen çıkmak için tepsi simgesinde
+          "Kilitle ve çık". Windows kilitlenince, oturum kapanınca ya da uyku moduna geçilince kasa her zaman hemen
           kilitlenir. Kopyalanan değerler 12 saniye sonra panodan silinir.
         </p>
         <form className="field" onSubmit={changeMaster}>

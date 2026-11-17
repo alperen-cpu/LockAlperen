@@ -1,5 +1,13 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Sistem tepsisi:** Kapat düğmesi pencereyi tepsiye gizler (Ayarlar'dan kapatılabilir). Tepsi
+  menüsünde göster, kilitle, kilitle ve çık var. Kilit kuralları gizliyken de geçerli.
+- **Tek örnek:** Uygulama ikinci kez açılınca mevcut pencere öne gelir.
+- **Siteyi aç:** Kaydın web sitesi tek tıkla tarayıcıda açılır. Yalnızca `http`/`https` adresleri
+  açılır.
+
 ## [0.2.0] - 2026-11-16: uygulama içi güncelleme
 
 - **Güncelleme:** Uygulama açılışta yeni sürümü denetler (Ayarlar'dan kapatılabilir) ve onay
