@@ -56,9 +56,34 @@ impl Shortcut {
     }
 }
 
+/// Colour theme of the window. `System` follows Windows (light or dark).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    System = 0,
+    Light = 1,
+    Dark = 2,
+}
+
+impl Theme {
+    fn from_u8(v: u8) -> Theme {
+        [Theme::System, Theme::Light, Theme::Dark]
+            .into_iter()
+            .find(|t| *t as u8 == v)
+            .unwrap_or_default()
+    }
+}
+
+static THEME: AtomicU8 = AtomicU8::new(Theme::System as u8);
+
 /// An unknown value (e.g. from a newer version) means the default for this
 /// field only, instead of failing the whole file.
-fn lenient_shortcut<'de, D: Deserializer<'de>>(d: D) -> Result<Shortcut, D::Error> {
+fn lenient<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
     let v = serde_json::Value::deserialize(d)?;
     Ok(serde_json::from_value(v).unwrap_or_default())
 }
@@ -71,8 +96,10 @@ pub struct Settings {
     pub idle_minutes: u32,
     pub check_updates: bool,
     pub close_to_tray: bool,
-    #[serde(deserialize_with = "lenient_shortcut")]
+    #[serde(deserialize_with = "lenient")]
     pub autotype_shortcut: Shortcut,
+    #[serde(deserialize_with = "lenient")]
+    pub theme: Theme,
 }
 
 impl Default for Settings {
@@ -82,6 +109,7 @@ impl Default for Settings {
             check_updates: true,
             close_to_tray: true,
             autotype_shortcut: Shortcut::CtrlAltA,
+            theme: Theme::System,
         }
     }
 }
@@ -98,6 +126,7 @@ impl Settings {
             check_updates: self.check_updates,
             close_to_tray: self.close_to_tray,
             autotype_shortcut: self.autotype_shortcut,
+            theme: self.theme,
         }
     }
 }
@@ -112,6 +141,7 @@ pub fn apply(s: Settings) {
     CHECK_UPDATES.store(s.check_updates, Ordering::Relaxed);
     CLOSE_TO_TRAY.store(s.close_to_tray, Ordering::Relaxed);
     AUTOTYPE_SHORTCUT.store(s.autotype_shortcut as u8, Ordering::Relaxed);
+    THEME.store(s.theme as u8, Ordering::Relaxed);
 }
 
 pub fn autotype_shortcut() -> Shortcut {
@@ -128,6 +158,7 @@ pub fn current() -> Settings {
         check_updates: CHECK_UPDATES.load(Ordering::Relaxed),
         close_to_tray: close_to_tray(),
         autotype_shortcut: autotype_shortcut(),
+        theme: Theme::from_u8(THEME.load(Ordering::Relaxed)),
     }
 }
 
@@ -208,6 +239,7 @@ mod tests {
                 check_updates: false,
                 close_to_tray: false,
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
+                theme: Theme::Dark,
             },
         )
         .unwrap();
@@ -218,6 +250,7 @@ mod tests {
                 check_updates: false,
                 close_to_tray: false,
                 autotype_shortcut: Shortcut::CtrlAltShiftL,
+                theme: Theme::Dark,
             }
         );
         assert_eq!(load(&file).idle_minutes, 30);
@@ -240,6 +273,7 @@ mod tests {
                 check_updates: true,
                 close_to_tray: true,
                 autotype_shortcut: Shortcut::CtrlAltA,
+                theme: Theme::System,
             }
         );
         let s: Settings = serde_json::from_slice(br#"{"checkUpdates": false}"#).unwrap();
@@ -268,6 +302,14 @@ mod tests {
         );
         let s: Settings = serde_json::from_slice(br#"{"autotypeShortcut": "off"}"#).unwrap();
         assert_eq!(s.autotype_shortcut, Shortcut::Off);
+        // Theme: missing or unknown = follow Windows; others kept.
+        assert_eq!(s.theme, Theme::System);
+        let s: Settings =
+            serde_json::from_slice(br#"{"idleMinutes": 15, "theme": "sepia"}"#).unwrap();
+        assert_eq!((s.idle_minutes, s.theme), (15, Theme::System));
+        let s: Settings = serde_json::from_slice(br#"{"theme": "dark"}"#).unwrap();
+        assert_eq!(s.theme, Theme::Dark);
+        assert_eq!(serde_json::to_value(Theme::Light).unwrap(), "light");
         assert_eq!(
             serde_json::to_value(Shortcut::CtrlAltShiftK).unwrap(),
             "ctrl-alt-shift-k"

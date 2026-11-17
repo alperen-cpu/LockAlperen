@@ -26,6 +26,8 @@ import {
   FileIcon,
   FolderIcon,
   ListIcon,
+  MenuIcon,
+  BackIcon,
   MoveIcon,
   LockIcon,
   PencilIcon,
@@ -38,6 +40,13 @@ import {
 type Open = { info: VaultInfo; entries: EntrySummary[] };
 
 export function App() {
+  // The saved colour theme; until it arrives, styles.css follows Windows.
+  useEffect(() => {
+    api.getSettings().then(
+      (s) => api.applyTheme(s.theme),
+      () => {},
+    );
+  }, []);
   return (
     <>
       <Screens />
@@ -624,6 +633,10 @@ function VaultScreen({
   const [importing, setImporting] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Narrow windows (styles.css): the folder list is a drawer, and either the
+  // list or the detail is shown.
+  const [navOpen, setNavOpen] = useState(false);
+  const [view, setView] = useState<"list" | "detail">("list");
 
   async function startImport() {
     try {
@@ -714,6 +727,16 @@ function VaultScreen({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onLock]);
+
+  // Esc closes the folder drawer (narrow windows).
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
 
   // Ctrl+N: new entry.
   useEffect(() => {
@@ -919,9 +942,18 @@ function VaultScreen({
   }
 
   return (
-    <div className="app">
+    <div className={"app" + (navOpen ? " nav-open" : "")} data-view={view}>
       <header className="topbar">
-        <Brand size={28} />
+        <button
+          type="button"
+          className="icon-btn menu-btn"
+          aria-label="Klasörler"
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          <MenuIcon />
+        </button>
+        <Brand size={32} />
         <div className="crumb">
           <span className="muted">{file.folder} ›</span>
           <strong>{file.fileName}</strong>
@@ -989,7 +1021,15 @@ function VaultScreen({
         />
       ) : (
       <div className="panes">
-        <nav className="nav-pane" aria-label="Klasörler">
+        <div className="nav-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
+        <nav
+          className="nav-pane"
+          aria-label="Klasörler"
+          onClick={(e) => {
+            // In the drawer, picking a folder closes it.
+            if ((e.target as HTMLElement).closest("button.nav")) setNavOpen(false);
+          }}
+        >
           <button
             type="button"
             className={"nav" + (group === null ? " active" : "")}
@@ -1205,7 +1245,10 @@ function VaultScreen({
                   <button
                     type="button"
                     className={"row" + (e.id === selected ? " active" : "")}
-                    onClick={() => setSelected(e.id)}
+                    onClick={() => {
+                      setSelected(e.id);
+                      setView("detail");
+                    }}
                     draggable
                     onDragStart={(ev) => {
                       ev.dataTransfer.effectAllowed = "move";
@@ -1217,7 +1260,7 @@ function VaultScreen({
                       setDropOn(null);
                     }}
                   >
-                    <Avatar title={e.title} size={36} icon={e.icon} />
+                    <Avatar title={e.title} size={42} icon={e.icon} />
                     <span className="row-text">
                       <span className="row-title ellipsis">{e.title || "(başlıksız)"}</span>
                       <span className="row-sub ellipsis muted">{e.username}</span>
@@ -1238,7 +1281,15 @@ function VaultScreen({
           {current ? (
             <>
               <div className="detail-head">
-                <Avatar title={current.title} size={52} icon={current.icon} />
+                <button
+                  type="button"
+                  className="icon-btn back-btn"
+                  aria-label="Listeye dön"
+                  onClick={() => setView("list")}
+                >
+                  <BackIcon />
+                </button>
+                <Avatar title={current.title} size={60} icon={current.icon} />
                 <div className="detail-title">
                   <h1 className="ellipsis">{current.title || "(başlıksız)"}</h1>
                   <div className="muted">{current.group}</div>

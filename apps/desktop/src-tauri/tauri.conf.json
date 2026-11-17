@@ -15,10 +15,10 @@
       {
         "label": "main",
         "title": "LockAlperen",
-        "width": 900,
-        "height": 640,
-        "minWidth": 600,
-        "minHeight": 420,
+        "width": 1200,
+        "height": 780,
+        "minWidth": 380,
+        "minHeight": 480,
         "dragDropEnabled": false
       }
     ],

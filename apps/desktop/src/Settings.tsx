@@ -99,6 +99,26 @@ export function SettingsDialog(props: {
       <div className="modal">
         <h2 id="set-title">Ayarlar</h2>
         <div className="field">
+          <label className="lbl" htmlFor="s-theme">
+            Görünüm
+          </label>
+          <select
+            id="s-theme"
+            className="text-input"
+            value={settings?.theme ?? "system"}
+            disabled={settings === null}
+            onChange={(e) => {
+              const theme = e.target.value as api.Theme;
+              api.applyTheme(theme);
+              void change({ theme });
+            }}
+          >
+            <option value="system">Windows ile aynı</option>
+            <option value="light">Açık</option>
+            <option value="dark">Koyu</option>
+          </select>
+        </div>
+        <div className="field">
           <label className="lbl" htmlFor="s-idle">
             Otomatik kilit (klavye ve fare kullanılmazsa)
           </label>

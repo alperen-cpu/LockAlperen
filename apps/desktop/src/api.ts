@@ -217,6 +217,17 @@ export interface Settings {
   closeToTray: boolean;
   /** Global shortcut that types into the window in front (one matching entry). */
   autotypeShortcut: Shortcut;
+  /** "system" follows Windows. */
+  theme: Theme;
+}
+
+export type Theme = "system" | "light" | "dark";
+
+/** Applies the colour theme (styles.css): "system" leaves it to Windows. */
+export function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  if (theme === "system") delete root.dataset.theme;
+  else root.dataset.theme = theme;
 }
 
 export type Shortcut = "off" | "ctrl-alt-a" | "ctrl-alt-shift-a" | "ctrl-alt-shift-k" | "ctrl-alt-shift-l";
