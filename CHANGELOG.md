@@ -1,5 +1,14 @@
 # Sürüm Notları
 
+## [Yayınlanmamış]
+
+- **Arayüz tasarıma uyduruldu:** Kilit açma ekranında ortada tek kart, son kasalar altında.
+  Üst çubukta arama ortada, kasa adı logonun altında. Liste başlığı ve "Yeni kayıt" düğmesi.
+  Kayıt alanlarında etiket solda, "Kopyala / Göster / Aç" düğmeleri sağda. Dar pencerede klasör
+  çipleri ve yüzen "Yeni kayıt" düğmesi.
+- **Ayarlar tam sayfa:** Güvenlik, Otomatik yazma, Görünüm, Pencere ve tepsi, Güncellemeler,
+  İçe ve dışa aktarma. KeePass'ten içe aktarma artık "İçe ve dışa aktarma" bölümünde.
+
 ## [0.4.0] - 2026-11-17: yeni arayüz, koyu tema, duyarlı düzen
 
 - **Yeni arayüz:** Ferah, açık tema varsayılan; yuvarlak düğmeler, kenar çizgisi yerine hafif
