@@ -2246,6 +2246,7 @@ function VaultScreen({
                   <h1 className="ellipsis">{current.title || "(başlıksız)"}</h1>
                   <div className="muted">{groupPath(current.groupId)}</div>
                 </div>
+                {!api.IS_LINUX && (
                 <button
                   type="button"
                   className="btn"
@@ -2258,6 +2259,7 @@ function VaultScreen({
                 >
                   Otomatik yaz
                 </button>
+                )}
                 {current.inRecycleBin && (
                   <button
                     type="button"

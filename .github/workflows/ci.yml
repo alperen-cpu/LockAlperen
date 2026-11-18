@@ -43,10 +43,15 @@ jobs:
           LAV_FUZZ_ITERS: "200000"
 
   desktop:
-    # The Tauri app (apps/desktop) is its own Cargo workspace. Windows only:
-    # it is the target platform, and the runner's MSVC toolchain is what a
-    # release build uses (local development so far used windows-gnu).
-    runs-on: windows-latest
+    # The Tauri app (apps/desktop) is its own Cargo workspace, built for both
+    # platforms it ships on. Windows: the runner's MSVC toolchain is what a
+    # release build uses. Linux: Ubuntu 22.04, the oldest supported release,
+    # so that what is built here also runs on 24.04 (glibc, WebKitGTK 4.1).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: apps/desktop
@@ -57,13 +62,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
           components: clippy, rustfmt
+      - name: Linux build dependencies (WebKitGTK, tray, AppImage tools)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev build-essential file patchelf
       - run: npm ci --no-audit --no-fund
-      # Blocking: everything that ends up in the installed app.
+      # Blocking: everything that ends up in the installed app. The audits
+      # read lock files, which are the same on both platforms: run once.
       - run: npm audit --omit=dev --audit-level=low
+        if: runner.os == 'Windows'
       # Build tools (Vite and its dependencies) never ship, and an advisory
       # can land before any fixed version exists (picomatch, GHSA-fc5q-39xc-vjpf,
       # 2026-11-18). Still run so it shows in the log, but do not block.
       - name: npm audit (build tools, warning only)
+        if: runner.os == 'Windows'
         run: npm audit --audit-level=low
         continue-on-error: true
       - run: npm run build
@@ -73,7 +88,13 @@ jobs:
         working-directory: apps/desktop/src-tauri
       - run: cargo test --locked
         working-directory: apps/desktop/src-tauri
+      # Linux: the .deb and the AppImage really bundle (unsigned here; the
+      # release workflow signs). Catches missing libraries and bad config.
+      - name: Bundle (Linux, unsigned)
+        if: runner.os == 'Linux'
+        run: npx tauri build --ci --bundles deb,appimage
       - run: cargo install cargo-audit --locked --version 0.23.0
+        if: runner.os == 'Windows'
       # Both are Linux-only (GTK) dependencies of Tauri, not in the Windows build:
       # RUSTSEC-2024-0370 proc-macro-error unmaintained; RUSTSEC-2024-0429 glib unsound.
       # RUSTSEC-2025-0057 fxhash unmaintained (via lav-favicon -> scraper), as in the core job.
@@ -83,7 +104,10 @@ jobs:
       # RUSTSEC-2026-0543 chrono unmaintained, no known vulnerability: IN the Windows build,
       # via keepass (KDBX import, reads entry timestamps). Same policy as fxhash; revisit when
       # keepass drops or replaces chrono.
-      - run: cargo audit --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2025-0057 --ignore RUSTSEC-2026-0370 --ignore RUSTSEC-2026-0371 --ignore RUSTSEC-2026-0372 --ignore RUSTSEC-2026-0543
+      # Cargo.lock lists every platform's dependencies, so this one run on
+      # Windows also covers the Linux build (the ignores below are Linux ones).
+      - if: runner.os == 'Windows'
+        run: cargo audit --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429 --ignore RUSTSEC-2025-0057 --ignore RUSTSEC-2026-0370 --ignore RUSTSEC-2026-0371 --ignore RUSTSEC-2026-0372 --ignore RUSTSEC-2026-0543
         working-directory: apps/desktop/src-tauri
 
   supply-chain:

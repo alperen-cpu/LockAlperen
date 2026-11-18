@@ -2609,11 +2609,13 @@ version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "gtk",
  "hmac 0.12.1",
  "image",
  "keepass",
  "lav-core",
  "lav-favicon",
+ "libc",
  "minisign-verify",
  "reqwest 0.12.28",
  "rust-argon2",
@@ -2630,6 +2632,7 @@ dependencies = [
  "url",
  "uuid",
  "windows-sys 0.61.2",
+ "zbus",
  "zeroize",
 ]
 

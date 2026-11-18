@@ -1,6 +1,7 @@
 # LockAlperen 🔒
 
-Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e modern bir alternatif.
+Windows ve Linux (Ubuntu masaüstü) için yerel, açık kaynaklı ve sade bir parola yöneticisi.
+KeePass'e modern bir alternatif.
 
 - **Yerel:** Sunucu yok, hesap yok, telemetri yok. Kasanız, istediğiniz yerde duran tek bir şifreli
   `.lav` dosyasıdır ve hiçbir sunucuya gönderilmez.
@@ -8,7 +9,7 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **KeePass'ten geçiş:** `.kdbx` (KDBX 4) dosyalarını içe aktarma
 - **Günlük kullanım:** Kayıt ekleme, düzenleme ve çoğaltma (Ctrl+K), son kullanma tarihi, Geri Dönüşüm Kutusu, klasör ağacı (sürükle-bırak ile taşıma), parola
   üretici, TOTP kodları, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
-- **Otomatik yazma:** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
+- **Otomatik yazma (Windows):** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
   doğrulanan pencereye yazar. Kaydın sitesi varsa düğme önce siteyi tarayıcıda açar, sonra yazar
 - **Hızlı kullanım:** Tablo görünümünde parola ve son kullanma sütunları; fare bir kullanıcı adı ya da
   parolanın üzerindeyken Ctrl+C ile kopyalama; KeePass kısayolları (Ctrl+B, Ctrl+U, Ctrl+E, Delete);
@@ -19,10 +20,11 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
   referansları (`{REF:…}`), kayıt renkleri, etiket ve "süresi dolacaklar" görünümleri, aramada alan
   seçimi, üretici profilleri ve desenler, kasa ayarları (geçmiş, şifreleme gücü, anahtar dosyası)
 - **Google Drive yedeği (isteğe bağlı):** Şifreli kasa dosyası Drive'a elle ya da otomatik yedeklenir;
-  uygulama Drive'da yalnızca kendi dosyalarını görür, Google erişimi Windows ile şifreli saklanır
+  uygulama Drive'da yalnızca kendi dosyalarını görür, Google erişimi Windows'ta DPAPI ile şifreli,
+  Linux'ta sistem anahtarlığında (GNOME Keyring) saklanır
 - **Arka planda çalışma:** Kapatınca saatin yanındaki simgede çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
-- **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
-  geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
+- **Güvenlik:** Otomatik kilit (boşta kalınca, ekran kilidi ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
+  geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez (Windows) ([SECURITY.md](SECURITY.md))
 - **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf
   servis yok)
 - **Uygulama içi güncelleme:** Yeni sürüm, imzası doğrulanarak kurulu sürümün üzerine kurulur
@@ -34,12 +36,40 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 
 ## Kurulum
 
+### Windows
+
 1. [Releases](https://github.com/alperen-cpu/LockAlperen/releases/latest) sayfasından
    `LockAlperen_x.y.z_x64-setup.exe` dosyasını indirip çalıştırın. Yönetici yetkisi gerekmez.
 2. Kurulum dosyasında Windows kod imzası yok. Bu yüzden SmartScreen "tanınmayan uygulama" uyarısı
    verebilir: **Ek bilgi → Yine de çalıştır**.
 3. Sonraki sürümler uygulama açılınca önerilir ve tek tıkla kurulur. Kasa dosyalarınız ve
    ayarlarınız korunur. Bu denetim Ayarlar'dan kapatılabilir.
+
+### Linux (Ubuntu 22.04 ve sonrası, x86-64)
+
+İki paket var; ikisi de uygulama içinden güncellenir:
+
+- **`.deb` (önerilen):** `LockAlperen_x.y.z_amd64.deb` dosyasını indirip kurun:
+
+  ```sh
+  sudo apt install ./LockAlperen_x.y.z_amd64.deb
+  ```
+
+  Güncellemede sistem yönetici parolanızı sorar (`pkexec`).
+- **AppImage:** `LockAlperen_x.y.z_amd64.AppImage` dosyasını indirin, çalıştırılabilir yapın
+  (`chmod +x`) ve açın. Kurulum ve yönetici izni gerekmez; güncelleme dosyanın kendisini değiştirir.
+
+Linux'ta farklı olanlar:
+
+- **Otomatik yazma ve global kısayollar henüz yok.** Ubuntu'nun varsayılan oturumu Wayland, başka bir
+  pencerenin başlığını okumaya ve ona tuş göndermeye izin vermiyor. Bu yüzden hedef pencere
+  doğrulanamıyor. Kullanıcı adını ve parolayı kopyalayıp yapıştırın.
+- **Ekran görüntüsü engeli yok.** X11'de de Wayland'de de bir pencereyi ekran paylaşımından
+  gizleyecek bir ayar yok.
+- **Otomatik kilit:** Boşta kalma süresi GNOME'dan (KDE'de KDE'den) okunur. Ekran kilidi (Super+L),
+  uyku, kapanma, oturumu kapatma ve başka kullanıcıya geçiş kasayı kilitler.
+- **Arka plan simgesi:** Üst çubukta görünür. Ubuntu'da AppIndicator uzantısı bunu varsayılan olarak
+  sağlar; başka masaüstlerinde bir sistem tepsisi uzantısı gerekebilir.
 
 Ağa çıkan işlemler: site ikonlarının indirilmesi, GitHub'dan sürüm denetimi ve isteğe bağlı Google Drive yedeği.
 Drive'a yalnızca şifreli kasa dosyası gider; Google hesabı bağlanmadıkça hiçbir şey gönderilmez.
@@ -58,6 +88,7 @@ Drive'a yalnızca şifreli kasa dosyası gider; Google hesabı bağlanmadıkça 
 | 6 | Arka planda çalışma (saatin yanındaki simge), tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
 | 7 | KeePass özellikleri: çoğaltma, son kullanma tarihi, Geri Dönüşüm Kutusu, KeePass seçenekleri, kısayollar | ✅ |
 | 8 | Sekmeler, birleştirme, KDBX/HTML dışa aktarma, otomatik yazma dizileri, referanslar, renkler, kasa ayarları | ✅ |
+| 9 | Linux (Ubuntu masaüstü): `.deb` ve AppImage, otomatik kilit, pano, anahtarlık | 🚧 CI'da derleniyor; gerçek masaüstünde henüz denenmedi |
 
 **Bilinçli olarak yapılmayanlar ve eksikler:**
 - Windows Hello yok (proje sahibinin kararı).

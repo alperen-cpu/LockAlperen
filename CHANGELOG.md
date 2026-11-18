@@ -1,5 +1,15 @@
 # Sürüm Notları
 
+## [Yayınlanmadı]: Linux (Ubuntu masaüstü)
+
+- **Linux desteği:** Ubuntu 22.04 ve sonrası için `.deb` ve AppImage. İkisi de uygulama içinden
+  güncellenir (`.deb` güncellemesi yönetici parolası ister).
+- Linux'ta otomatik kilit (boşta kalma, ekran kilidi, uyku, kapanma, kullanıcı değiştirme), pano
+  (pano yöneticilerine "gizli" işaretiyle), Google erişim anahtarı için sistem anahtarlığı, oturum
+  açılışında başlatma ve süreç sıkılaştırması (ptrace/core dump kapalı).
+- Linux'ta henüz olmayanlar: otomatik yazma, global kısayollar, ekran görüntüsünden gizleme.
+- Sürüm iş akışı Windows ve Linux paketlerini birlikte imzalayıp tek taslak sürümde yayımlar.
+
 ## [0.8.0] - 2026-11-18: Google Drive yedeği
 
 - **Google Drive yedeği:** Ayarlar › Google Drive. Google hesabınızı bağlayın; kasa `LockAlperen

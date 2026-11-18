@@ -9,9 +9,15 @@
 //!   `localhost:8080`, `intranet:8443/giris` and `192.168.1.1` work;
 //! - user info is dropped (`kullanici@site.com` opens `https://site.com/`;
 //!   credentials are never put into the address the browser gets).
+//!
+//! Windows: `ShellExecuteW`. Linux: `xdg-open` with the address as its only
+//! argument (no shell), started without the AppImage's library paths so that
+//! the browser loads its own libraries.
 #![allow(unsafe_code)]
 
+#[cfg(windows)]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 pub const NOT_A_WEB_ADDRESS: &str =
@@ -53,6 +59,53 @@ pub fn web_address(raw: &str) -> Option<url::Url> {
     Some(u)
 }
 
+#[cfg(target_os = "linux")]
+pub fn open(u: &url::Url) -> Result<(), &'static str> {
+    // Re-checked here so that no caller can pass anything else.
+    if !matches!(u.scheme(), "http" | "https") {
+        return Err(NOT_A_WEB_ADDRESS);
+    }
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(u.as_str())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if std::env::var_os("APPIMAGE").is_some() {
+        for var in APPIMAGE_ENV {
+            cmd.env_remove(var);
+        }
+    }
+    let mut child = cmd.spawn().map_err(|_| OPEN_FAILED)?;
+    // xdg-open hands the address to the browser and exits; reap it.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+/// Set by the AppImage runtime for our own bundled libraries; a browser
+/// started with them may crash.
+#[cfg(target_os = "linux")]
+const APPIMAGE_ENV: &[&str] = &[
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GDK_PIXBUF_MODULEDIR",
+    "GIO_MODULE_DIR",
+    "GIO_EXTRA_MODULES",
+    "GTK_PATH",
+    "GTK_EXE_PREFIX",
+    "GTK_DATA_PREFIX",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GSETTINGS_SCHEMA_DIR",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PERLLIB",
+    "QT_PLUGIN_PATH",
+];
+
+#[cfg(windows)]
 pub fn open(u: &url::Url) -> Result<(), &'static str> {
     // Re-checked here so that no caller can pass anything else.
     if !matches!(u.scheme(), "http" | "https") {

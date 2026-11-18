@@ -7,6 +7,12 @@ ya da yeniden indirmesi gerekmez. Kasa dosyaları ve `%LOCALAPPDATA%` altındaki
 > **Ön koşul:** Uygulama `LockAlperen_x.y.z_x64-setup.exe` ile **kurulmuş** olmalı. Derleme
 > klasöründen tek başına çalıştırılan `.exe` kendini güncelleyemez: kurulum dosyası onu bulamaz.
 
+**Linux:** `latest.json` her paket türüne kendi dosyasını verir (`linux-x86_64-deb`,
+`linux-x86_64-appimage`). `.deb` ile kurulan uygulama yeni `.deb`'i `pkexec dpkg -i` ile kurar,
+bu yüzden sistem yönetici parolasını sorar. AppImage kendi dosyasını değiştirir ve yönetici izni
+istemez. İki türde de imza aynı anahtarla, kurulumdan önce doğrulanır; ardından uygulama yeniden
+başlatılır. Ayarlar `~/.local/share/com.alperen.lockalperen/` altında kalır.
+
 ## Kullanıcı ne görür
 
 1. Uygulama açılınca (Ayarlar'da "Açılışta yeni sürümü denetle" açıksa, varsayılan **açık**)

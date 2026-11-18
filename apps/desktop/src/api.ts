@@ -2,6 +2,11 @@
 // capabilities (see src-tauri/capabilities/main.json).
 import { invoke } from "@tauri-apps/api/core";
 
+/** The Linux build (WebKitGTK). Only changes what the UI offers and how it
+ *  words it; what is allowed is still decided in Rust. Auto-type and the
+ *  global shortcuts are Windows-only for now. */
+export const IS_LINUX = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
+
 export interface VaultInfo {
   name: string;
   entryCount: number;
