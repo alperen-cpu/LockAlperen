@@ -63,8 +63,10 @@ pub mod testing {
 pub use crypto::KdfParams;
 pub use error::{Error, Result};
 pub use generator::{generate as generate_password, PasswordOptions};
+pub use generator::{generate_pattern, pattern_entropy_bits, PATTERN_HELP};
 pub use model::{
-    Attachment, CustomField, Entry, EntryIcon, EntryVersion, Group, Removal, VaultData,
+    Attachment, AutoTypeConfig, CustomField, Entry, EntryIcon, EntryVersion, Group, MergeReport,
+    Removal, Tombstone, VaultData, HISTORY_LIMIT_MAX,
 };
 pub use secret::{SecretBytes, SecretString};
 pub use vault::Vault;

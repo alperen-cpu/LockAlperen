@@ -1,6 +1,6 @@
 [package]
 name = "lockalperen-desktop"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 license = "MIT"
 publish = false
@@ -40,9 +40,13 @@ hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
 url = "2"
-# KeePass import (src/import.rs). Parsing only; the file is pre-checked by us
+# KeePass import (src/import.rs) and export (src/export.rs). Files to import are pre-checked by us
 # (version, size, KDF limits) before this crate sees it.
-keepass = { version = "=0.17.0", default-features = false }
+# save_kdbx4: "KeePass olarak dışa aktar" (src/export.rs).
+keepass = { version = "=0.17.0", default-features = false, features = ["save_kdbx4"] }
+# Same versions keepass already uses: Argon2id for the exported file, its dates.
+kp_argon2 = { package = "rust-argon2", version = "=3.0.0" }
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 # Already in Tauri's tree at this version; used only by src/clipboard.rs
 # src/autolock.rs and src/hardening.rs (the only unsafe code in the app).
 windows-sys = { version = "=0.61.2", features = [
@@ -70,10 +74,6 @@ windows-sys = { version = "=0.61.2", features = [
 minisign-verify = "=0.3.0"
 # src/lockicon.rs preview test only (already in the tree via lav-favicon).
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-# Only to WRITE KDBX 4 fixtures in tests.
-keepass = { version = "=0.17.0", default-features = false, features = ["save_kdbx4"] }
-# keepass uses rust-argon2 (lib name `argon2`); only for KdfConfig in tests.
-kp_argon2 = { package = "rust-argon2", version = "3" }
 
 [profile.dev.package."*"]
 # Argon2 is extremely slow without optimizations.

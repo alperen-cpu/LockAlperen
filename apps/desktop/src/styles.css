@@ -2473,3 +2473,268 @@ input[type="range"] {
 .entry-table {
   min-width: 720px;
 }
+
+/* Search scope ("Alanlar"): which fields the search looks in. */
+.search-scope {
+  position: relative;
+  flex: none;
+}
+
+.scope-btn {
+  height: 40px;
+}
+
+.scope-btn.on {
+  color: var(--accent-text);
+}
+
+.scope-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 25;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.scope-pop p {
+  margin: 4px 0 0;
+}
+
+/* Tags in the folder list. */
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 4px 6px;
+}
+
+.tag-chip {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tag-chip .count {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.tag-chip.on .count {
+  color: inherit;
+}
+
+.count.warn-count {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.days-select {
+  width: auto;
+  height: 32px;
+  margin-left: 8px;
+}
+
+/* Editor: advanced section. */
+.advanced {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.advanced > .field {
+  margin-bottom: 16px;
+}
+
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.token-btn,
+.profile-chip {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-family: var(--mono, Consolas, monospace);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.profile-chip {
+  font-family: inherit;
+}
+
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.color-pick input[type="color"] {
+  width: 36px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.ref-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-row {
+  gap: 8px;
+}
+
+.profile-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.link-btn.small {
+  font-size: 12.5px;
+}
+
+.pattern-help {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 12px;
+  margin: 6px 0 0;
+}
+
+.pattern-help div {
+  display: flex;
+  gap: 8px;
+}
+
+.pattern-help dt {
+  min-width: 34px;
+  font-weight: 600;
+}
+
+.pattern-help dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .ref-row {
+    grid-template-columns: 1fr;
+  }
+
+  .search-scope {
+    display: none;
+  }
+}
+/* Several vaults open at once: the tab bar above the screens. */
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.tabbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  max-width: 220px;
+  border-radius: 10px 10px 0 0;
+  background: var(--surface-2);
+}
+
+.tab.active {
+  background: var(--surface);
+  box-shadow: 0 -1px 0 var(--line) inset;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px 0 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab.active .tab-btn {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.tab-btn svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.tab-close {
+  margin-right: 4px;
+}
+
+.tab-new {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.tab-error {
+  margin-left: 8px;
+  white-space: nowrap;
+}

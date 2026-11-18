@@ -84,6 +84,7 @@ fn group(id: uuid::Uuid, parent: Option<uuid::Uuid>, name: &str) -> Group {
         icon: None,
         created: 0,
         modified: 0,
+        moved: 0,
     }
 }
 

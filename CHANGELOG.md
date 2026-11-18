@@ -1,5 +1,43 @@
 # Sürüm Notları
 
+## [0.7.0] - 2026-11-18: birden fazla kasa, birleştirme, KeePass'e dışa aktarma, otomatik yazma dizileri ve daha fazlası
+
+KeePass'teki özelliklerin büyük kısmı geldi.
+
+- **Birden fazla kasa (sekmeler):** Üst çubuktaki **+** ile başka bir kasayı yeni sekmede
+  açın (en fazla 8). Kilitleme bütün sekmeleri kilitler; aynı kasa iki sekmede açılamaz.
+  Kısayolla otomatik yazma açık bütün kasalara bakar.
+- **Başka bir kasayla birleştir** (KeePass "Synchronize"): Ayarlar › İçe ve dışa aktarma.
+  Başka cihazdaki ya da yedekteki `.lav` dosyası bu kasaya katılır. Aynı kayıt iki yerde
+  değiştiyse yenisi kalır, eskisi geçmişe girer. Bir tarafta kalıcı silinenler silinir; bunun
+  için kasa artık kalıcı silinenlerin kimliğini tutuyor.
+- **KeePass olarak dışa aktar (KDBX 4):** Klasörler, ekler, etiketler, son kullanma, otomatik
+  yazma ve renkler dahil; dosyaya ayrı bir parola verilir. KeePass'e geri dönüş yolu.
+- **Yazdırılabilir sayfa (acil durum):** Kayıtlar klasörlere göre bir HTML sayfasına yazılır
+  (parolalar isteğe bağlı).
+- **Kayda özel otomatik yazma:** Düzenle › Gelişmiş. Dizi (`{USERNAME}{ENTER}{DELAY 1500}
+  {PASSWORD}{ENTER}` gibi; `{TOTP}`, `{S:Alan}`, `{TITLE}`, `{URL}`, `{NOTES}`, `{SPACE}`), hedef
+  pencere kuralı (`*Banka*Giriş*`) ve kayıtta otomatik yazmayı kapatma.
+- **Alan referansları:** Bir kaydın parolası ya da kullanıcı adı başka bir kaydınkine bağlanabilir
+  (KeePass `{REF:…}`). Kaynak değişince bağlı kayıt da güncel olur; kopyalama ve otomatik yazma
+  gerçek değeri kullanır.
+- **Kayıt renkleri:** Listede yazı ve arka plan rengi.
+- **Gelişmiş arama:** Arama kutusunun yanındaki **Alanlar** ile nerelere bakılacağı seçilir:
+  başlık, kullanıcı adı, site, etiketler, notlar, özel alanlar (gizli değerler ve parolalar
+  hiçbir zaman aranmaz).
+- **Etiketler ve "Süresi dolacaklar":** Sol menüde etiketler listelenir; tıklayınca o etiketli
+  kayıtlar görünür. "Süresi dolacaklar" süresi geçmiş ya da 7/30/90/365 gün içinde dolacak
+  kayıtları en yakından başlayarak gösterir.
+- **Parola üretici profilleri ve desen:** Hazır profiller (onaltılık anahtarlar, MAC adresi, PIN)
+  ve kendi kaydettiğiniz profiller; desenle üretme (`uu-d{4}` gibi).
+- **Kasa ayarları** (Ayarlar › Kasa): ad ve açıklama, kayıt başına geçmiş sayısı, eski geçmişi
+  temizleme, şifreleme gücü (Argon2id bellek/geçiş; hazır ayarlar), anahtar dosyası oluşturma,
+  ekleme, değiştirme ve kaldırma.
+- **KeePass'ten içe aktarma** artık otomatik yazma ayarlarını ve renkleri de alıyor.
+- **Dosya formatı:** Kasaya ve kayıtlara isteğe bağlı yeni alanlar eklendi (`docs/FORMAT.md`).
+  Eski kasalar açılır. Eski bir uygulama sürümü bu kasayı açar ama onunla kaydedilirse yeni
+  alanlar (renkler, otomatik yazma ayarı, silinme kayıtları) düşer.
+
 ## [0.6.0] - 2026-11-18: otomatik yazma siteyi açar, parola sütunu, üzerindeyken Ctrl+C, boyutlanan panel, onay penceresi
 
 - **Otomatik yaz önce siteyi açar:** Kaydın web sitesi varsa "Otomatik yaz" siteyi varsayılan

@@ -172,6 +172,7 @@ fn property_repair_structure_on_random_graphs() {
                 icon: None,
                 created: 0,
                 modified: 0,
+                moved: 0,
             });
         }
         for _ in 0..rng.below(6) {

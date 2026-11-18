@@ -31,6 +31,10 @@ export interface EntrySummary {
   inRecycleBin: boolean;
   /** Unix seconds; null = never expires. */
   expires: number | null;
+  tags: string[];
+  /** List colours, "#rrggbb" (checked by Rust). */
+  fgColor: string | null;
+  bgColor: string | null;
 }
 
 /** Opens the native file picker. Returns null if the user cancelled. */
@@ -126,7 +130,38 @@ export interface EntryForm {
   fields?: FormField[] | null;
   /** Expiry as Unix seconds (KeePass "Expires"); null = never. */
   expires?: number | null;
+  /** Auto-type sequence; "" = {USERNAME}{TAB}{PASSWORD}{ENTER}. */
+  autotypeSequence?: string;
+  /** Window rule with * and ?; "" = the entry's title or site. */
+  autotypeWindow?: string;
+  /** false = this entry never auto-types. */
+  autotypeEnabled?: boolean;
+  /** List colours, "#rrggbb"; null = none. */
+  fgColor?: string | null;
+  bgColor?: string | null;
 }
+
+/** KeePass field reference to another entry's field (resolved by Rust when
+ *  copying or auto-typing). what: T title, U username, P password, A site,
+ *  N notes. */
+export function fieldReference(id: string, what: "T" | "U" | "P" | "A" | "N"): string {
+  return `{REF:${what}@I:${id.replace(/-/g, "").toUpperCase()}}`;
+}
+
+/** The placeholders an auto-type sequence may use. */
+export const SEQUENCE_TOKENS = [
+  "{USERNAME}",
+  "{PASSWORD}",
+  "{TAB}",
+  "{ENTER}",
+  "{TOTP}",
+  "{TITLE}",
+  "{URL}",
+  "{NOTES}",
+  "{SPACE}",
+  "{DELAY 500}",
+  "{S:Alan adı}",
+];
 
 export interface FormField {
   name: string;
@@ -141,7 +176,160 @@ export interface GenOptions {
   digits: boolean;
   symbols: boolean;
   excludeAmbiguous: boolean;
+  /** Non-empty = generate from this pattern instead (see PATTERN_HELP). */
+  pattern?: string;
 }
+
+/** A saved generator profile (KeePass "Password Generator" profiles). */
+export interface GenProfile extends GenOptions {
+  name: string;
+  pattern: string;
+}
+
+/** Placeholders of a generator pattern. */
+export const PATTERN_HELP: [string, string][] = [
+  ["d", "rakam"],
+  ["l", "küçük harf"],
+  ["u", "büyük harf"],
+  ["L", "harf"],
+  ["a", "küçük harf ya da rakam"],
+  ["U", "büyük harf ya da rakam"],
+  ["A", "harf ya da rakam"],
+  ["s", "sembol"],
+  ["h / H", "onaltılık rakam (küçük / büyük)"],
+  ["\\x", "x karakterinin kendisi"],
+  ["{n}", "öncekini n kez tekrarla"],
+];
+
+const PATTERN_SETS: Record<string, number> = {
+  d: 10,
+  l: 26,
+  u: 26,
+  L: 52,
+  a: 36,
+  U: 36,
+  A: 62,
+  s: 27,
+  h: 16,
+  H: 16,
+};
+
+/** Upper bound of a pattern's entropy in bits; null if it is not valid
+ *  (Rust checks it again). */
+export function patternBits(p: string): number | null {
+  const items: number[] = [];
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === "\\") {
+      if (i + 1 >= p.length) return null;
+      items.push(0);
+      i++;
+    } else if (c === "{") {
+      const end = p.indexOf("}", i);
+      const n = end > i ? Number(p.slice(i + 1, end)) : NaN;
+      if (!Number.isInteger(n) || n < 1 || n > 256 || items.length === 0) return null;
+      const last = items[items.length - 1];
+      for (let k = 1; k < n; k++) items.push(last);
+      i = end;
+    } else {
+      items.push(PATTERN_SETS[c] ? Math.log2(PATTERN_SETS[c]) : 0);
+    }
+    if (items.length > 256) return null;
+  }
+  return items.length ? items.reduce((a, b) => a + b, 0) : null;
+}
+
+/** KeePass's built-in profiles (patterns), shown before the user's own. */
+export const BUILTIN_PROFILES: GenProfile[] = [
+  ["40 bit onaltılık anahtar", "h{10}"],
+  ["128 bit onaltılık anahtar", "h{32}"],
+  ["256 bit onaltılık anahtar", "h{64}"],
+  ["MAC adresi", "HH\\-HH\\-HH\\-HH\\-HH\\-HH"],
+  ["6 haneli PIN", "d{6}"],
+].map(([name, pattern]) => ({
+  name,
+  pattern,
+  length: 20,
+  lowercase: true,
+  uppercase: true,
+  digits: true,
+  symbols: true,
+  excludeAmbiguous: false,
+}));
+
+export const getGenProfiles = () => invoke<GenProfile[]>("get_gen_profiles");
+export const setGenProfiles = (list: GenProfile[]) =>
+  invoke<GenProfile[]>("set_gen_profiles", { list });
+
+/** Ids of entries whose notes or custom fields contain the text (Rust
+ *  searches; protected field values are never searched). */
+export const searchHidden = (query: string, scope: { notes: boolean; fields: boolean }) =>
+  invoke<string[]>("search_hidden", { query, scope });
+
+export interface VaultSettings {
+  name: string;
+  description: string;
+  historyLimit: number;
+  historyVersions: number;
+  kdf: { memoryMib: number; iterations: number; parallelism: number };
+  keyfileRequired: boolean;
+  keyfileName: string | null;
+}
+
+export const vaultSettings = () => invoke<VaultSettings>("vault_settings");
+export const setVaultSettings = (name: string, description: string, historyLimit: number) =>
+  invoke<EntrySummary[]>("set_vault_settings", { name, description, historyLimit });
+export const clearHistory = (olderThanDays: number | null) =>
+  invoke<number>("clear_history", { olderThanDays });
+export const changeKdf = (
+  current: string,
+  memoryMib: number,
+  iterations: number,
+  parallelism: number,
+) => invoke<void>("change_kdf", { current, memoryMib, iterations, parallelism });
+/** create: a new random key file (save dialog); otherwise pick one. */
+export const pickNewKeyfile = (create: boolean) =>
+  invoke<string | null>("pick_new_keyfile", { create });
+export const changeKeyfile = (current: string, usePending: boolean) =>
+  invoke<void>("change_keyfile", { current, usePending });
+
+export const pickMergeFile = () => invoke<string | null>("pick_merge_file");
+export const pickMergeKeyfile = () => invoke<string | null>("pick_merge_keyfile");
+export interface MergeSummary {
+  added: number;
+  updated: number;
+  removed: number;
+  groupsAdded: number;
+}
+export const mergeVault = (password: string) =>
+  invoke<{ summary: MergeSummary; entries: EntrySummary[] }>("merge_vault", { password });
+
+export const exportKdbx = (current: string, kdbxPassword: string) =>
+  invoke<boolean>("export_kdbx", { current, kdbxPassword });
+export const exportHtml = (current: string, includePasswords: boolean, generated: string) =>
+  invoke<boolean>("export_html", { current, includePasswords, generated });
+
+/** Argon2id presets for "Kasa ayarları" (memory MiB, passes, lanes). */
+export const KDF_PRESETS: { label: string; memoryMib: number; iterations: number; parallelism: number }[] = [
+  { label: "Standart (64 MiB, 3 geçiş)", memoryMib: 64, iterations: 3, parallelism: 4 },
+  { label: "Güçlü (256 MiB, 4 geçiş)", memoryMib: 256, iterations: 4, parallelism: 4 },
+  { label: "Çok güçlü (1 GiB, 4 geçiş)", memoryMib: 1024, iterations: 4, parallelism: 4 },
+];
+
+/** One open vault tab (no secrets: vault or file name). */
+export interface TabView {
+  index: number;
+  title: string;
+  unlocked: boolean;
+  active: boolean;
+}
+export const listTabs = () => invoke<TabView[]>("list_tabs");
+export const newTab = () => invoke<TabView[]>("new_tab");
+export const switchTab = (index: number) => invoke<TabView[]>("switch_tab", { index });
+export const closeTab = (index: number) => invoke<TabView[]>("close_tab", { index });
+/** The active tab: its chosen file and, if unlocked, the vault. */
+export const tabState = () =>
+  invoke<{ file: SelectedFile | null; info: VaultInfo | null }>("tab_state");
 
 export const listGroups = () => invoke<GroupView[]>("list_groups");
 

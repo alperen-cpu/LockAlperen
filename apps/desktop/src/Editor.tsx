@@ -49,6 +49,46 @@ export function Editor(props: {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [gen, setGen] = useState<GenOptions>(DEFAULT_GEN);
   const [generated, setGenerated] = useState<string>("");
+  // Generator profiles: KeePass's built-in ones and the user's own.
+  const [profiles, setProfiles] = useState<api.GenProfile[]>([]);
+  const [profileName, setProfileName] = useState<string | null>(null);
+  const [patternHelp, setPatternHelp] = useState(false);
+  // Field reference picker (KeePass {REF:...}).
+  const [others, setOthers] = useState<EntrySummary[]>([]);
+  const [refTarget, setRefTarget] = useState<"username" | "password">("password");
+  const [refEntry, setRefEntry] = useState("");
+  const [refWhat, setRefWhat] = useState<"P" | "U" | "T" | "A" | "N">("P");
+  useEffect(() => {
+    api.getGenProfiles().then(setProfiles, () => setProfiles([]));
+    api.listEntries().then(
+      (list) => setOthers(list.filter((e) => e.id !== props.id && !e.inRecycleBin)),
+      () => setOthers([]),
+    );
+  }, [props.id]);
+
+  async function saveProfile(name: string) {
+    const n = name.trim();
+    if (!n) return;
+    try {
+      const mine = profiles.filter((p) => p.name.toLocaleLowerCase("tr") !== n.toLocaleLowerCase("tr"));
+      const list = await api.setGenProfiles([
+        ...mine,
+        { ...gen, name: n, pattern: gen.pattern ?? "" },
+      ]);
+      setProfiles(list);
+      setProfileName(null);
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
+
+  async function deleteProfile(name: string) {
+    try {
+      setProfiles(await api.setGenProfiles(profiles.filter((p) => p.name !== name)));
+    } catch (e) {
+      setError(api.errorText(e));
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -78,6 +118,11 @@ export function Editor(props: {
                 totp: "",
                 fields: [],
                 expires: null,
+                autotypeSequence: "",
+                autotypeWindow: "",
+                autotypeEnabled: true,
+                fgColor: null,
+                bgColor: null,
               };
         if (!alive) return;
         setGroups(gs);
@@ -156,7 +201,10 @@ export function Editor(props: {
   const groupName = groups.find((g) => g.id === form.groupId)?.name ?? "";
   // Deleting from the recycle bin is permanent; elsewhere it moves there.
   const binned = form.id !== null && api.inRecycleBin(form.groupId, groups);
-  const bits = entropyBits(gen);
+  const usesPattern = !!gen.pattern?.trim();
+  const bits = usesPattern
+    ? Math.floor(api.patternBits(gen.pattern!.trim()) ?? 0)
+    : entropyBits(gen);
 
   return (
     <div className="editor">
@@ -453,12 +501,287 @@ export function Editor(props: {
               spellCheck={false}
             />
           </div>
+
+          <details className="advanced">
+            <summary>Gelişmiş: otomatik yazma, renk, referans</summary>
+
+            <div className="field">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={form.autotypeEnabled ?? true}
+                  onChange={(e) => set({ autotypeEnabled: e.target.checked })}
+                />
+                Bu kayıtta otomatik yazma açık
+              </label>
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="e-seq">
+                Otomatik yazma dizisi
+              </label>
+              <input
+                id="e-seq"
+                className="text-input mono"
+                placeholder="{USERNAME}{TAB}{PASSWORD}{ENTER}"
+                value={form.autotypeSequence ?? ""}
+                onChange={(e) => set({ autotypeSequence: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={form.autotypeEnabled === false}
+              />
+              <div className="token-row">
+                {api.SEQUENCE_TOKENS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className="chip-btn token-btn"
+                    disabled={form.autotypeEnabled === false}
+                    onClick={() => set({ autotypeSequence: (form.autotypeSequence ?? "") + t })}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <span className="muted small">
+                Boş bırakılırsa kullanıcı adı, Tab, parola, Enter yazılır. İki adımlı giriş sayfaları
+                için örnek: {"{USERNAME}{ENTER}{DELAY 1500}{PASSWORD}{ENTER}"}
+              </span>
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="e-win">
+                Hedef pencere kuralı
+              </label>
+              <input
+                id="e-win"
+                className="text-input"
+                placeholder="Boş: başlıkta kaydın adı ya da sitesi geçmeli. Örnek: *Banka*Giriş*"
+                value={form.autotypeWindow ?? ""}
+                onChange={(e) => set({ autotypeWindow: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={form.autotypeEnabled === false}
+              />
+              <span className="muted small">
+                * herhangi bir metin, ? tek karakter; büyük-küçük harf ve Türkçe i farkı gözetilmez.
+                Joker dışında en az 3 harf olmalı.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="lbl">Listede renk</span>
+              <div className="color-row">
+                {(
+                  [
+                    ["fgColor", "Yazı rengi", "#c62828"],
+                    ["bgColor", "Arka plan", "#fff3c4"],
+                  ] as const
+                ).map(([k, label, start]) => (
+                  <label key={k} className="check color-pick">
+                    <input
+                      type="checkbox"
+                      checked={!!form[k]}
+                      onChange={(e) => set({ [k]: e.target.checked ? start : null })}
+                    />
+                    {label}
+                    {form[k] && (
+                      <input
+                        type="color"
+                        aria-label={label}
+                        value={form[k]!}
+                        onChange={(e) => set({ [k]: e.target.value })}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <span className="lbl">Başka bir kayda referans</span>
+              <span className="muted small">
+                Alan, seçilen kaydın değerini gösterir (KeePass {"{REF:…}"}). Kaynak kayıt değişince
+                bu kayıt da kendiliğinden güncel olur; kopyalama ve otomatik yazma gerçek değeri kullanır.
+              </span>
+              <div className="ref-row">
+                <select
+                  className="text-input"
+                  aria-label="Bu kaydın alanı"
+                  value={refTarget}
+                  onChange={(e) => setRefTarget(e.target.value as "username" | "password")}
+                >
+                  <option value="password">Parola</option>
+                  <option value="username">Kullanıcı adı</option>
+                </select>
+                <span className="muted">←</span>
+                <select
+                  className="text-input"
+                  aria-label="Kaynak kayıt"
+                  value={refEntry}
+                  onChange={(e) => setRefEntry(e.target.value)}
+                >
+                  <option value="">Kayıt seçin…</option>
+                  {others.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.title || "(başlıksız)"}
+                      {o.username ? ` (${o.username})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="text-input"
+                  aria-label="Kaynak alan"
+                  value={refWhat}
+                  onChange={(e) => setRefWhat(e.target.value as typeof refWhat)}
+                >
+                  <option value="P">parolası</option>
+                  <option value="U">kullanıcı adı</option>
+                  <option value="T">başlığı</option>
+                  <option value="A">web sitesi</option>
+                  <option value="N">notları</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!refEntry}
+                  onClick={() => {
+                    set({ [refTarget]: api.fieldReference(refEntry, refWhat) });
+                    if (refTarget === "password") setShow(true);
+                  }}
+                >
+                  Bağla
+                </button>
+              </div>
+            </div>
+          </details>
         </form>
 
         <aside className="generator" aria-label="Parola üretici">
           <div className="gen-title">
             <KeyIcon />
             <h2>Parola üretici</h2>
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="g-prof">
+              Profil
+            </label>
+            <div className="row-between profile-row">
+              <select
+                id="g-prof"
+                className="text-input"
+                value=""
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const p = [...api.BUILTIN_PROFILES, ...profiles].find((x) => x.name === name);
+                  if (p) setGen({ ...p });
+                }}
+              >
+                <option value="">Profil seç…</option>
+                <optgroup label="Hazır">
+                  {api.BUILTIN_PROFILES.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {profiles.length > 0 && (
+                  <optgroup label="Benim profillerim">
+                    {profiles.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <button
+                type="button"
+                className="btn"
+                title="Şu anki ayarları profil olarak kaydet"
+                onClick={() => setProfileName(profileName === null ? "" : null)}
+              >
+                Kaydet
+              </button>
+            </div>
+            {profileName !== null && (
+              <div className="row-between profile-row">
+                <input
+                  className="text-input"
+                  placeholder="Profil adı"
+                  aria-label="Profil adı"
+                  value={profileName}
+                  autoFocus
+                  onChange={(e) => setProfileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void saveProfile(profileName);
+                    } else if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setProfileName(null);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-accent"
+                  disabled={!profileName.trim()}
+                  onClick={() => void saveProfile(profileName)}
+                >
+                  Tamam
+                </button>
+              </div>
+            )}
+            {profiles.length > 0 && (
+              <div className="token-row">
+                {profiles.map((p) => (
+                  <span key={p.name} className="chip-btn profile-chip">
+                    {p.name}
+                    <button
+                      type="button"
+                      className="ghost-icon tiny"
+                      aria-label={`${p.name} profilini sil`}
+                      onClick={() => void deleteProfile(p.name)}
+                    >
+                      <XIcon />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="field">
+            <div className="row-between">
+              <label className="lbl" htmlFor="g-pat">
+                Desen (isteğe bağlı)
+              </label>
+              <button
+                type="button"
+                className="link-btn small"
+                aria-expanded={patternHelp}
+                onClick={() => setPatternHelp((v) => !v)}
+              >
+                {patternHelp ? "Yardımı gizle" : "Desen nasıl yazılır?"}
+              </button>
+            </div>
+            <input
+              id="g-pat"
+              className="text-input mono"
+              placeholder="Örnek: uu-d{4}-ll  (boşsa aşağıdaki ayarlar)"
+              value={gen.pattern ?? ""}
+              onChange={(e) => setGen({ ...gen, pattern: e.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {patternHelp && (
+              <dl className="pattern-help small">
+                {api.PATTERN_HELP.map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="mono">{k}</dt>
+                    <dd>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
           </div>
           <div className="gen-out mono" aria-live="polite">
             {generated || "—"}
@@ -494,6 +817,7 @@ export function Editor(props: {
               max={64}
               value={gen.length}
               onChange={(e) => setGen({ ...gen, length: Number(e.target.value) })}
+              disabled={usesPattern}
             />
           </div>
           <div className="grid2 checks">
@@ -510,6 +834,7 @@ export function Editor(props: {
                   type="checkbox"
                   checked={gen[k]}
                   onChange={(e) => setGen({ ...gen, [k]: e.target.checked })}
+                  disabled={usesPattern}
                 />
                 {label}
               </label>
@@ -520,6 +845,7 @@ export function Editor(props: {
               type="checkbox"
               checked={gen.excludeAmbiguous}
               onChange={(e) => setGen({ ...gen, excludeAmbiguous: e.target.checked })}
+              disabled={usesPattern}
             />
             Karışan karakterleri çıkar (I l 1 O 0)
           </label>

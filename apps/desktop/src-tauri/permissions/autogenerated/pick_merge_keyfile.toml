@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-merge-keyfile"
+description = "Enables the pick_merge_keyfile command without any pre-configured scope."
+commands.allow = ["pick_merge_keyfile"]
+
+[[permission]]
+identifier = "deny-pick-merge-keyfile"
+description = "Denies the pick_merge_keyfile command without any pre-configured scope."
+commands.deny = ["pick_merge_keyfile"]

@@ -5,6 +5,7 @@ mod autolock;
 mod autotype;
 mod browser;
 mod clipboard;
+mod export;
 mod hardening;
 mod health;
 mod hotkey;
@@ -14,6 +15,7 @@ mod recent;
 mod session;
 mod settings;
 mod startup;
+mod tabs;
 mod titlebar;
 mod totp;
 mod tray;
@@ -147,8 +149,22 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
     }
     let (shared, notice) = (app.state::<Shared>(), app.state::<Notice>());
     let title = autotype::window_title(target);
-    let found = match shared.with(|s| s.autotype_matches(&title)) {
-        Ok(Ok(found)) => found,
+    // Every unlocked tab is searched (as KeePass searches all open databases).
+    let found = match shared.tabs(|t| {
+        let mut out: Vec<(usize, String, String)> = Vec::new();
+        let mut any = false;
+        for (i, s) in t.all().enumerate() {
+            if !s.is_unlocked() {
+                continue;
+            }
+            any = true;
+            if let Ok(m) = s.autotype_matches(&title) {
+                out.extend(m.into_iter().map(|(id, name)| (i, id, name)));
+            }
+        }
+        any.then_some(out)
+    }) {
+        Ok(Some(found)) => found,
         // Locked: bring the window forward to unlock; nothing is typed.
         _ => return tray::show_main(app),
     };
@@ -156,15 +172,15 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
         notice.set(text);
         tray::show_main(app);
     };
-    let id = match found.as_slice() {
-        [(id, _)] => id.clone(),
+    let (tab, id) = match found.as_slice() {
+        [(tab, id, _)] => (*tab, id.clone()),
         [] => {
             return tell(format!(
                 "\"{title}\" penceresine uyan kayıt yok; hiçbir şey yazılmadı."
             ))
         }
         many => {
-            let names: Vec<&str> = many.iter().take(5).map(|(_, t)| t.as_str()).collect();
+            let names: Vec<&str> = many.iter().take(5).map(|(_, _, t)| t.as_str()).collect();
             return tell(format!(
                 "{} kayıt bu pencereye uyuyor ({}); hiçbir şey yazılmadı. Kaydı seçip \"Otomatik yaz\" düğmesini kullanın.",
                 many.len(),
@@ -173,17 +189,14 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
         }
     };
     let typed = (|| -> Result<(), String> {
-        let (user, pw, _) = shared.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
+        let (steps, _) = shared
+            .tabs(|t| match t.get(tab) {
+                Some(s) => s.autotype_data(&id),
+                None => Err(session::LOCKED.to_owned()),
+            })
+            .and_then(|r| r)?;
         hotkey::wait_for_release()?;
-        autotype::type_into(
-            target,
-            &[
-                autotype::Step::Text(&user),
-                autotype::Step::Tab,
-                autotype::Step::Text(&pw),
-                autotype::Step::Enter,
-            ],
-        )?;
+        autotype::type_into(target, &steps)?;
         Ok(())
     })();
     if let Err(e) = typed {
@@ -263,7 +276,7 @@ impl Recent {
 /// How long a copied secret stays on the clipboard.
 
 #[derive(Default, Clone)]
-struct Shared(Arc<Mutex<Session>>);
+struct Shared(Arc<Mutex<tabs::Tabs>>);
 
 /// The last thing we put on the clipboard, so that locking can clear it.
 #[derive(Default, Clone)]
@@ -278,9 +291,21 @@ impl LastCopy {
 }
 
 impl Shared {
+    /// Runs `f` on the active tab's session (every command works there).
     fn with<T>(&self, f: impl FnOnce(&mut Session) -> T) -> Result<T, String> {
         let mut guard = self.0.lock().map_err(|_| INTERNAL.to_owned())?;
+        Ok(f(guard.active()))
+    }
+
+    /// Runs `f` on all tabs.
+    fn tabs<T>(&self, f: impl FnOnce(&mut tabs::Tabs) -> T) -> Result<T, String> {
+        let mut guard = self.0.lock().map_err(|_| INTERNAL.to_owned())?;
         Ok(f(&mut guard))
+    }
+
+    /// Any tab unlocked (idle lock, the padlock on the icon).
+    fn any_unlocked(&self) -> bool {
+        self.tabs(|t| t.any_unlocked()).unwrap_or(false)
     }
 }
 
@@ -515,6 +540,291 @@ async fn export_csv(
 }
 
 #[tauri::command]
+fn list_tabs(state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state.tabs(|t| t.views())
+}
+
+#[tauri::command]
+fn new_tab(state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state
+        .tabs(|t| t.open_new().map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+#[tauri::command]
+fn switch_tab(index: usize, state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state
+        .tabs(|t| t.switch(index).map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+/// Locks and closes a tab. Our clipboard value is cleared if that vault was
+/// open (it may have come from it).
+#[tauri::command]
+fn close_tab(
+    index: usize,
+    state: State<'_, Shared>,
+    last: State<'_, LastCopy>,
+) -> Result<Vec<tabs::TabView>, String> {
+    let was_open = state.tabs(|t| t.get(index).is_some_and(|s| s.is_unlocked()))?;
+    if was_open {
+        last.clear();
+    }
+    state
+        .tabs(|t| t.close(index).map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+#[derive(serde::Serialize)]
+struct TabState {
+    file: Option<SelectedFile>,
+    info: Option<VaultInfo>,
+}
+
+/// The active tab after a switch: its file and, if open, the vault.
+#[tauri::command]
+fn tab_state(state: State<'_, Shared>) -> Result<TabState, String> {
+    state.with(|s| TabState {
+        file: s.selected_file(),
+        info: s.info(),
+    })
+}
+
+/// Runs a session call off the main thread (KDF work, file I/O).
+async fn blocking<T: Send + 'static>(
+    state: &Shared,
+    f: impl FnOnce(&mut Session) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let shared = state.clone();
+    tauri::async_runtime::spawn_blocking(move || shared.with(f).and_then(|r| r))
+        .await
+        .map_err(|_| INTERNAL.to_owned())?
+}
+
+/// Ids of entries whose notes or custom fields contain the query.
+#[tauri::command]
+fn search_hidden(
+    query: String,
+    scope: session::SearchScope,
+    state: State<'_, Shared>,
+) -> Result<Vec<String>, String> {
+    let query = Zeroizing::new(query);
+    state
+        .with(|s| s.search_hidden(&query, scope))
+        .and_then(|r| r)
+}
+
+fn profiles_file(file: &SettingsFile) -> Option<std::path::PathBuf> {
+    file.0
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+        .map(|p| p.with_file_name("generator-profiles.json"))
+}
+
+#[tauri::command]
+fn get_gen_profiles(file: State<'_, SettingsFile>) -> Vec<settings::GenProfile> {
+    profiles_file(&file)
+        .map(|p| settings::load_profiles(&p))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn set_gen_profiles(
+    list: Vec<settings::GenProfile>,
+    file: State<'_, SettingsFile>,
+) -> Result<Vec<settings::GenProfile>, String> {
+    let list = settings::sanitize_profiles(list);
+    if let Some(p) = profiles_file(&file) {
+        settings::save_profiles(&p, &list).map_err(|_| "Profiller kaydedilemedi.".to_owned())?;
+    }
+    Ok(list)
+}
+
+#[tauri::command]
+fn vault_settings(state: State<'_, Shared>) -> Result<session::VaultSettings, String> {
+    state.with(|s| s.vault_settings()).and_then(|r| r)
+}
+
+#[tauri::command]
+async fn set_vault_settings(
+    name: String,
+    description: String,
+    history_limit: u32,
+    state: State<'_, Shared>,
+) -> Result<Vec<EntrySummary>, String> {
+    change_and_list(&state, move |s| {
+        s.set_vault_settings(&name, &description, history_limit)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn clear_history(
+    older_than_days: Option<u32>,
+    state: State<'_, Shared>,
+) -> Result<usize, String> {
+    blocking(&state, move |s| s.clear_history(older_than_days)).await
+}
+
+#[tauri::command]
+async fn change_kdf(
+    current: String,
+    memory_mib: u32,
+    iterations: u32,
+    parallelism: u32,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    let current = Zeroizing::new(current);
+    blocking(&state, move |s| {
+        s.change_kdf(&current, memory_mib, iterations, parallelism)
+    })
+    .await
+}
+
+/// Picks (create = false) or creates (create = true) the key file to switch
+/// to. The path stays in Rust; the file name is returned.
+#[tauri::command]
+async fn pick_new_keyfile(
+    create: bool,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    if create {
+        let Some(path) = pick_path(
+            app,
+            Some("LockAlperen.key".into()),
+            "Yeni anahtar dosyasının kaydedileceği yer",
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        state
+            .with(|s| s.create_keyfile(path))
+            .and_then(|r| r)
+            .map(Some)
+    } else {
+        let Some(path) = pick_path(app, None, "Anahtar dosyası seç").await? else {
+            return Ok(None);
+        };
+        state.with(|s| s.set_pending_keyfile(Some(path)))
+    }
+}
+
+#[tauri::command]
+async fn change_keyfile(
+    current: String,
+    use_pending: bool,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    let current = Zeroizing::new(current);
+    blocking(&state, move |s| s.change_keyfile(&current, use_pending)).await
+}
+
+#[tauri::command]
+async fn pick_merge_file(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Birleştirilecek kasa")
+            .add_filter("LockAlperen kasası", &["lav"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
+    state.with(|s| s.set_merge_path(path)).map(Some)
+}
+
+#[tauri::command]
+async fn pick_merge_keyfile(
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let Some(path) = pick_path(app, None, "Diğer kasanın anahtar dosyası").await? else {
+        return Ok(None);
+    };
+    state.with(|s| s.set_merge_keyfile(Some(path)))
+}
+
+#[derive(serde::Serialize)]
+struct Merged {
+    summary: session::MergeSummary,
+    entries: Vec<EntrySummary>,
+}
+
+#[tauri::command]
+async fn merge_vault(password: String, state: State<'_, Shared>) -> Result<Merged, String> {
+    let password = Zeroizing::new(password);
+    blocking(&state, move |s| {
+        let summary = s.merge(&password)?;
+        Ok(Merged {
+            summary,
+            entries: s.entries()?,
+        })
+    })
+    .await
+}
+
+/// Re-checks the master password, then writes the vault as a KeePass file
+/// with its own password. Returns false if the save dialog was cancelled.
+#[tauri::command]
+async fn export_kdbx(
+    current: String,
+    kdbx_password: String,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<bool, String> {
+    let (current, kdbx_password) = (Zeroizing::new(current), Zeroizing::new(kdbx_password));
+    let bytes = blocking(&state, move |s| s.export_kdbx(&current, &kdbx_password)).await?;
+    let Some(path) = pick_path(
+        app,
+        Some("LockAlperen.kdbx".into()),
+        "KeePass dosyasının yeri",
+    )
+    .await?
+    else {
+        return Ok(false);
+    };
+    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    Ok(true)
+}
+
+/// Re-checks the master password, then writes a PLAIN-TEXT printable page.
+#[tauri::command]
+async fn export_html(
+    current: String,
+    include_passwords: bool,
+    generated: String,
+    app: AppHandle,
+    state: State<'_, Shared>,
+) -> Result<bool, String> {
+    let current = Zeroizing::new(current);
+    let page = blocking(&state, move |s| {
+        s.export_html(&current, include_passwords, &generated)
+    })
+    .await?;
+    let Some(path) = pick_path(
+        app,
+        Some("LockAlperen-yazdir.html".into()),
+        "Yazdırılabilir sayfanın yeri",
+    )
+    .await?
+    else {
+        return Ok(false);
+    };
+    std::fs::write(&path, page.as_bytes()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    Ok(true)
+}
+
+#[tauri::command]
 async fn pick_import_keyfile(
     app: AppHandle,
     state: State<'_, Shared>,
@@ -596,8 +906,8 @@ async fn auto_type(
     window: tauri::WebviewWindow,
     state: State<'_, Shared>,
 ) -> Result<(), String> {
-    let (user, pw, markers) = state.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
-    if markers.is_empty() {
+    let (steps, target) = state.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
+    if matches!(&target, autotype::Target::Markers(m) if m.is_empty()) {
         return Err("Bu kaydın başlığı ya da web sitesi yok; hedef pencere doğrulanamaz.".into());
     }
     let site = state.with(|s| s.web_address(&id).ok())?;
@@ -606,20 +916,12 @@ async fn auto_type(
         browser::open(u).map_err(str::to_owned)?;
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let target = if site.is_some() {
-            autotype::wait_for_opened_site(&markers)?
+        let window = if site.is_some() {
+            autotype::wait_for_opened_site(&target)?
         } else {
-            autotype::wait_for_target(&markers)?
+            autotype::wait_for_target(&target)?
         };
-        autotype::type_into(
-            target,
-            &[
-                autotype::Step::Text(&user),
-                autotype::Step::Tab,
-                autotype::Step::Text(&pw),
-                autotype::Step::Enter,
-            ],
-        )
+        autotype::type_into(window, &steps)
     })
     .await
     .map_err(|_| INTERNAL.to_owned())?
@@ -919,10 +1221,15 @@ async fn unlock(
 ) -> Result<VaultInfo, String> {
     let password = Zeroizing::new(password);
     let shared = state.inner().clone();
-    let info = tauri::async_runtime::spawn_blocking(move || shared.with(|s| s.unlock(&password)))
-        .await
-        .map_err(|_| INTERNAL.to_owned())?
-        .and_then(|r| r)?;
+    let info = tauri::async_runtime::spawn_blocking(move || {
+        shared.tabs(|t| {
+            t.check_not_open_elsewhere().map_err(str::to_owned)?;
+            t.active().unlock(&password)
+        })
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+    .and_then(|r| r)?;
     recent.record(&state);
     Ok(info)
 }
@@ -974,8 +1281,8 @@ fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> 
 /// Ctrl+L, idle timeout and Windows session/power events alike.
 fn lock_all(shared: &Shared, last: &LastCopy) {
     last.clear();
-    let was_open = shared.with(|s| s.is_unlocked()).unwrap_or(false);
-    let _ = shared.with(Session::lock);
+    let was_open = shared.any_unlocked();
+    let _ = shared.tabs(tabs::Tabs::lock_all);
     // KeePass "Minimize main window after locking the workspace".
     if was_open && settings::minimize_on_lock() {
         if let Some(w) = main_window() {
@@ -1058,7 +1365,7 @@ fn start_autolock(shared: Shared, last: LastCopy) {
         .name("lav-idle".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(1));
-            let unlocked = shared.with(|s| s.is_unlocked()).unwrap_or(false);
+            let unlocked = shared.any_unlocked();
             if unlocked && autolock::system_idle() >= autolock::idle_timeout() {
                 lock_all(&shared, &last);
                 // KeePass "Exit instead of locking the workspace after the
@@ -1196,9 +1503,7 @@ pub fn run() {
             // Red padlock on the window and tray icon while locked.
             {
                 let shared = app.state::<Shared>().inner().clone();
-                lockicon::watch(app.handle(), move || {
-                    shared.with(|s| s.is_unlocked()).unwrap_or(false)
-                });
+                lockicon::watch(app.handle(), move || shared.any_unlocked());
             }
             Ok(())
         })
@@ -1253,7 +1558,26 @@ pub fn run() {
             hotkey_active,
             app_version,
             check_update,
-            install_update
+            install_update,
+            search_hidden,
+            get_gen_profiles,
+            set_gen_profiles,
+            vault_settings,
+            set_vault_settings,
+            clear_history,
+            change_kdf,
+            pick_new_keyfile,
+            change_keyfile,
+            pick_merge_file,
+            pick_merge_keyfile,
+            merge_vault,
+            export_kdbx,
+            export_html,
+            list_tabs,
+            new_tab,
+            switch_tab,
+            close_tab,
+            tab_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

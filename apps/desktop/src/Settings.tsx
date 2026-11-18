@@ -4,10 +4,12 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import * as api from "./api";
 import { UpdateSettings } from "./Update";
+import { DataTools, VaultSettingsPanel } from "./VaultTools";
 import { BackIcon, DownloadIcon } from "./icons";
 
 type Category =
   | "security"
+  | "vault"
   | "autotype"
   | "generator"
   | "look"
@@ -37,6 +39,12 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     id: "security",
     label: "Güvenlik",
     intro: "Bu ayarlar bilgisayarınızda saklanır; kasanın içeriğini değiştirmez.",
+  },
+  {
+    id: "vault",
+    label: "Kasa",
+    intro:
+      "Açık kasanın kendi ayarları (KeePass “Veritabanı ayarları”): kasanın içinde saklanır, kasayla birlikte taşınır.",
   },
   {
     id: "autotype",
@@ -80,7 +88,11 @@ function Row(props: { title: ReactNode; text?: ReactNode; children?: ReactNode }
   );
 }
 
-export function SettingsPage(props: { onClose: () => void; onImport: () => void }) {
+export function SettingsPage(props: {
+  onClose: () => void;
+  onImport: () => void;
+  onEntries: (entries: api.EntrySummary[]) => void;
+}) {
   const [category, setCategory] = useState<Category>("security");
   // All settings travel together, so changing one never resets another.
   const [settings, setSettingsState] = useState<api.Settings | null>(null);
@@ -558,7 +570,17 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
                 </button>
               </div>
             </form>
+            <DataTools busy={busy} setBusy={setBusy} onMsg={setMsg} onEntries={props.onEntries} />
           </>
+        )}
+
+        {category === "vault" && (
+          <VaultSettingsPanel
+            busy={busy}
+            setBusy={setBusy}
+            onMsg={setMsg}
+            onEntries={props.onEntries}
+          />
         )}
 
         {msg && (

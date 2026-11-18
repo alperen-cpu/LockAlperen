@@ -77,13 +77,36 @@ ciphertext = XChaCha20-Poly1305(key = payload_key, nonce = header.nonce,
 
 ```
 VaultData { schema: 1, name, root: uuid, groups: [Group], entries: [Entry], created, modified,
-            recycle_bin?: uuid }
-Group     { id, parent?, name, icon?, created, modified }
+            recycle_bin?: uuid, description?, history_limit?, deleted?: [ { id: uuid, at } ] }
+Group     { id, parent?, name, icon?, created, modified, moved? }
 Entry     { id, group, title, username, password, url, notes, totp?, tags: [str],
             fields: [ { name, value, protected } ], attachments: [ { name, data: bytes } ],
             favorite, expires?, icon?: { png: bytes, fetched }, created, modified,
-            history: [EntryVersion] }
+            history: [EntryVersion],
+            autotype?: { sequence, window, enabled }, fg_color?, bg_color?, moved? }
 ```
+
+`?` ile işaretli alanlar sonradan eklendi ve isteğe bağlıdır. Yoksa varsayılan değer okunur
+(boş, `None`, `0`); bu yüzden `schema` artırılmadı.
+
+| Alan (2026-11, 0.7) | Anlamı |
+|---|---|
+| `description` | Kasa açıklaması (KeePass "Database description"). |
+| `history_limit` | Kayıt başına tutulacak sürüm; yoksa 20, en fazla 100. |
+| `deleted` | Kalıcı silinen kayıt ve klasörlerin kimliği ve zamanı (KeePass "DeletedObjects"). Başka bir kopyayla birleştirince silinenler geri gelmesin diye. En fazla 5000 tutulur, eskiler düşer. |
+| `moved` | Kaydın / klasörün en son taşındığı zaman. Birleştirmede hangi klasörün geçerli olduğuna bu karar verir. |
+| `autotype` | Kayda özel otomatik yazma dizisi (`{USERNAME}{TAB}{PASSWORD}{ENTER}` gibi), hedef pencere kuralı (`*`, `?`) ve açık/kapalı. Uygulama kaydetmeden önce diziyi ayrıştırır ve kuralı denetler. |
+| `fg_color`, `bg_color` | Listede yazı ve arka plan rengi. Uygulama yalnızca `#rrggbb` kabul eder ve gösterirken yeniden denetler. |
+
+**Eski sürümlerle uyum:** Eski bir uygulama sürümü bu alanları tanımaz ve yok sayar; dosyayı
+açar. O sürümle kaydedilirse bu alanlar **düşer** (renkler, otomatik yazma ayarı, silinme
+kayıtları). Kayıtların kendisi kaybolmaz.
+
+**Birleştirme** (`VaultData::merge_from`): kayıtlar ve klasörler kimlikle eşlenir. Yalnız bir
+tarafta olan eklenir; diğer taraf onu en son değişikliğinden sonra kalıcı silmişse eklenmez.
+İki tarafta da olan kayıtta yeni olan kalır, eskisi geçmişe girer (iki tarafın geçmişi
+birleştirilir). Klasörü en son taşıma belirler. Diğer kasanın kökü ve Geri Dönüşüm Kutusu
+bizimkilere eşlenir. Sonunda `repair_structure` çalışır.
 
 `icon` yalnızca uygulamanın yeniden kodladığı 64×64 PNG'yi tutar, indirilen ham resmi değil.
 Zaman damgaları Unix saniyesidir. Her kayıtta en fazla 20 geçmiş sürümü tutulur.
