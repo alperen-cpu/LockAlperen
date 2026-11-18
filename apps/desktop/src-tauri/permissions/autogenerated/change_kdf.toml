@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-change-kdf"
+description = "Enables the change_kdf command without any pre-configured scope."
+commands.allow = ["change_kdf"]
+
+[[permission]]
+identifier = "deny-change-kdf"
+description = "Denies the change_kdf command without any pre-configured scope."
+commands.deny = ["change_kdf"]

@@ -27,16 +27,206 @@ pub const WRONG_TARGET: &str = "Hedef pencerenin başlığı bu kaydın adını 
      içermiyor; güvenlik için hiçbir şey yazılmadı.";
 pub const INTERRUPTED: &str = "Yazarken pencere değişti; yazma durduruldu.";
 
-pub enum Step<'a> {
-    Text(&'a str),
+/// What is typed, after the entry's values are filled in. Text is wiped
+/// when the steps are dropped.
+pub enum Step {
+    Text(zeroize::Zeroizing<String>),
     Tab,
     Enter,
+    Delay(Duration),
+}
+
+/// KeePass's default sequence.
+pub const DEFAULT_SEQUENCE: &str = "{USERNAME}{TAB}{PASSWORD}{ENTER}";
+/// Longest sequence accepted, and the longest total `{DELAY}`.
+pub const MAX_SEQUENCE_CHARS: usize = 1000;
+pub const MAX_TOTAL_DELAY_MS: u64 = 30_000;
+
+pub const BAD_SEQUENCE: &str = "Otomatik yazma dizisi geçersiz. Kullanılabilenler: {USERNAME} \
+     {PASSWORD} {TITLE} {URL} {NOTES} {TOTP} {S:Alan adı} {TAB} {ENTER} {SPACE} {DELAY 500} \
+     {{} {}}; en fazla 1000 karakter ve toplam 30 sn bekleme.";
+
+/// A value of the entry that a sequence can type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SeqField {
+    Username,
+    Password,
+    Title,
+    Url,
+    Notes,
+    Totp,
+    Custom(String),
+}
+
+/// One item of a parsed auto-type sequence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Token {
+    Text(String),
+    Field(SeqField),
+    Tab,
+    Enter,
+    Delay(u64),
+}
+
+/// Parses a KeePass-style sequence. Empty = [`DEFAULT_SEQUENCE`].
+pub fn parse_sequence(seq: &str) -> Result<Vec<Token>, &'static str> {
+    let seq = if seq.trim().is_empty() {
+        DEFAULT_SEQUENCE
+    } else {
+        seq
+    };
+    if seq.chars().count() > MAX_SEQUENCE_CHARS {
+        return Err(BAD_SEQUENCE);
+    }
+    let mut out: Vec<Token> = Vec::new();
+    let mut text = String::new();
+    let mut total_delay = 0u64;
+    let chars: Vec<char> = seq.chars().collect();
+    let flush = |text: &mut String, out: &mut Vec<Token>| {
+        if !text.is_empty() {
+            out.push(Token::Text(std::mem::take(text)));
+        }
+    };
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        i += 1;
+        if c != '{' {
+            text.push(c);
+            continue;
+        }
+        // "{{}" and "{}}" are a literal brace.
+        if i + 1 < chars.len() && chars[i + 1] == '}' && matches!(chars[i], '{' | '}') {
+            text.push(chars[i]);
+            i += 2;
+            continue;
+        }
+        let Some(len) = chars[i..].iter().position(|&d| d == '}') else {
+            return Err(BAD_SEQUENCE);
+        };
+        if len > 128 {
+            return Err(BAD_SEQUENCE);
+        }
+        let name: String = chars[i..i + len].iter().collect();
+        i += len + 1;
+        let upper = name.trim().to_uppercase();
+        let token = match upper.as_str() {
+            "SPACE" => {
+                text.push(' ');
+                continue;
+            }
+            "USERNAME" => Token::Field(SeqField::Username),
+            "PASSWORD" => Token::Field(SeqField::Password),
+            "TITLE" => Token::Field(SeqField::Title),
+            "URL" => Token::Field(SeqField::Url),
+            "NOTES" => Token::Field(SeqField::Notes),
+            "TOTP" => Token::Field(SeqField::Totp),
+            "TAB" => Token::Tab,
+            "ENTER" => Token::Enter,
+            _ => {
+                if let Some(rest) = upper
+                    .strip_prefix("DELAY")
+                    .map(|r| r.trim_start_matches(['=', ' ']))
+                {
+                    let ms: u64 = rest.trim().parse().map_err(|_| BAD_SEQUENCE)?;
+                    total_delay += ms;
+                    if total_delay > MAX_TOTAL_DELAY_MS {
+                        return Err(BAD_SEQUENCE);
+                    }
+                    Token::Delay(ms)
+                } else if upper.starts_with("S:") {
+                    // Keep the custom field's own spelling.
+                    let field = name.trim()[2..].trim().to_owned();
+                    if field.is_empty() {
+                        return Err(BAD_SEQUENCE);
+                    }
+                    Token::Field(SeqField::Custom(field))
+                } else {
+                    return Err(BAD_SEQUENCE);
+                }
+            }
+        };
+        flush(&mut text, &mut out);
+        out.push(token);
+    }
+    flush(&mut text, &mut out);
+    Ok(out)
+}
+
+/// Which windows an entry may type into.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    /// The title must contain one of these (entry title, site host).
+    Markers(Vec<String>),
+    /// The entry's own window rule (`*` = any text, `?` = one character),
+    /// matched against the whole title, ignoring case.
+    Pattern(String),
+}
+
+pub const BAD_WINDOW_RULE: &str = "Pencere kuralında joker karakterler dışında en az 3 harf ya da \
+     rakam olmalı (örnek: *Banka*).";
+
+/// A window rule must name something: at least 3 letters or digits besides
+/// the wildcards, so "*" alone can never match every window.
+pub fn window_rule_ok(rule: &str) -> bool {
+    rule.chars().filter(|c| c.is_alphanumeric()).count() >= 3
+}
+
+impl Target {
+    pub fn matches(&self, window_title: &str) -> bool {
+        match self {
+            Target::Markers(m) => title_matches(window_title, m),
+            Target::Pattern(p) => window_rule_ok(p) && glob(p, window_title),
+        }
+    }
+}
+
+/// Lowercase for comparing, with the Turkish i's folded together (İ, I, ı
+/// and i match each other; plain `to_lowercase` turns İ into i + a
+/// combining dot, so "GİRİŞ" would not match "giriş").
+pub fn fold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'İ' | 'I' | 'ı' => out.push('i'),
+            _ => out.extend(c.to_lowercase()),
+        }
+    }
+    out
+}
+
+/// Case-insensitive wildcard match of the whole text (`*`, `?`).
+pub fn glob(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = fold(pattern).chars().collect();
+    let t: Vec<char> = fold(text).chars().collect();
+    let (mut pi, mut ti) = (0usize, 0usize);
+    let (mut star, mut mark) = (None::<usize>, 0usize);
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some(pi);
+            mark = ti;
+            pi += 1;
+        } else if let Some(s) = star {
+            pi = s + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == '*' {
+        pi += 1;
+    }
+    pi == p.len()
 }
 
 /// Lowercased words the target title must contain one of.
 pub fn expected_markers(title: &str, url: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let t = title.trim().to_lowercase();
+    let t = fold(title.trim());
     if t.chars().count() >= 3 {
         out.push(t);
     }
@@ -60,7 +250,7 @@ pub fn expected_markers(title: &str, url: &str) -> Vec<String> {
 }
 
 pub fn title_matches(window_title: &str, markers: &[String]) -> bool {
-    let w = window_title.to_lowercase();
+    let w = fold(window_title);
     !markers.is_empty() && markers.iter().any(|m| w.contains(m.as_str()))
 }
 
@@ -80,7 +270,7 @@ pub fn pid_of(h: HWND) -> u32 {
 
 /// Waits for the user to switch to another program's window and verifies
 /// it. Returns that window.
-pub fn wait_for_target(markers: &[String]) -> Result<HWND, &'static str> {
+pub fn wait_for_target(target: &Target) -> Result<HWND, &'static str> {
     let me = std::process::id();
     let start = Instant::now();
     while start.elapsed() < WAIT {
@@ -93,7 +283,7 @@ pub fn wait_for_target(markers: &[String]) -> Result<HWND, &'static str> {
             if unsafe { GetForegroundWindow() } != fg {
                 continue;
             }
-            return if title_matches(&window_title(fg), markers) {
+            return if target.matches(&window_title(fg)) {
                 Ok(fg)
             } else {
                 Err(WRONG_TARGET)
@@ -121,7 +311,7 @@ pub const OPENED_NO_TARGET: &str =
 /// program's foreground window has a matching title (the page title shows
 /// up only once the page loads), lets the page settle, and checks again.
 /// The same title rule as [`wait_for_target`]; only the waiting differs.
-pub fn wait_for_opened_site(markers: &[String]) -> Result<HWND, &'static str> {
+pub fn wait_for_opened_site(target: &Target) -> Result<HWND, &'static str> {
     let me = std::process::id();
     let start = Instant::now();
     let mut saw_other = false;
@@ -130,12 +320,10 @@ pub fn wait_for_opened_site(markers: &[String]) -> Result<HWND, &'static str> {
         let fg = unsafe { GetForegroundWindow() };
         if !fg.is_null() && pid_of(fg) != me {
             saw_other = true;
-            if title_matches(&window_title(fg), markers) {
+            if target.matches(&window_title(fg)) {
                 std::thread::sleep(SETTLE_OPENED);
                 // SAFETY: no preconditions.
-                if unsafe { GetForegroundWindow() } == fg
-                    && title_matches(&window_title(fg), markers)
-                {
+                if unsafe { GetForegroundWindow() } == fg && target.matches(&window_title(fg)) {
                     return Ok(fg);
                 }
                 continue;
@@ -194,6 +382,12 @@ pub fn type_into(target: HWND, steps: &[Step]) -> Result<(), &'static str> {
                     std::thread::sleep(Duration::from_millis(5));
                 }
             }
+            Step::Delay(d) => {
+                std::thread::sleep(*d);
+                if !still() {
+                    return Err(INTERRUPTED);
+                }
+            }
             Step::Tab | Step::Enter => {
                 if !still() {
                     return Err(INTERRUPTED);
@@ -214,6 +408,61 @@ pub fn type_into(target: HWND, steps: &[Step]) -> Result<(), &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sequences_parse() {
+        use SeqField::*;
+        assert_eq!(
+            parse_sequence("").unwrap(),
+            vec![
+                Token::Field(Username),
+                Token::Tab,
+                Token::Field(Password),
+                Token::Enter
+            ]
+        );
+        assert_eq!(
+            parse_sequence("{USERNAME}{ENTER}{DELAY 1500}{password}{TOTP}{enter}").unwrap(),
+            vec![
+                Token::Field(Username),
+                Token::Enter,
+                Token::Delay(1500),
+                Token::Field(Password),
+                Token::Field(Totp),
+                Token::Enter
+            ]
+        );
+        assert_eq!(
+            parse_sequence("a{SPACE}b{{}{}}{S:PIN Kodu}{DELAY=10}").unwrap(),
+            vec![
+                Token::Text("a b{}".into()),
+                Token::Field(Custom("PIN Kodu".into())),
+                Token::Delay(10)
+            ]
+        );
+        for bad in [
+            "{NOPE}",
+            "{USERNAME",
+            "{DELAY x}",
+            "{DELAY 40000}",
+            "{S:}",
+            &"x".repeat(1001),
+        ] {
+            assert!(parse_sequence(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn window_rules() {
+        let t = Target::Pattern("*Banka*Giriş*".into());
+        assert!(t.matches("Ziraat BANKA - giriş sayfası - Edge"));
+        assert!(!t.matches("Banka hesap özeti"));
+        assert!(glob("a?c", "ABC") && !glob("a?c", "abbc"));
+        // A rule that names nothing never matches (it would match everything).
+        assert!(!Target::Pattern("*".into()).matches("anything"));
+        assert!(!Target::Pattern("*a*".into()).matches("a"));
+        assert!(!window_rule_ok("**?*") && window_rule_ok("*abc*"));
+    }
 
     #[test]
     fn markers_from_title_and_url() {

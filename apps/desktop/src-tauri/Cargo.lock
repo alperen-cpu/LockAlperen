@@ -2608,6 +2608,7 @@ name = "lockalperen-desktop"
 version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "hmac 0.12.1",
  "image",
  "keepass",

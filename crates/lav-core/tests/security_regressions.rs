@@ -211,6 +211,7 @@ fn la05_unlock_repairs_structure_without_data_loss() {
         icon: None,
         created: 0,
         modified: 0,
+        moved: 0,
     };
     let orphan_entry = Entry::new(uuid::Uuid::new_v4(), "orphan entry");
     v.groups.push(orphan_group);

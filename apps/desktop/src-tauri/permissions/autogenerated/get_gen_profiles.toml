@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-gen-profiles"
+description = "Enables the get_gen_profiles command without any pre-configured scope."
+commands.allow = ["get_gen_profiles"]
+
+[[permission]]
+identifier = "deny-get-gen-profiles"
+description = "Denies the get_gen_profiles command without any pre-configured scope."
+commands.deny = ["get_gen_profiles"]

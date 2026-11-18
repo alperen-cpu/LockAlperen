@@ -93,9 +93,145 @@ pub fn generate(opts: &PasswordOptions) -> Result<Zeroizing<String>> {
     Ok(Zeroizing::new(chars.iter().collect()))
 }
 
+/// Pattern placeholders (KeePass "Generate using a pattern"):
+/// `d` digit, `l` lowercase, `u` uppercase, `L` any letter, `a` lowercase or
+/// digit, `U` uppercase or digit, `A` letter or digit, `s` symbol, `h` / `H`
+/// hex digit (lower / upper case), `\x` the character `x` itself, `{n}`
+/// repeats the previous item n times (1..=256). Any other character is used
+/// as it is.
+pub const PATTERN_HELP: &str = "d l u L a U A s h H \\x {n}";
+
+fn pattern_set(c: char) -> Option<Vec<char>> {
+    let join = |parts: &[&str]| parts.concat().chars().collect::<Vec<char>>();
+    Some(match c {
+        'd' => join(&[DIGITS]),
+        'l' => join(&[LOWER]),
+        'u' => join(&[UPPER]),
+        'L' => join(&[LOWER, UPPER]),
+        'a' => join(&[LOWER, DIGITS]),
+        'U' => join(&[UPPER, DIGITS]),
+        'A' => join(&[LOWER, UPPER, DIGITS]),
+        's' => join(&[SYMBOLS]),
+        'h' => "0123456789abcdef".chars().collect(),
+        'H' => "0123456789ABCDEF".chars().collect(),
+        _ => return None,
+    })
+}
+
+/// One item of a parsed pattern: a set to draw from, or a fixed character.
+enum Item {
+    Set(Vec<char>),
+    Literal(char),
+}
+
+fn parse_pattern(pattern: &str) -> Result<Vec<Item>> {
+    let bad = |why| Err(Error::InvalidGeneratorOptions(why));
+    let mut items: Vec<Item> = Vec::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some(x) => items.push(Item::Literal(x)),
+                None => return bad("pattern ends with \\"),
+            },
+            '{' => {
+                let mut digits = String::new();
+                loop {
+                    match chars.next() {
+                        Some('}') => break,
+                        Some(d) if d.is_ascii_digit() && digits.len() < 4 => digits.push(d),
+                        _ => return bad("bad {n} in pattern"),
+                    }
+                }
+                let n: usize = digits
+                    .parse()
+                    .map_err(|_| Error::InvalidGeneratorOptions("bad {n}"))?;
+                let Some(last) = items.pop() else {
+                    return bad("{n} with nothing before it");
+                };
+                if n == 0 || n > MAX_LENGTH {
+                    return bad("{n} out of range");
+                }
+                for _ in 1..n {
+                    items.push(match &last {
+                        Item::Set(s) => Item::Set(s.clone()),
+                        Item::Literal(x) => Item::Literal(*x),
+                    });
+                }
+                items.push(last);
+            }
+            _ => items.push(match pattern_set(c) {
+                Some(set) => Item::Set(set),
+                None => Item::Literal(c),
+            }),
+        }
+        if items.len() > MAX_LENGTH {
+            return bad("pattern too long");
+        }
+    }
+    if items.is_empty() {
+        return bad("empty pattern");
+    }
+    Ok(items)
+}
+
+/// Generates a password from a pattern (see [`PATTERN_HELP`]). At most
+/// [`MAX_LENGTH`] characters.
+pub fn generate_pattern(pattern: &str) -> Result<Zeroizing<String>> {
+    let items = parse_pattern(pattern)?;
+    let mut rng = OsRng;
+    let mut out = Zeroizing::new(String::with_capacity(items.len() * 4));
+    for item in &items {
+        out.push(match item {
+            Item::Set(s) => *s.choose(&mut rng).expect("sets are never empty"),
+            Item::Literal(c) => *c,
+        });
+    }
+    Ok(out)
+}
+
+/// Upper bound on the entropy of a pattern, in bits (0 if it is invalid).
+pub fn pattern_entropy_bits(pattern: &str) -> f64 {
+    parse_pattern(pattern)
+        .map(|items| {
+            items
+                .iter()
+                .map(|i| match i {
+                    Item::Set(s) => (s.len() as f64).log2(),
+                    Item::Literal(_) => 0.0,
+                })
+                .sum()
+        })
+        .unwrap_or(0.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pattern_follows_the_placeholders() {
+        for _ in 0..50 {
+            let pw = generate_pattern(r"uu-d{4}\l").unwrap();
+            let c: Vec<char> = pw.chars().collect();
+            assert_eq!(c.len(), 8);
+            assert!(c[0].is_ascii_uppercase() && c[1].is_ascii_uppercase());
+            assert_eq!(c[2], '-');
+            assert!(c[3..7].iter().all(|d| d.is_ascii_digit()));
+            assert_eq!(c[7], 'l', "escaped placeholder is literal");
+        }
+        assert_eq!(generate_pattern("h{32}").unwrap().len(), 32);
+        assert!((pattern_entropy_bits("d{3}") - 3.0 * 10f64.log2()).abs() < 1e-9);
+        assert_eq!(pattern_entropy_bits("abc{"), 0.0);
+    }
+
+    #[test]
+    fn bad_patterns_are_refused() {
+        for p in ["", "{3}", "d{0}", "d{999}", "d{x}", "d{3", "x\\", "d{256}d"] {
+            assert!(generate_pattern(p).is_err(), "{p:?}");
+        }
+        assert!(generate_pattern("d{256}").is_ok());
+    }
 
     #[test]
     fn respects_length_and_sets() {

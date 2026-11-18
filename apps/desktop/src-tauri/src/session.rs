@@ -34,7 +34,18 @@ pub struct EntrySummary {
     pub in_recycle_bin: bool,
     /// Expiry as Unix seconds; None = never.
     pub expires: Option<i64>,
+    pub tags: Vec<String>,
+    /// List colours, `#rrggbb` (checked when saved).
+    pub fg_color: Option<String>,
+    pub bg_color: Option<String>,
 }
+
+/// `#rrggbb`, nothing else: the value ends up in a style attribute.
+pub fn color_ok(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|h| h.is_ascii_hexdigit())
+}
+
+pub const BAD_COLOR: &str = "Geçersiz renk.";
 
 /// What the unlock screen shows about the chosen file. The KDF values come
 /// from the header BEFORE it is authenticated: display only, never a decision.
@@ -74,6 +85,81 @@ pub struct Session {
     keyfile: Option<PathBuf>,
     /// Key file of the KeePass database being imported (never the vault's).
     import_keyfile: Option<PathBuf>,
+    /// The other .lav file to merge in, and its key file.
+    merge_path: Option<PathBuf>,
+    merge_keyfile: Option<PathBuf>,
+    /// The key file to switch to ("Anahtar dosyası" in Kasa ayarları).
+    pending_keyfile: Option<PathBuf>,
+}
+
+/// Which hidden texts a search also looks in (title, username, site and
+/// tags are searched in the UI).
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchScope {
+    pub notes: bool,
+    /// Custom field names, and values that are not protected.
+    pub fields: bool,
+}
+
+/// "Kasa ayarları" (KeePass "Database Settings").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSettings {
+    pub name: String,
+    pub description: String,
+    pub history_limit: u32,
+    pub history_versions: usize,
+    pub kdf: KdfInfo,
+    pub keyfile_required: bool,
+    pub keyfile_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeSummary {
+    pub added: usize,
+    pub updated: usize,
+    pub removed: usize,
+    pub groups_added: usize,
+}
+
+pub const BAD_KDF: &str =
+    "Bu değerler kabul edilmiyor: bellek 19–1024 MiB, geçiş 2–20, iş parçacığı 1–16.";
+pub const SAME_VAULT: &str = "Açık kasa kendisiyle birleştirilemez.";
+pub const NO_PENDING_KEYFILE: &str = "Önce yeni anahtar dosyasını seçin ya da oluşturun.";
+pub const KEYFILE_WRITE_FAILED: &str = "Anahtar dosyası yazılamadı.";
+pub const NAME_TOO_LONG: &str = "Ad en fazla 256, açıklama en fazla 10 000 karakter olabilir.";
+
+fn file_name(p: &std::path::Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
+/// Lowercase for searching, with the Turkish i's folded together (İ, I, ı
+/// and i all match each other; plain `to_lowercase` turns İ into i + a
+/// combining dot). Into a self-wiping buffer.
+fn fold(s: &str) -> Zeroizing<String> {
+    let mut out = Zeroizing::new(String::with_capacity(s.len() * 3));
+    for c in s.chars() {
+        match c {
+            'İ' | 'I' | 'ı' => out.push('i'),
+            _ => out.extend(c.to_lowercase()),
+        }
+    }
+    out
+}
+
+fn contains_folded(hay: &str, needle_folded: &str) -> bool {
+    fold(hay).contains(needle_folded)
 }
 
 pub const NO_FILE_SELECTED: &str = "Önce bir kasa dosyası seçin.";
@@ -180,6 +266,23 @@ pub struct EntryForm {
     /// Expiry as Unix seconds (KeePass "Expires"); None = never.
     #[serde(default)]
     pub expires: Option<i64>,
+    /// Auto-type sequence; empty = the default one.
+    #[serde(default)]
+    pub autotype_sequence: String,
+    /// Window rule (`*`, `?`); empty = the entry's title or site.
+    #[serde(default)]
+    pub autotype_window: String,
+    /// False = this entry never auto-types.
+    #[serde(default = "yes")]
+    pub autotype_enabled: bool,
+    #[serde(default)]
+    pub fg_color: Option<String>,
+    #[serde(default)]
+    pub bg_color: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl std::fmt::Debug for EntryForm {
@@ -268,11 +371,87 @@ pub enum Extra {
     Custom(usize),
 }
 
-/// Username, password, and the window-title markers for auto-type.
-pub type AutoTypeData = (Zeroizing<String>, Zeroizing<String>, Vec<String>);
+/// The keys to type (values filled in) and the windows they may go to.
+pub type AutoTypeData = (Vec<crate::autotype::Step>, crate::autotype::Target);
+
+pub const AUTOTYPE_OFF: &str = "Bu kayıtta otomatik yazma kapalı (Düzenle › Otomatik yazma).";
+pub const NO_SUCH_FIELD: &str = "Otomatik yazma dizisindeki özel alan bu kayıtta yok.";
+
+/// Nested references are followed at most this deep (a loop just stops).
+pub const MAX_REF_DEPTH: usize = 4;
+
+/// The entry a reference points at: `I` id (with or without dashes), `T`
+/// title, `U` username, `A` site; exact match, first hit.
+fn ref_target<'a>(data: &'a VaultData, search: char, text: &str) -> Option<&'a Entry> {
+    let find = |f: &dyn Fn(&Entry) -> bool| data.entries.iter().find(|e| f(e));
+    match search.to_ascii_uppercase() {
+        'I' => {
+            let want = text.replace('-', "").to_ascii_lowercase();
+            find(&|e| e.id.simple().to_string() == want)
+        }
+        'T' => find(&|e| e.title == text),
+        'U' => find(&|e| e.username == text),
+        'A' => find(&|e| e.url == text),
+        _ => None,
+    }
+}
+
+/// Replaces KeePass field references, `{REF:<what>@<search>:<text>}`, with
+/// the value they point at. `what`: `T` title, `U` username, `P` password,
+/// `A` site, `N` notes. Unknown or broken references stay as they are.
+pub fn resolve_refs(data: &VaultData, raw: &str) -> Zeroizing<String> {
+    resolve_refs_at(data, raw, 0)
+}
+
+fn resolve_refs_at(data: &VaultData, raw: &str, depth: usize) -> Zeroizing<String> {
+    const OPEN: &str = "{REF:";
+    let mut out = Zeroizing::new(String::with_capacity(raw.len()));
+    if depth >= MAX_REF_DEPTH || !raw.contains(OPEN) {
+        out.push_str(raw);
+        return out;
+    }
+    let mut rest = raw;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start + OPEN.len()..];
+        let parsed = (|| {
+            let mut it = tail.chars();
+            let what = it.next()?;
+            (it.next()? == '@').then_some(())?;
+            let search = it.next()?;
+            (it.next()? == ':').then_some(())?;
+            let body = &tail[4..];
+            let end = body.find('}')?;
+            Some((what, search, &body[..end], 4 + end + 1))
+        })();
+        match parsed.and_then(|(what, search, text, used)| {
+            let e = ref_target(data, search, text)?;
+            let value: &str = match what.to_ascii_uppercase() {
+                'T' => &e.title,
+                'U' => &e.username,
+                'P' => e.password.expose(),
+                'A' => &e.url,
+                'N' => e.notes.expose(),
+                _ => return None,
+            };
+            Some((resolve_refs_at(data, value, depth + 1), used))
+        }) {
+            Some((value, used)) => {
+                out.push_str(&value);
+                rest = &tail[used..];
+            }
+            None => {
+                out.push_str(OPEN);
+                rest = tail;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
 
 /// Generator settings as the UI sends them.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenOptions {
     pub length: usize,
@@ -281,9 +460,15 @@ pub struct GenOptions {
     pub digits: bool,
     pub symbols: bool,
     pub exclude_ambiguous: bool,
+    /// Non-empty = use this pattern instead of the classes and length.
+    #[serde(default)]
+    pub pattern: String,
 }
 
 pub fn generate(o: &GenOptions) -> Result<Zeroizing<String>, String> {
+    if !o.pattern.trim().is_empty() {
+        return lav_core::generate_pattern(o.pattern.trim()).map_err(|_| BAD_GENERATOR.to_owned());
+    }
     lav_core::generate_password(&PasswordOptions {
         length: o.length,
         lowercase: o.lowercase,
@@ -544,6 +729,19 @@ impl Session {
                     .collect(),
             ),
             expires: e.expires,
+            autotype_sequence: e
+                .autotype
+                .as_ref()
+                .map(|a| a.sequence.clone())
+                .unwrap_or_default(),
+            autotype_window: e
+                .autotype
+                .as_ref()
+                .map(|a| a.window.clone())
+                .unwrap_or_default(),
+            autotype_enabled: e.autotype.as_ref().is_none_or(|a| a.enabled),
+            fg_color: e.fg_color.clone(),
+            bg_color: e.bg_color.clone(),
         })
     }
 
@@ -585,6 +783,28 @@ impl Session {
             return Err(BAD_EXPIRY.into());
         }
         let expires = form.expires;
+        let color = |c: &Option<String>| -> Result<Option<String>, String> {
+            match c.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+                None => Ok(None),
+                Some(c) if color_ok(c) => Ok(Some(c.to_ascii_lowercase())),
+                Some(_) => Err(BAD_COLOR.into()),
+            }
+        };
+        let (fg_color, bg_color) = (color(&form.fg_color)?, color(&form.bg_color)?);
+        let sequence = form.autotype_sequence.trim().to_owned();
+        crate::autotype::parse_sequence(&sequence).map_err(str::to_owned)?;
+        let window = form.autotype_window.trim().to_owned();
+        if !window.is_empty() && !crate::autotype::window_rule_ok(&window) {
+            return Err(crate::autotype::BAD_WINDOW_RULE.into());
+        }
+        let autotype =
+            (!sequence.is_empty() || !window.is_empty() || !form.autotype_enabled).then(|| {
+                lav_core::AutoTypeConfig {
+                    sequence,
+                    window,
+                    enabled: form.autotype_enabled,
+                }
+            });
         let fields: Option<Vec<lav_core::CustomField>> = match &form.fields {
             None => None,
             Some(fs) => {
@@ -619,6 +839,9 @@ impl Session {
                 e.tags = tags.clone();
                 e.totp = totp.clone();
                 e.expires = expires;
+                e.autotype = autotype.clone();
+                e.fg_color = fg_color.clone();
+                e.bg_color = bg_color.clone();
                 if let Some(fs) = &fields {
                     e.fields = fs.clone();
                 }
@@ -864,15 +1087,7 @@ impl Session {
     /// Plain-text CSV of every entry, after re-checking the master password
     /// (SECURITY.md "Dışa aktarma"). Returns the CSV; the caller writes it.
     pub fn export_csv(&self, current: &str) -> Result<Zeroizing<String>, String> {
-        let kf = self.keyfile_bytes()?;
-        let vault = self.vault.as_ref().ok_or(LOCKED)?;
-        let ok = vault
-            .verify_credentials(current, kf.as_deref().map(|k| k.as_slice()))
-            .unwrap_or(false);
-        if !ok {
-            return Err(WRONG_CURRENT.into());
-        }
-        let data = &vault.data;
+        let data = &self.verify_current(current)?.data;
         let mut out = Zeroizing::new(String::from(
             "\"Klasör\",\"Başlık\",\"Kullanıcı adı\",\"Parola\",\"Web sitesi\",\"Notlar\",\"TOTP\",\"Etiketler\"\r\n",
         ));
@@ -928,14 +1143,45 @@ impl Session {
         })
     }
 
-    /// Username, password and the window-title markers for auto-type.
+    /// The entry's auto-type keys with its values filled in (references
+    /// resolved), and the windows they may be typed into.
     pub fn autotype_data(&self, id: &str) -> Result<AutoTypeData, String> {
+        use crate::autotype::{SeqField, Step, Token};
+        let data = &self.vault.as_ref().ok_or(LOCKED)?.data;
         let e = self.entry_ref(id)?;
-        Ok((
-            Zeroizing::new(e.username.clone()),
-            Zeroizing::new(e.password.expose().to_owned()),
-            crate::autotype::expected_markers(&e.title, &e.url),
-        ))
+        if e.autotype.as_ref().is_some_and(|a| !a.enabled) {
+            return Err(AUTOTYPE_OFF.into());
+        }
+        let seq = e
+            .autotype
+            .as_ref()
+            .map(|a| a.sequence.as_str())
+            .unwrap_or("");
+        let tokens = crate::autotype::parse_sequence(seq).map_err(str::to_owned)?;
+        let mut steps = Vec::with_capacity(tokens.len());
+        for t in tokens {
+            steps.push(match t {
+                Token::Text(s) => Step::Text(Zeroizing::new(s)),
+                Token::Tab => Step::Tab,
+                Token::Enter => Step::Enter,
+                Token::Delay(ms) => Step::Delay(std::time::Duration::from_millis(ms)),
+                Token::Field(f) => Step::Text(match f {
+                    SeqField::Username => resolve_refs(data, &e.username),
+                    SeqField::Password => resolve_refs(data, e.password.expose()),
+                    SeqField::Title => Zeroizing::new(e.title.clone()),
+                    SeqField::Url => resolve_refs(data, &e.url),
+                    SeqField::Notes => resolve_refs(data, e.notes.expose()),
+                    SeqField::Totp => self.field(id, Field::Totp)?,
+                    SeqField::Custom(name) => e
+                        .fields
+                        .iter()
+                        .find(|f| f.name.eq_ignore_ascii_case(&name))
+                        .map(|f| resolve_refs(data, f.value.expose()))
+                        .ok_or(NO_SUCH_FIELD)?,
+                }),
+            });
+        }
+        Ok((steps, autotype_target(e)))
     }
 
     /// Entries whose title or site appears in `window_title`, by the same
@@ -948,10 +1194,8 @@ impl Session {
             .iter()
             // Deleted entries never auto-type (as in KeePass).
             .filter(|e| !vault.data.in_recycle_bin(e.group))
-            .filter(|e| {
-                let markers = crate::autotype::expected_markers(&e.title, &e.url);
-                crate::autotype::title_matches(window_title, &markers)
-            })
+            .filter(|e| e.autotype.as_ref().is_none_or(|a| a.enabled))
+            .filter(|e| autotype_target(e).matches(window_title))
             .map(|e| (e.id.to_string(), e.title.clone()))
             .collect())
     }
@@ -1044,6 +1288,278 @@ impl Session {
         self.import_path = None;
         self.import_keyfile = None;
         Ok(summary)
+    }
+
+    // ----- search -----
+
+    /// Ids of entries whose notes or custom fields contain `query` (ignoring
+    /// case). Protected field values are never searched. Only ids leave.
+    pub fn search_hidden(&self, query: &str, scope: SearchScope) -> Result<Vec<String>, String> {
+        let data = &self.vault.as_ref().ok_or(LOCKED)?.data;
+        let needle = fold(query.trim());
+        if needle.is_empty() || !(scope.notes || scope.fields) {
+            return Ok(Vec::new());
+        }
+        Ok(data
+            .entries
+            .iter()
+            .filter(|e| {
+                (scope.notes && contains_folded(e.notes.expose(), &needle))
+                    || (scope.fields
+                        && e.fields.iter().any(|f| {
+                            contains_folded(&f.name, &needle)
+                                || (!f.protected && contains_folded(f.value.expose(), &needle))
+                        }))
+            })
+            .map(|e| e.id.to_string())
+            .collect())
+    }
+
+    // ----- vault settings -----
+
+    pub fn vault_settings(&self) -> Result<VaultSettings, String> {
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        let kdf = vault.kdf();
+        Ok(VaultSettings {
+            name: vault.data.name.clone(),
+            description: vault.data.description.clone(),
+            history_limit: vault.data.history_limit() as u32,
+            history_versions: vault.data.entries.iter().map(|e| e.history.len()).sum(),
+            kdf: KdfInfo {
+                memory_mib: kdf.memory_kib / 1024,
+                iterations: kdf.iterations,
+                parallelism: kdf.parallelism,
+            },
+            keyfile_required: vault.requires_keyfile(),
+            keyfile_name: self.keyfile.as_deref().map(file_name),
+        })
+    }
+
+    /// Name (also the top folder's), description and versions kept per
+    /// entry; extra versions are dropped at once.
+    pub fn set_vault_settings(
+        &mut self,
+        name: &str,
+        description: &str,
+        history_limit: u32,
+    ) -> Result<(), String> {
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err(EMPTY_NAME.into());
+        }
+        if name.chars().count() > 256 || description.chars().count() > 10_000 {
+            return Err(NAME_TOO_LONG.into());
+        }
+        let description = description.trim().to_owned();
+        let limit = history_limit.min(lav_core::HISTORY_LIMIT_MAX);
+        self.commit(|data| {
+            data.name = name.clone();
+            let root = data.root;
+            if let Some(g) = data.groups.iter_mut().find(|g| g.id == root) {
+                g.name = name;
+            }
+            data.description = description;
+            data.history_limit = Some(limit);
+            data.trim_history(None);
+            Ok(())
+        })
+    }
+
+    /// Deletes old versions: all of them (None) or those older than `days`.
+    pub fn clear_history(&mut self, older_than_days: Option<u32>) -> Result<usize, String> {
+        let cutoff = match older_than_days {
+            None => i64::MAX,
+            Some(d) => crate::recent::now() as i64 - i64::from(d) * 86_400,
+        };
+        self.commit(|data| Ok(data.trim_history(Some(cutoff))))
+    }
+
+    /// New Argon2id cost. Needs the current password; a new salt and key are
+    /// made. On a failed save the old cost is put back.
+    pub fn change_kdf(
+        &mut self,
+        current: &str,
+        memory_mib: u32,
+        iterations: u32,
+        parallelism: u32,
+    ) -> Result<(), String> {
+        let kdf = KdfParams {
+            memory_kib: memory_mib.saturating_mul(1024),
+            iterations,
+            parallelism,
+        };
+        kdf.validate().map_err(|_| BAD_KDF.to_owned())?;
+        let path = self.path.clone().ok_or(NO_FILE_SELECTED)?;
+        let kf = self.keyfile_bytes()?;
+        let kf = kf.as_deref().map(|k| k.as_slice());
+        let vault = self.vault.as_mut().ok_or(LOCKED)?;
+        let old = vault.kdf();
+        vault
+            .change_credentials(current, kf, current, kf, Some(kdf))
+            .map_err(|e| match e {
+                CoreError::WrongCurrentCredentials => WRONG_CURRENT.to_owned(),
+                _ => BAD_KDF.to_owned(),
+            })?;
+        if let Err(e) = vault.save_file(&path) {
+            let _ = vault.change_credentials(current, kf, current, kf, Some(old));
+            return Err(match e {
+                CoreError::FileChangedOnDisk => CHANGED_ON_DISK.to_owned(),
+                _ => SAVE_FAILED.to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Remembers the key file to switch to. Returns its name.
+    pub fn set_pending_keyfile(&mut self, path: Option<PathBuf>) -> Option<String> {
+        self.pending_keyfile = path;
+        self.pending_keyfile.as_deref().map(file_name)
+    }
+
+    /// Writes a new random key file (32 random bytes as hex text, like
+    /// KeePass's own key files carry only random data) and selects it as
+    /// the pending one. Refuses to overwrite an existing file.
+    pub fn create_keyfile(&mut self, path: PathBuf) -> Result<String, String> {
+        let bytes: [u8; 32] = lav_core::crypto::random_bytes();
+        let mut hex = Zeroizing::new(String::with_capacity(65));
+        for b in bytes {
+            hex.push_str(&format!("{b:02X}"));
+        }
+        hex.push('\n');
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|_| KEYFILE_WRITE_FAILED.to_owned())?;
+        std::io::Write::write_all(&mut f, hex.as_bytes())
+            .and_then(|()| f.sync_all())
+            .map_err(|_| KEYFILE_WRITE_FAILED.to_owned())?;
+        Ok(self.set_pending_keyfile(Some(path)).unwrap_or_default())
+    }
+
+    /// Adds or replaces the key file (`use_pending`) or removes it. Needs
+    /// the current password and key file; the password stays. Removing the
+    /// key file needs a password of at least 8 characters.
+    pub fn change_keyfile(&mut self, current: &str, use_pending: bool) -> Result<(), String> {
+        let path = self.path.clone().ok_or(NO_FILE_SELECTED)?;
+        let old = self.keyfile_bytes()?;
+        let new_path = if use_pending {
+            Some(self.pending_keyfile.clone().ok_or(NO_PENDING_KEYFILE)?)
+        } else {
+            None
+        };
+        let new = match &new_path {
+            Some(p) => Some(Vault::read_keyfile(p).map_err(|_| KEYFILE_READ_FAILED.to_owned())?),
+            None => None,
+        };
+        let (old_k, new_k) = (
+            old.as_deref().map(|k| k.as_slice()),
+            new.as_deref().map(|k| k.as_slice()),
+        );
+        let vault = self.vault.as_mut().ok_or(LOCKED)?;
+        vault
+            .change_credentials(current, old_k, current, new_k, None)
+            .map_err(|e| match e {
+                CoreError::WrongCurrentCredentials => WRONG_CURRENT.to_owned(),
+                CoreError::WeakPassword(_) => WEAK_PASSWORD.to_owned(),
+                _ => CREATE_FAILED.to_owned(),
+            })?;
+        if let Err(e) = vault.save_file(&path) {
+            let _ = vault.change_credentials(current, new_k, current, old_k, None);
+            return Err(match e {
+                CoreError::FileChangedOnDisk => CHANGED_ON_DISK.to_owned(),
+                _ => SAVE_FAILED.to_owned(),
+            });
+        }
+        self.keyfile = new_path;
+        self.pending_keyfile = None;
+        Ok(())
+    }
+
+    // ----- merge -----
+
+    pub fn set_merge_path(&mut self, path: PathBuf) -> String {
+        let name = file_name(&path);
+        self.merge_path = Some(path);
+        self.merge_keyfile = None;
+        name
+    }
+
+    pub fn set_merge_keyfile(&mut self, path: Option<PathBuf>) -> Option<String> {
+        self.merge_keyfile = path;
+        self.merge_keyfile.as_deref().map(file_name)
+    }
+
+    /// Opens the other .lav file with its own password (and key file) and
+    /// merges it into this vault (KeePass "Synchronize"); saves this vault.
+    /// The other file is only read.
+    pub fn merge(&mut self, password: &str) -> Result<MergeSummary, String> {
+        if self.vault.is_none() {
+            return Err(LOCKED.into());
+        }
+        let other_path = self.merge_path.clone().ok_or(NO_FILE_SELECTED)?;
+        if self
+            .path
+            .as_deref()
+            .is_some_and(|p| same_file(p, &other_path))
+        {
+            return Err(SAME_VAULT.into());
+        }
+        let kf = match &self.merge_keyfile {
+            Some(k) => Some(Vault::read_keyfile(k).map_err(|_| KEYFILE_READ_FAILED.to_owned())?),
+            None => None,
+        };
+        let other = Vault::open_file(&other_path, password, kf.as_deref().map(|k| k.as_slice()))
+            .map_err(|e| unlock_error(&e))?;
+        let r = self.commit(|data| Ok(data.merge_from(&other.data)))?;
+        self.merge_path = None;
+        self.merge_keyfile = None;
+        Ok(MergeSummary {
+            added: r.added,
+            updated: r.updated,
+            removed: r.removed,
+            groups_added: r.groups_added,
+        })
+    }
+
+    // ----- exports -----
+
+    fn verify_current(&self, current: &str) -> Result<&Vault, String> {
+        let kf = self.keyfile_bytes()?;
+        let vault = self.vault.as_ref().ok_or(LOCKED)?;
+        let ok = vault
+            .verify_credentials(current, kf.as_deref().map(|k| k.as_slice()))
+            .unwrap_or(false);
+        if ok {
+            Ok(vault)
+        } else {
+            Err(WRONG_CURRENT.into())
+        }
+    }
+
+    /// The vault as a KeePass KDBX 4 file with its own password.
+    pub fn export_kdbx(
+        &self,
+        current: &str,
+        kdbx_password: &str,
+    ) -> Result<Zeroizing<Vec<u8>>, String> {
+        let vault = self.verify_current(current)?;
+        crate::export::kdbx(&vault.data, kdbx_password).map_err(str::to_owned)
+    }
+
+    /// A printable, plain-text HTML page of the vault.
+    pub fn export_html(
+        &self,
+        current: &str,
+        include_passwords: bool,
+        generated: &str,
+    ) -> Result<Zeroizing<String>, String> {
+        let vault = self.verify_current(current)?;
+        Ok(crate::export::html(
+            &vault.data,
+            include_passwords,
+            generated,
+        ))
     }
 
     pub fn health(&self, now: i64) -> Result<crate::health::Report, String> {
@@ -1163,15 +1679,16 @@ impl Session {
             .iter()
             .find(|e| e.id.to_string() == id)
             .ok_or(NO_SUCH_ENTRY)?;
-        Ok(Zeroizing::new(match field {
-            Field::Username => e.username.clone(),
-            Field::Password => e.password.expose().to_owned(),
+        // Field references ({REF:...}) give the value they point at.
+        Ok(match field {
+            Field::Username => resolve_refs(&vault.data, &e.username),
+            Field::Password => resolve_refs(&vault.data, e.password.expose()),
             Field::Totp => {
                 return self
                     .totp_at(id, crate::recent::now())
                     .map(|c| Zeroizing::new(c.code))
             }
-        }))
+        })
     }
 
     pub fn entries(&self) -> Result<Vec<EntrySummary>, String> {
@@ -1193,6 +1710,9 @@ impl Session {
                 }),
                 in_recycle_bin: data.in_recycle_bin(e.group),
                 expires: e.expires,
+                tags: e.tags.clone(),
+                fg_color: e.fg_color.clone().filter(|c| color_ok(c)),
+                bg_color: e.bg_color.clone().filter(|c| color_ok(c)),
                 title: e.title.clone(),
                 username: e.username.clone(),
                 url: e.url.clone(),
@@ -1204,6 +1724,21 @@ impl Session {
             .collect();
         list.sort_by_cached_key(|e| e.title.to_lowercase());
         Ok(list)
+    }
+}
+
+/// The entry's own window rule, or else its title and site.
+pub fn autotype_target(e: &Entry) -> crate::autotype::Target {
+    match e
+        .autotype
+        .as_ref()
+        .map(|a| a.window.trim())
+        .filter(|w| !w.is_empty())
+    {
+        Some(w) => crate::autotype::Target::Pattern(w.to_owned()),
+        None => {
+            crate::autotype::Target::Markers(crate::autotype::expected_markers(&e.title, &e.url))
+        }
     }
 }
 
@@ -1613,6 +2148,254 @@ mod tests {
         (dir, s)
     }
 
+    fn id_of(s: &Session, title: &str) -> String {
+        s.entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.title == title)
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn hidden_search_never_looks_at_protected_values() {
+        let (dir, mut s) = opened("search");
+        let id = s.save_entry(&form(&s, None, "Arama")).unwrap();
+        let both = SearchScope {
+            notes: true,
+            fields: true,
+        };
+        assert_eq!(
+            s.search_hidden("RECOVERY code", both).unwrap(),
+            vec![id_of(&s, "zeta")]
+        );
+        assert_eq!(
+            s.search_hidden("hesap TİPİ", both).unwrap(),
+            vec![id.clone()],
+            "field name"
+        );
+        assert_eq!(
+            s.search_hidden("pro", both).unwrap(),
+            vec![id.clone()],
+            "open value"
+        );
+        assert!(
+            s.search_hidden("4321", both).unwrap().is_empty(),
+            "protected value"
+        );
+        assert!(s
+            .search_hidden("recovery", SearchScope::default())
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn references_resolve_for_copy_and_auto_type() {
+        let (dir, mut s) = opened("refs");
+        let zeta = id_of(&s, "zeta");
+        let simple = uuid::Uuid::parse_str(&zeta).unwrap().simple().to_string();
+        let mut f = form(&s, None, "Ref");
+        f.username = format!("{{REF:U@I:{}}}", simple.to_uppercase());
+        f.password = format!("ön-{{REF:P@T:zeta}}-son {{REF:P@I:yok}}");
+        f.autotype_sequence = "{USERNAME}{TAB}{PASSWORD}{DELAY 5}{S:hesap tipi}{ENTER}".into();
+        f.autotype_window = "*Örnek*Giriş*".into();
+        let id = s.save_entry(&f).unwrap();
+        assert_eq!(
+            s.field(&id, Field::Username).unwrap().as_str(),
+            "me@example.com"
+        );
+        assert_eq!(
+            s.field(&id, Field::Password).unwrap().as_str(),
+            format!("ön-{SECRET}-son {{REF:P@I:yok}}"),
+            "a broken reference stays as it is"
+        );
+        let (steps, target) = s.autotype_data(&id).unwrap();
+        let typed: Vec<String> = steps
+            .iter()
+            .map(|st| match st {
+                crate::autotype::Step::Text(t) => t.to_string(),
+                crate::autotype::Step::Tab => "<TAB>".into(),
+                crate::autotype::Step::Enter => "<ENTER>".into(),
+                crate::autotype::Step::Delay(_) => "<DELAY>".into(),
+            })
+            .collect();
+        assert_eq!(typed[0], "me@example.com");
+        assert_eq!(typed[2], format!("ön-{SECRET}-son {{REF:P@I:yok}}"));
+        assert_eq!(&typed[3..], ["<DELAY>", "Pro", "<ENTER>"]);
+        assert!(target.matches("örnek sitesi - GİRİŞ - Edge"));
+        assert!(
+            !target.matches("Ref"),
+            "the window rule replaces the title rule"
+        );
+        assert_eq!(s.autotype_matches("Örnek Giriş").unwrap().len(), 1);
+        // A reference to itself does not loop.
+        let mut f2 = s.entry_form(&id).unwrap();
+        f2.password = format!(
+            "{{REF:P@I:{}}}",
+            uuid::Uuid::parse_str(&id).unwrap().simple()
+        );
+        s.save_entry(&f2).unwrap();
+        assert!(s.field(&id, Field::Password).unwrap().contains("{REF:"));
+        // Auto-type off; bad sequence, window rule and colour are refused.
+        f2.autotype_enabled = false;
+        s.save_entry(&f2).unwrap();
+        assert!(matches!(s.autotype_data(&id), Err(e) if e == AUTOTYPE_OFF));
+        assert!(s.autotype_matches("Örnek Giriş").unwrap().is_empty());
+        let mut bad = s.entry_form(&id).unwrap();
+        bad.autotype_sequence = "{NOPE}".into();
+        assert!(s.save_entry(&bad).is_err());
+        let mut bad = s.entry_form(&id).unwrap();
+        bad.autotype_window = "*".into();
+        assert_eq!(
+            s.save_entry(&bad),
+            Err(crate::autotype::BAD_WINDOW_RULE.into())
+        );
+        let mut bad = s.entry_form(&id).unwrap();
+        bad.fg_color = Some("red;background:url(x)".into());
+        assert_eq!(s.save_entry(&bad), Err(BAD_COLOR.into()));
+        let mut ok = s.entry_form(&id).unwrap();
+        ok.bg_color = Some("#AABBCC".into());
+        s.save_entry(&ok).unwrap();
+        let e = s
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == id)
+            .unwrap();
+        assert_eq!(e.bg_color.as_deref(), Some("#aabbcc"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn vault_settings_history_and_kdf() {
+        let (dir, mut s) = opened("vset");
+        let zeta = id_of(&s, "zeta");
+        for i in 0..4 {
+            let mut f = s.entry_form(&zeta).unwrap();
+            f.password = format!("p{i}");
+            s.save_entry(&f).unwrap();
+        }
+        assert_eq!(s.vault_settings().unwrap().history_versions, 4);
+        s.set_vault_settings("  Yeni ad ", "açıklama", 2).unwrap();
+        let v = s.vault_settings().unwrap();
+        assert_eq!(
+            (v.name.as_str(), v.description.as_str()),
+            ("Yeni ad", "açıklama")
+        );
+        assert_eq!((v.history_limit, v.history_versions), (2, 2));
+        assert!(
+            s.groups().unwrap().iter().any(|g| g.name == "Yeni ad"),
+            "top folder renamed"
+        );
+        assert_eq!(s.set_vault_settings(" ", "", 2), Err(EMPTY_NAME.into()));
+        assert_eq!(s.clear_history(None).unwrap(), 2);
+
+        assert_eq!(s.change_kdf("yanlis", 32, 2, 1), Err(WRONG_CURRENT.into()));
+        assert_eq!(s.change_kdf(PASSWORD, 2048, 2, 1), Err(BAD_KDF.into()));
+        s.change_kdf(PASSWORD, 32, 3, 2).unwrap();
+        let v = s.vault_settings().unwrap();
+        assert_eq!(
+            (v.kdf.memory_mib, v.kdf.iterations, v.kdf.parallelism),
+            (32, 3, 2)
+        );
+        // The new cost is on disk and the vault still opens.
+        let path = s.open_path().unwrap();
+        let mut again = Session::default();
+        let shown = again.select(path);
+        assert_eq!(shown.kdf.unwrap().memory_mib, 32);
+        again.unlock(PASSWORD).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn key_file_can_be_added_and_removed() {
+        let (dir, mut s) = opened("kfile");
+        let kf = dir.join("yeni.key");
+        assert_eq!(
+            s.change_keyfile(PASSWORD, true),
+            Err(NO_PENDING_KEYFILE.into())
+        );
+        assert_eq!(s.create_keyfile(kf.clone()).unwrap(), "yeni.key");
+        assert!(s.create_keyfile(kf.clone()).is_err(), "never overwrites");
+        assert_eq!(std::fs::read(&kf).unwrap().len(), 65);
+        assert_eq!(s.change_keyfile("yanlis", true), Err(WRONG_CURRENT.into()));
+        s.change_keyfile(PASSWORD, true).unwrap();
+        assert!(s.vault_settings().unwrap().keyfile_required);
+        let path = s.open_path().unwrap();
+        let mut other = Session::default();
+        other.select(path.clone());
+        assert_eq!(
+            other.unlock(PASSWORD),
+            Err(UNLOCK_FAILED.into()),
+            "key file needed"
+        );
+        other.set_keyfile(Some(kf.clone()));
+        other.unlock(PASSWORD).unwrap();
+        // And off again.
+        s.change_keyfile(PASSWORD, false).unwrap();
+        let mut plain = Session::default();
+        plain.select(path);
+        plain.unlock(PASSWORD).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn merge_with_another_file() {
+        let (dir, mut s) = opened("merge");
+        // A copy of the file, changed on its own.
+        let path = s.open_path().unwrap();
+        let copy = dir.join("kopya.lav");
+        std::fs::copy(&path, &copy).unwrap();
+        let mut other = Session::default();
+        other.select(copy.clone());
+        other.unlock(PASSWORD).unwrap();
+        other
+            .save_entry(&form(&other, None, "Diğer cihaz"))
+            .unwrap();
+        let alpha = id_of(&other, "Alpha");
+        other.delete_entry(&alpha).unwrap();
+        other.delete_entry(&alpha).unwrap(); // from the bin: for good
+        other.lock();
+
+        assert_eq!(s.merge(PASSWORD), Err(NO_FILE_SELECTED.into()));
+        s.set_merge_path(path.clone());
+        assert_eq!(s.merge(PASSWORD), Err(SAME_VAULT.into()));
+        s.set_merge_path(copy.clone());
+        assert_eq!(s.merge("yanlis"), Err(UNLOCK_FAILED.into()));
+        s.set_merge_path(copy);
+        let r = s.merge(PASSWORD).unwrap();
+        assert_eq!((r.added, r.removed), (1, 1));
+        let titles: Vec<String> = s.entries().unwrap().into_iter().map(|e| e.title).collect();
+        assert!(titles.contains(&"Diğer cihaz".into()) && !titles.contains(&"Alpha".into()));
+        // Saved: a fresh open sees the merge.
+        let mut again = Session::default();
+        again.select(path);
+        again.unlock(PASSWORD).unwrap();
+        assert_eq!(again.entries().unwrap().len(), s.entries().unwrap().len());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn exports_need_the_master_password() {
+        let (dir, s) = opened("exports");
+        assert_eq!(
+            s.export_html("yanlis", true, "x").err(),
+            Some(WRONG_CURRENT.into())
+        );
+        assert_eq!(
+            s.export_kdbx("yanlis", "kdbx-parola").err(),
+            Some(WRONG_CURRENT.into())
+        );
+        let page = s.export_html(PASSWORD, true, "x").unwrap();
+        assert!(page.contains(SECRET));
+        assert!(!s
+            .export_html(PASSWORD, false, "x")
+            .unwrap()
+            .contains(SECRET));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     fn form(s: &Session, id: Option<String>, title: &str) -> EntryForm {
         EntryForm {
             id,
@@ -1637,6 +2420,11 @@ mod tests {
                 },
             ]),
             expires: None,
+            autotype_sequence: String::new(),
+            autotype_window: String::new(),
+            autotype_enabled: true,
+            fg_color: None,
+            bg_color: None,
         }
     }
 
@@ -2111,12 +2899,29 @@ mod tests {
             digits: true,
             symbols: false,
             exclude_ambiguous: false,
+            pattern: String::new(),
         };
         let p = generate(&o).unwrap();
         assert_eq!(p.chars().count(), 24);
         assert!(p.chars().all(|c| c.is_ascii_digit()));
-        let none = GenOptions { digits: false, ..o };
+        let none = GenOptions {
+            digits: false,
+            ..o.clone()
+        };
         assert_eq!(generate(&none), Err(BAD_GENERATOR.to_owned()));
+        // A pattern wins over the classes (even with none enabled).
+        let pat = GenOptions {
+            pattern: "uu-d{3}".into(),
+            ..none
+        };
+        let p = generate(&pat).unwrap();
+        assert_eq!(p.len(), 6);
+        assert_eq!(&p[2..3], "-");
+        let bad = GenOptions {
+            pattern: "d{0}".into(),
+            ..o
+        };
+        assert_eq!(generate(&bad), Err(BAD_GENERATOR.to_owned()));
     }
 
     #[test]

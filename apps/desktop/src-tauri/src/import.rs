@@ -267,6 +267,41 @@ pub fn convert(db: &Database, data: &mut VaultData, folder: &str) -> Result<Summ
             if e.times.expires == Some(true) {
                 n.expires = Some(e.times.expiry.and_utc().timestamp());
             }
+            // Auto-type (default sequence, first window rule) and colours;
+            // anything we would refuse in the editor is dropped.
+            if let Some(a) = &e.autotype {
+                let seq: String = a
+                    .default_sequence
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(crate::autotype::MAX_SEQUENCE_CHARS)
+                    .collect();
+                let seq = if crate::autotype::parse_sequence(&seq).is_ok() {
+                    seq
+                } else {
+                    String::new()
+                };
+                let window: String = a
+                    .associations
+                    .first()
+                    .map(|x| x.window.chars().take(256).collect())
+                    .filter(|w: &String| crate::autotype::window_rule_ok(w))
+                    .unwrap_or_default();
+                if !a.enabled || !seq.is_empty() || !window.is_empty() {
+                    n.autotype = Some(lav_core::AutoTypeConfig {
+                        sequence: seq,
+                        window,
+                        enabled: a.enabled,
+                    });
+                }
+            }
+            let color = |c: &Option<keepass::db::Color>| {
+                c.as_ref()
+                    .map(|c| format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b))
+            };
+            n.fg_color = color(&e.foreground_color);
+            n.bg_color = color(&e.background_color);
             // TOTP: KeePassXC "otp" (otpauth URI) or KeePass 2 "TimeOtp-Secret-Base32".
             let otp = e
                 .get("otp")

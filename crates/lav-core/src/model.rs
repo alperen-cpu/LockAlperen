@@ -51,6 +51,59 @@ pub struct VaultData {
     #[serde(default)]
     #[zeroize(skip)]
     pub recycle_bin: Option<Uuid>,
+    /// Free text about the vault (KeePass "Database description").
+    #[serde(default)]
+    pub description: String,
+    /// Versions kept per entry; None = [`MAX_HISTORY`]. Clamped to
+    /// 0..=[`HISTORY_LIMIT_MAX`] when used.
+    #[serde(default)]
+    pub history_limit: Option<u32>,
+    /// Ids of entries and folders deleted for good, so that merging with
+    /// another copy does not bring them back (KeePass "DeletedObjects").
+    #[serde(default)]
+    #[zeroize(skip)]
+    pub deleted: Vec<Tombstone>,
+}
+
+/// Upper bound for [`VaultData::history_limit`].
+pub const HISTORY_LIMIT_MAX: u32 = 100;
+/// At most this many tombstones are kept (oldest dropped first).
+pub const MAX_TOMBSTONES: usize = 5000;
+
+/// An entry or folder that was deleted for good, and when.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tombstone {
+    pub id: Uuid,
+    pub at: Timestamp,
+}
+
+/// Per-entry auto-type settings (KeePass "Auto-Type" tab).
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+pub struct AutoTypeConfig {
+    /// Key sequence such as `{USERNAME}{TAB}{PASSWORD}{ENTER}`; empty = the
+    /// default sequence.
+    #[serde(default)]
+    pub sequence: String,
+    /// Window title pattern (`*` = any text); empty = the entry's title or
+    /// site, as before.
+    #[serde(default)]
+    pub window: String,
+    /// False = this entry never auto-types.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// What merging another copy of a vault changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MergeReport {
+    pub added: usize,
+    pub updated: usize,
+    pub removed: usize,
+    pub groups_added: usize,
 }
 
 /// Name of the recycle bin folder when it is created.
@@ -77,6 +130,9 @@ pub struct Group {
     pub icon: Option<String>,
     pub created: Timestamp,
     pub modified: Timestamp,
+    /// When the folder was last moved (merge uses it to decide the parent).
+    #[serde(default)]
+    pub moved: Timestamp,
 }
 
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -104,6 +160,18 @@ pub struct Entry {
     pub created: Timestamp,
     pub modified: Timestamp,
     pub history: Vec<EntryVersion>,
+    /// Auto-type sequence and window rule; None = defaults.
+    #[serde(default)]
+    pub autotype: Option<AutoTypeConfig>,
+    /// Text and background colour in the list, `#rrggbb` (KeePass entry
+    /// colours). Checked by the app before it is stored.
+    #[serde(default)]
+    pub fg_color: Option<String>,
+    #[serde(default)]
+    pub bg_color: Option<String>,
+    /// When the entry was last moved to another folder (merge uses it).
+    #[serde(default)]
+    pub moved: Timestamp,
 }
 
 /// A site favicon. Only ever stores a PNG that *we* re-encoded, never the raw
@@ -221,6 +289,10 @@ impl Entry {
             created: t,
             modified: t,
             history: Vec::new(),
+            autotype: None,
+            fg_color: None,
+            bg_color: None,
+            moved: 0,
         }
     }
 
@@ -247,6 +319,28 @@ impl Entry {
     }
 }
 
+/// Both sides' versions, oldest first, without duplicates (same save time
+/// and same password), cut to `limit`.
+fn combine_history(mut versions: Vec<EntryVersion>, limit: usize) -> Vec<EntryVersion> {
+    versions.sort_by_key(|v| v.modified);
+    let mut out: Vec<EntryVersion> = Vec::with_capacity(versions.len());
+    for v in versions {
+        let dup = out.iter().any(|o| {
+            o.modified == v.modified
+                && o.title == v.title
+                && o.password.expose() == v.password.expose()
+        });
+        if !dup {
+            out.push(v);
+        }
+    }
+    if out.len() > limit {
+        let excess = out.len() - limit;
+        out.drain(..excess);
+    }
+    out
+}
+
 /// Lowercases into a pre-sized, self-wiping buffer. `str::to_lowercase` grows
 /// its buffer when text expands (Turkish dotted I: 2 -> 3 bytes) and frees the
 /// old copies unwiped; that leaked note fragments during search (LA-15).
@@ -271,6 +365,7 @@ impl VaultData {
             icon: None,
             created: t,
             modified: t,
+            moved: 0,
         };
         Self {
             schema: Self::SCHEMA,
@@ -281,6 +376,54 @@ impl VaultData {
             created: t,
             modified: t,
             recycle_bin: None,
+            description: String::new(),
+            history_limit: None,
+            deleted: Vec::new(),
+        }
+    }
+
+    /// Versions kept per entry.
+    pub fn history_limit(&self) -> usize {
+        self.history_limit
+            .map(|n| n.min(HISTORY_LIMIT_MAX) as usize)
+            .unwrap_or(MAX_HISTORY)
+    }
+
+    /// Cuts every entry's history to [`Self::history_limit`] and, if
+    /// `older_than` is set, drops versions saved before it. Returns the
+    /// number of versions removed.
+    pub fn trim_history(&mut self, older_than: Option<Timestamp>) -> usize {
+        let limit = self.history_limit();
+        let mut removed = 0;
+        for e in &mut self.entries {
+            let before = e.history.len();
+            if let Some(t) = older_than {
+                e.history.retain(|v| v.modified >= t);
+            }
+            if e.history.len() > limit {
+                let excess = e.history.len() - limit;
+                e.history.drain(..excess);
+            }
+            removed += before - e.history.len();
+        }
+        if removed > 0 {
+            self.touch();
+        }
+        removed
+    }
+
+    fn bury(&mut self, ids: impl IntoIterator<Item = Uuid>) {
+        let t = now();
+        for id in ids {
+            match self.deleted.iter_mut().find(|d| d.id == id) {
+                Some(d) => d.at = d.at.max(t),
+                None => self.deleted.push(Tombstone { id, at: t }),
+            }
+        }
+        if self.deleted.len() > MAX_TOMBSTONES {
+            self.deleted.sort_by_key(|d| d.at);
+            let excess = self.deleted.len() - MAX_TOMBSTONES;
+            self.deleted.drain(..excess);
         }
     }
 
@@ -311,6 +454,7 @@ impl VaultData {
             icon: None,
             created: t,
             modified: t,
+            moved: 0,
         });
         self.touch();
         Ok(id)
@@ -378,6 +522,7 @@ impl VaultData {
         if g.parent != Some(new_parent) {
             g.parent = Some(new_parent);
             g.modified = now();
+            g.moved = g.modified;
             self.touch();
         }
         Ok(())
@@ -396,6 +541,7 @@ impl VaultData {
             .ok_or(Error::NotFound)?;
         if e.group != group {
             e.group = group;
+            e.moved = now();
             self.touch();
         }
         Ok(())
@@ -428,8 +574,15 @@ impl VaultData {
                 stack.extend(kids.iter().copied());
             }
         }
+        let gone_entries: Vec<Uuid> = self
+            .entries
+            .iter()
+            .filter(|e| doomed.contains(&e.group))
+            .map(|e| e.id)
+            .collect();
         self.groups.retain(|g| !doomed.contains(&g.id));
         self.entries.retain(|e| !doomed.contains(&e.group));
+        self.bury(doomed.iter().copied().chain(gone_entries));
         if self.recycle_bin.is_some_and(|b| doomed.contains(&b)) {
             self.recycle_bin = None;
         }
@@ -520,7 +673,9 @@ impl VaultData {
         for k in kids {
             let _ = self.delete_group(k);
         }
+        let gone: Vec<Uuid> = self.entries_in(bin).map(|e| e.id).collect();
         self.entries.retain(|e| e.group != bin);
+        self.bury(gone);
         self.touch();
         before - self.entries.len()
     }
@@ -581,6 +736,7 @@ impl VaultData {
                     icon: None,
                     created: t,
                     modified: t,
+                    moved: 0,
                 });
                 fixes += 1;
             }
@@ -659,6 +815,7 @@ impl VaultData {
 
     /// Applies `edit` to an entry, saving the previous version into its history.
     pub fn update_entry(&mut self, id: Uuid, edit: impl FnOnce(&mut Entry)) -> Result<()> {
+        let limit = self.history_limit();
         let groups: Vec<Uuid> = self.groups.iter().map(|g| g.id).collect();
         let e = self
             .entries
@@ -673,8 +830,8 @@ impl VaultData {
         }
         e.id = id;
         e.history.push(before);
-        if e.history.len() > MAX_HISTORY {
-            let excess = e.history.len() - MAX_HISTORY;
+        if e.history.len() > limit {
+            let excess = e.history.len() - limit;
             e.history.drain(..excess);
         }
         e.modified = now();
@@ -707,8 +864,165 @@ impl VaultData {
         if self.entries.len() == before {
             return Err(Error::NotFound);
         }
+        self.bury([id]);
         self.touch();
         Ok(())
+    }
+
+    /// Merges another copy of this vault into this one (KeePass
+    /// "Synchronize"), matching entries and folders by id:
+    /// * only on one side: added, unless the other side deleted it for good
+    ///   after its last change (tombstone);
+    /// * on both sides: the newer content wins, the older one goes into the
+    ///   history (histories are combined); the later move decides the folder;
+    /// * tombstones of both sides are combined and applied: an entry is
+    ///   removed if it was not changed after it was deleted elsewhere. A
+    ///   folder is removed only if it is empty by then.
+    ///
+    /// The other copy's root and recycle bin are treated as ours. Ends with
+    /// [`Self::repair_structure`], so the result is always a valid tree.
+    pub fn merge_from(&mut self, other: &VaultData) -> MergeReport {
+        let mut report = MergeReport::default();
+        let root = self.root;
+        let other_root = other.root;
+        let my_bin = self.recycle_bin.filter(|b| self.group(*b).is_some());
+        let bin_map = match (other.recycle_bin, my_bin) {
+            (Some(o), Some(m)) if o != m => Some((o, m)),
+            _ => None,
+        };
+        let map = move |id: Uuid| -> Uuid {
+            if id == other_root {
+                root
+            } else {
+                match bin_map {
+                    Some((o, m)) if o == id => m,
+                    _ => id,
+                }
+            }
+        };
+
+        let mut tomb: HashMap<Uuid, Timestamp> = HashMap::new();
+        for d in self.deleted.iter().chain(other.deleted.iter()) {
+            let at = tomb.entry(d.id).or_insert(d.at);
+            *at = (*at).max(d.at);
+        }
+        let buried = |tomb: &HashMap<Uuid, Timestamp>, id: Uuid, t: Timestamp| {
+            tomb.get(&id).is_some_and(|&at| at >= t)
+        };
+
+        // Folders.
+        for og in &other.groups {
+            let id = map(og.id);
+            if id == root {
+                continue;
+            }
+            let parent = og.parent.map(map).unwrap_or(root);
+            match self.groups.iter_mut().find(|g| g.id == id) {
+                Some(g) => {
+                    if og.modified > g.modified {
+                        g.name = og.name.clone();
+                        g.icon = og.icon.clone();
+                        g.modified = og.modified;
+                    }
+                    if og.moved > g.moved {
+                        g.parent = Some(parent);
+                        g.moved = og.moved;
+                    }
+                }
+                None => {
+                    if buried(&tomb, id, og.modified.max(og.moved)) {
+                        continue;
+                    }
+                    let mut g = og.clone();
+                    g.id = id;
+                    g.parent = Some(parent);
+                    self.groups.push(g);
+                    report.groups_added += 1;
+                }
+            }
+        }
+        if my_bin.is_none() {
+            if let Some(b) = other.recycle_bin.filter(|b| self.group(*b).is_some()) {
+                self.recycle_bin = Some(b);
+            }
+        }
+
+        // Entries.
+        let limit = self.history_limit();
+        for oe in &other.entries {
+            let group = map(oe.group);
+            match self.entries.iter_mut().find(|e| e.id == oe.id) {
+                Some(e) => {
+                    let mut changed = false;
+                    let mut versions: Vec<EntryVersion> = Vec::new();
+                    versions.extend(e.history.iter().cloned());
+                    versions.extend(oe.history.iter().cloned());
+                    if oe.modified > e.modified {
+                        versions.push(e.snapshot());
+                        let (keep_group, keep_moved) = (e.group, e.moved);
+                        *e = oe.clone();
+                        e.group = keep_group;
+                        e.moved = keep_moved;
+                        changed = true;
+                    } else if oe.modified < e.modified {
+                        versions.push(oe.snapshot());
+                    }
+                    e.history = combine_history(versions, limit);
+                    if oe.moved > e.moved {
+                        e.group = group;
+                        e.moved = oe.moved;
+                        changed = true;
+                    }
+                    if changed {
+                        report.updated += 1;
+                    }
+                }
+                None => {
+                    if buried(&tomb, oe.id, oe.modified.max(oe.moved)) {
+                        continue;
+                    }
+                    let mut e = oe.clone();
+                    e.group = group;
+                    self.entries.push(e);
+                    report.added += 1;
+                }
+            }
+        }
+
+        // Deletions from either side.
+        let before = self.entries.len();
+        self.entries
+            .retain(|e| !buried(&tomb, e.id, e.modified.max(e.moved)));
+        report.removed = before - self.entries.len();
+        let bin = self.recycle_bin;
+        loop {
+            let doomed: Option<usize> = self.groups.iter().position(|g| {
+                g.id != root
+                    && Some(g.id) != bin
+                    && buried(&tomb, g.id, g.modified.max(g.moved))
+                    && !self.entries.iter().any(|e| e.group == g.id)
+                    && !self.groups.iter().any(|c| c.parent == Some(g.id))
+            });
+            match doomed {
+                Some(i) => {
+                    self.groups.remove(i);
+                }
+                None => break,
+            }
+        }
+
+        self.deleted = tomb
+            .into_iter()
+            .map(|(id, at)| Tombstone { id, at })
+            .collect();
+        self.deleted.sort_by_key(|d| d.at);
+        if self.deleted.len() > MAX_TOMBSTONES {
+            let excess = self.deleted.len() - MAX_TOMBSTONES;
+            self.deleted.drain(..excess);
+        }
+        self.repair_structure();
+        self.touch();
+        report
     }
 
     /// Case-insensitive search over title, username, URL, notes and tags.
@@ -951,6 +1265,185 @@ mod tests {
         let back: VaultData = ciborium::from_reader(old.as_slice()).unwrap();
         assert!(back.recycle_bin.is_none());
         assert_eq!(back.entries.len(), 1);
+    }
+
+    /// A file written before 0.7 (no description, history limit, tombstones,
+    /// auto-type, colours or move times) still opens, with defaults.
+    #[test]
+    fn new_optional_fields_are_optional_in_cbor() {
+        let mut v = VaultData::new("Test");
+        let id = v.add_entry(Entry::new(v.root, "x")).unwrap();
+        v.update_entry(id, |e| {
+            e.autotype = Some(AutoTypeConfig {
+                sequence: "{PASSWORD}{ENTER}".into(),
+                window: "*Bank*".into(),
+                enabled: true,
+            });
+            e.fg_color = Some("#aa0000".into());
+        })
+        .unwrap();
+        v.description = "notlar".into();
+        v.history_limit = Some(5);
+        let mut buf = Vec::new();
+        ciborium::into_writer(&v, &mut buf).unwrap();
+        let back: VaultData = ciborium::from_reader(buf.as_slice()).unwrap();
+        assert_eq!(back.description, "notlar");
+        assert_eq!(back.history_limit, Some(5));
+        let e = back.entry(id).unwrap();
+        assert_eq!(e.autotype.as_ref().unwrap().window, "*Bank*");
+        assert_eq!(e.fg_color.as_deref(), Some("#aa0000"));
+
+        let mut value: ciborium::Value = ciborium::from_reader(buf.as_slice()).unwrap();
+        let strip = |m: &mut Vec<(ciborium::Value, ciborium::Value)>, keys: &[&str]| {
+            m.retain(|(k, _)| !keys.contains(&k.as_text().unwrap_or("")));
+        };
+        if let ciborium::Value::Map(m) = &mut value {
+            strip(m, &["description", "history_limit", "deleted"]);
+            for (k, val) in m.iter_mut() {
+                if let (Some("entries" | "groups"), ciborium::Value::Array(items)) =
+                    (k.as_text(), val)
+                {
+                    for item in items {
+                        if let ciborium::Value::Map(f) = item {
+                            strip(f, &["autotype", "fg_color", "bg_color", "moved"]);
+                        }
+                    }
+                }
+            }
+        }
+        let mut old = Vec::new();
+        ciborium::into_writer(&value, &mut old).unwrap();
+        let back: VaultData = ciborium::from_reader(old.as_slice()).unwrap();
+        assert_eq!(back.description, "");
+        assert_eq!(back.history_limit(), MAX_HISTORY);
+        assert!(back.deleted.is_empty());
+        let e = back.entry(id).unwrap();
+        assert!(e.autotype.is_none() && e.fg_color.is_none() && e.moved == 0);
+    }
+
+    #[test]
+    fn history_limit_and_trim() {
+        let mut v = VaultData::new("Test");
+        let id = v.add_entry(Entry::new(v.root, "x")).unwrap();
+        v.history_limit = Some(3);
+        for i in 0..6 {
+            v.update_entry(id, |e| e.password = format!("p{i}").as_str().into())
+                .unwrap();
+        }
+        assert_eq!(v.entry(id).unwrap().history.len(), 3);
+        v.history_limit = Some(1);
+        assert_eq!(v.trim_history(None), 2);
+        assert_eq!(v.entry(id).unwrap().history.len(), 1);
+        assert_eq!(v.trim_history(Some(i64::MAX)), 1, "older than: all");
+        assert!(v.entry(id).unwrap().history.is_empty());
+        v.history_limit = Some(10_000);
+        assert_eq!(v.history_limit(), HISTORY_LIMIT_MAX as usize);
+    }
+
+    #[test]
+    fn permanent_deletes_leave_tombstones() {
+        let mut v = VaultData::new("Test");
+        let g = v.add_group(v.root, "g").unwrap();
+        let a = v.add_entry(Entry::new(g, "a")).unwrap();
+        let b = v.add_entry(Entry::new(v.root, "b")).unwrap();
+        v.remove_entry(b).unwrap(); // to the bin: no tombstone yet
+        assert!(v.deleted.is_empty());
+        v.empty_recycle_bin();
+        v.delete_group(g).unwrap();
+        let ids: HashSet<Uuid> = v.deleted.iter().map(|d| d.id).collect();
+        assert!(ids.contains(&a) && ids.contains(&b) && ids.contains(&g));
+    }
+
+    /// Two copies of one vault edited apart, then merged both ways.
+    #[test]
+    fn merge_takes_the_newer_side_and_keeps_deletions() {
+        let mut base = VaultData::new("Test");
+        let g = base.add_group(base.root, "İş").unwrap();
+        let shared = base.add_entry(Entry::new(g, "shared")).unwrap();
+        let gone = base.add_entry(Entry::new(g, "gone")).unwrap();
+        let moved = base.add_entry(Entry::new(g, "moved")).unwrap();
+
+        let mut mine = base.clone();
+        let mut theirs = base.clone();
+        // Theirs: newer password, a new entry, a permanent delete, a move.
+        theirs
+            .update_entry(shared, |e| e.password = "new".into())
+            .unwrap();
+        theirs
+            .entries
+            .iter_mut()
+            .find(|e| e.id == shared)
+            .unwrap()
+            .modified += 10;
+        let fresh = theirs.add_entry(Entry::new(g, "fresh")).unwrap();
+        theirs.delete_entry(gone).unwrap();
+        let other_group = theirs.add_group(theirs.root, "Özel").unwrap();
+        theirs.move_entry(moved, other_group).unwrap();
+        theirs
+            .entries
+            .iter_mut()
+            .find(|e| e.id == moved)
+            .unwrap()
+            .moved += 10;
+        // Mine: a local entry only I have.
+        let local = mine.add_entry(Entry::new(mine.root, "local")).unwrap();
+
+        let r = mine.merge_from(&theirs);
+        assert_eq!((r.added, r.removed, r.groups_added), (1, 1, 1));
+        let e = mine.entry(shared).unwrap();
+        assert_eq!(e.password.expose(), "new");
+        assert!(
+            e.history.iter().any(|v| v.password.expose().is_empty()),
+            "my older version is kept in the history"
+        );
+        assert!(mine.entry(fresh).is_some());
+        assert!(mine.entry(gone).is_none(), "deleted on the other side");
+        assert!(mine.entry(local).is_some(), "my own entry stays");
+        assert_eq!(mine.entry(moved).unwrap().group, other_group);
+        assert!(mine.deleted.iter().any(|d| d.id == gone));
+
+        // Merging again changes nothing; merging back gives the same entries.
+        let again = mine.merge_from(&theirs);
+        assert_eq!((again.added, again.updated, again.removed), (0, 0, 0));
+        theirs.merge_from(&mine);
+        let ids = |v: &VaultData| {
+            let mut x: Vec<Uuid> = v.entries.iter().map(|e| e.id).collect();
+            x.sort();
+            x
+        };
+        assert_eq!(ids(&theirs), ids(&mine));
+        assert_eq!(theirs.repair_structure(), 0);
+        assert_eq!(mine.repair_structure(), 0);
+    }
+
+    /// An entry edited after it was deleted elsewhere survives the merge.
+    #[test]
+    fn merge_keeps_an_entry_edited_after_the_delete() {
+        let mut base = VaultData::new("Test");
+        let id = base.add_entry(Entry::new(base.root, "x")).unwrap();
+        let mut mine = base.clone();
+        let mut theirs = base.clone();
+        theirs.delete_entry(id).unwrap();
+        theirs.deleted[0].at = 100;
+        mine.entries[0].modified = 200;
+        mine.merge_from(&theirs);
+        assert!(mine.entry(id).is_some());
+    }
+
+    /// Two separate vaults (different roots and bins) merge into one tree.
+    #[test]
+    fn merge_of_unrelated_vaults_maps_root_and_bin() {
+        let mut a = VaultData::new("A");
+        let mut b = VaultData::new("B");
+        let ea = a.add_entry(Entry::new(a.root, "a")).unwrap();
+        a.remove_entry(ea).unwrap();
+        let eb = b.add_entry(Entry::new(b.root, "b")).unwrap();
+        b.remove_entry(eb).unwrap();
+        let bin = a.recycle_bin.unwrap();
+        a.merge_from(&b);
+        assert_eq!(a.entry(eb).unwrap().group, bin, "their bin is our bin");
+        assert_eq!(a.groups.iter().filter(|g| g.parent.is_none()).count(), 1);
+        assert_eq!(a.repair_structure(), 0);
     }
 
     #[test]

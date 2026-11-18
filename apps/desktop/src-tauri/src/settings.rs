@@ -176,6 +176,73 @@ impl Generator {
 pub const MIN_GEN_LENGTH: usize = 8;
 pub const MAX_GEN_LENGTH: usize = 128;
 
+/// A saved generator profile (KeePass "Password Generator" profiles):
+/// character classes and length, or a pattern (see lav_core PATTERN_HELP).
+/// Kept in its own file next to settings.json, because `Settings` is a small
+/// `Copy` value read from many threads.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GenProfile {
+    pub name: String,
+    #[serde(flatten)]
+    pub classes: Generator,
+    /// Non-empty = generate from this pattern instead of the classes.
+    pub pattern: String,
+}
+
+pub const MAX_PROFILES: usize = 30;
+pub const MAX_PATTERN_CHARS: usize = 300;
+
+/// Drops profiles without a name or with a pattern that does not work, cuts
+/// names to 64 characters, keeps the first of duplicate names, at most
+/// MAX_PROFILES.
+pub fn sanitize_profiles(list: Vec<GenProfile>) -> Vec<GenProfile> {
+    let mut out: Vec<GenProfile> = Vec::new();
+    for mut p in list {
+        p.name = p.name.trim().chars().take(64).collect();
+        p.pattern = p.pattern.trim().to_owned();
+        if p.name.is_empty()
+            || out.iter().any(|o| o.name.eq_ignore_ascii_case(&p.name))
+            || p.pattern.chars().count() > MAX_PATTERN_CHARS
+            || (!p.pattern.is_empty() && lav_core::generate_pattern(&p.pattern).is_err())
+        {
+            continue;
+        }
+        p.classes = p.classes.sanitized();
+        out.push(p);
+        if out.len() == MAX_PROFILES {
+            break;
+        }
+    }
+    out
+}
+
+pub fn load_profiles(file: &Path) -> Vec<GenProfile> {
+    let Ok(f) = fs::File::open(file) else {
+        return Vec::new();
+    };
+    let mut buf = Vec::new();
+    if f.take(MAX_FILE_BYTES + 1).read_to_end(&mut buf).is_err()
+        || buf.len() as u64 > MAX_FILE_BYTES
+    {
+        return Vec::new();
+    }
+    sanitize_profiles(serde_json::from_slice::<Vec<GenProfile>>(&buf).unwrap_or_default())
+}
+
+pub fn save_profiles(file: &Path, list: &[GenProfile]) -> std::io::Result<()> {
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let tmp = file.with_extension("json.tmp");
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(&serde_json::to_vec_pretty(list).map_err(std::io::Error::other)?)?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, file)
+}
+
 /// The full settings in effect (the atomics above are kept for the hot
 /// paths that read single values from other threads).
 static CURRENT: std::sync::LazyLock<std::sync::RwLock<Settings>> =
@@ -394,6 +461,44 @@ pub fn save(file: &Path, s: Settings) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generator_profiles_are_checked_and_saved() {
+        let p = |name: &str, pattern: &str| GenProfile {
+            name: name.into(),
+            pattern: pattern.into(),
+            ..Default::default()
+        };
+        let clean = sanitize_profiles(vec![
+            p("  Banka PIN ", "d{6}"),
+            p("", "d"),
+            p("banka pin", "d{4}"),
+            p("Bozuk", "d{0}"),
+            GenProfile {
+                name: "Uzun".into(),
+                classes: Generator {
+                    length: 9999,
+                    lowercase: false,
+                    uppercase: false,
+                    digits: false,
+                    symbols: false,
+                    exclude_ambiguous: false,
+                },
+                pattern: String::new(),
+            },
+        ]);
+        let names: Vec<&str> = clean.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Banka PIN", "Uzun"]);
+        assert_eq!(clean[1].classes.length, MAX_GEN_LENGTH);
+        assert!(clean[1].classes.lowercase, "no class: back to the default");
+
+        let dir = std::env::temp_dir().join(format!("lav-prof-{}", std::process::id()));
+        let file = dir.join("generator-profiles.json");
+        assert!(load_profiles(&file).is_empty());
+        save_profiles(&file, &clean).unwrap();
+        assert_eq!(load_profiles(&file), clean);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn only_listed_choices_are_accepted() {
