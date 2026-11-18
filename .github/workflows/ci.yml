@@ -16,6 +16,7 @@ env:
 # Third-party actions are pinned to full commit SHAs (supply-chain hardening).
 # actions/checkout v4            = 11d5960a326750d5838078e36cf38b85af677262
 # dtolnay/rust-toolchain stable  = b725eda525362e7cf34af9a7243cac1e3f01a7ec
+# actions/upload-artifact v4.6.2 = ea165f8d65b6e75b540449e92b4886f43607fa02
 
 jobs:
   test:
@@ -93,6 +94,18 @@ jobs:
       - name: Bundle (Linux, unsigned)
         if: runner.os == 'Linux'
         run: npx tauri build --ci --bundles deb,appimage
+      # For trying a branch on a real Ubuntu desktop before a release. These
+      # are unsigned test builds: install releases from GitHub Releases.
+      - name: Upload the Linux packages (test builds)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-packages-${{ github.sha }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
       - run: cargo install cargo-audit --locked --version 0.23.0
         if: runner.os == 'Windows'
       # Both are Linux-only (GTK) dependencies of Tauri, not in the Windows build:
