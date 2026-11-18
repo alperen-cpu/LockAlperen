@@ -104,6 +104,52 @@ pub fn wait_for_target(markers: &[String]) -> Result<HWND, &'static str> {
     Err(NO_TARGET)
 }
 
+/// How long to wait for a site we opened ourselves to load and show a
+/// matching title (a cold browser start can be slow).
+pub const WAIT_OPENED: Duration = Duration::from_secs(25);
+/// Extra time after the title matches, so the page can put the cursor in
+/// its login form before we type.
+const SETTLE_OPENED: Duration = Duration::from_millis(1500);
+
+pub const OPENED_WRONG_TARGET: &str =
+    "Site açıldı ama tarayıcı penceresinin başlığı bu kaydın adını \
+     ya da sitesini içermiyor; güvenlik için hiçbir şey yazılmadı.";
+pub const OPENED_NO_TARGET: &str =
+    "Site 25 saniye içinde açılmadı ya da tarayıcı öne gelmedi; hiçbir şey yazılmadı.";
+
+/// After we opened the entry's site in the browser: waits until another
+/// program's foreground window has a matching title (the page title shows
+/// up only once the page loads), lets the page settle, and checks again.
+/// The same title rule as [`wait_for_target`]; only the waiting differs.
+pub fn wait_for_opened_site(markers: &[String]) -> Result<HWND, &'static str> {
+    let me = std::process::id();
+    let start = Instant::now();
+    let mut saw_other = false;
+    while start.elapsed() < WAIT_OPENED {
+        // SAFETY: no preconditions.
+        let fg = unsafe { GetForegroundWindow() };
+        if !fg.is_null() && pid_of(fg) != me {
+            saw_other = true;
+            if title_matches(&window_title(fg), markers) {
+                std::thread::sleep(SETTLE_OPENED);
+                // SAFETY: no preconditions.
+                if unsafe { GetForegroundWindow() } == fg
+                    && title_matches(&window_title(fg), markers)
+                {
+                    return Ok(fg);
+                }
+                continue;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    Err(if saw_other {
+        OPENED_WRONG_TARGET
+    } else {
+        OPENED_NO_TARGET
+    })
+}
+
 fn key(vk: VIRTUAL_KEY, scan: u16, flags: u32) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,

@@ -6,7 +6,31 @@ import * as api from "./api";
 import { UpdateSettings } from "./Update";
 import { BackIcon, DownloadIcon } from "./icons";
 
-type Category = "security" | "autotype" | "generator" | "look" | "window" | "updates" | "data";
+type Category =
+  | "security"
+  | "autotype"
+  | "generator"
+  | "look"
+  | "window"
+  | "keys"
+  | "updates"
+  | "data";
+
+/** Keyboard shortcuts of the vault screen (App.tsx and Editor.tsx). */
+const KEYS: [string, string][] = [
+  ["Ctrl+C", "Farenin üzerinde durduğu kullanıcı adını ya da parolayı kopyalar. Fare bir değerin üzerinde değilse seçili kaydın parolasını kopyalar. Metin seçiliyse seçili metni kopyalar."],
+  ["Ctrl+B", "Seçili kaydın kullanıcı adını kopyalar."],
+  ["Ctrl+U", "Seçili kaydın web sitesini tarayıcıda açar."],
+  ["Ctrl+E ya da Enter", "Seçili kaydı düzenler."],
+  ["Delete", "Seçili kaydı siler (önce sorar; Geri Dönüşüm Kutusu'ndaysa kalıcı olarak)."],
+  ["Ctrl+K", "Seçili kaydı çoğaltır."],
+  ["Ctrl+N", "Yeni kayıt."],
+  ["Ctrl+F", "Aramaya geçer."],
+  ["Ctrl+L", "Kasayı kilitler."],
+  ["Ctrl+S", "Düzenlerken kaydeder."],
+  ["Esc", "Düzenleyiciyi ya da açık pencereyi kapatır."],
+  ["← / →", "Liste ile ayrıntı paneli arasındaki çubuk seçiliyken paneli genişletir ya da daraltır (Shift ile daha hızlı)."],
+];
 
 const CATEGORIES: { id: Category; label: string; intro: string }[] = [
   {
@@ -29,6 +53,11 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     id: "window",
     label: "Pencere",
     intro: "Pencerenin nasıl davranacağı, kısayol ve Windows ile başlatma.",
+  },
+  {
+    id: "keys",
+    label: "Klavye kısayolları",
+    intro: "Kasa açıkken çalışan kısayollar. Bir yazı alanındayken çalışmazlar.",
   },
   { id: "updates", label: "Güncellemeler", intro: "Yeni sürümler GitHub'dan imzası doğrulanarak kurulur." },
   {
@@ -264,7 +293,7 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
               {toggle(
                 "lockOnMinimize",
                 "Pencere küçültülünce kilitle",
-                "Pencereyi görev çubuğuna ya da tepsiye küçültünce kasa kilitlenir. Otomatik yazma ve “kopyalayınca küçült” bunu tetiklemez.",
+                "Pencereyi küçültünce kasa kilitlenir. Otomatik yazma ve “kopyalayınca küçült” bunu tetiklemez.",
               )}
               {toggle(
                 "exitInsteadOfLock",
@@ -312,7 +341,7 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
           <section className="set-card">
             <Row
               title={<label htmlFor="s-hotkey">Otomatik yazma kısayolu</label>}
-              text="Öndeki pencerenin başlığına uyan tek kaydın kullanıcı adını ve parolasını yazar. Birden fazla kayıt uyarsa ya da hiç uymazsa hiçbir şey yazılmaz."
+              text="Öndeki pencerenin başlığına uyan tek kaydın kullanıcı adını ve parolasını yazar. Birden fazla kayıt uyarsa ya da hiç uymazsa hiçbir şey yazılmaz. Kayıttaki “Otomatik yaz” düğmesi ise kaydın web sitesi varsa önce siteyi tarayıcıda yeni sekmede açar, sayfa yüklenip başlığı doğrulanınca yazar."
             >
               <select
                 id="s-hotkey"
@@ -376,8 +405,8 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
             </Row>
             {toggle(
               "minimizeToTray",
-              "Küçültünce tepsiye gizle",
-              "Küçült düğmesi pencereyi görev çubuğu yerine saatin yanındaki simgelere gizler.",
+              "Küçültünce görev çubuğunda gösterme",
+              "Küçült düğmesine basınca pencere görev çubuğundan da kaybolur; LockAlperen saatin yanındaki simgelerin arasında çalışmaya devam eder. Oradaki simgeye tıklayarak geri açabilirsiniz.",
             )}
             {toggle(
               "minimizeAfterCopy",
@@ -393,7 +422,7 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
             {toggle(
               "startMinimized",
               "Küçültülmüş başlat",
-              "Uygulama açılınca pencere küçük (tepsiye gizleme açıksa tepside) başlar. Kasa her zaman kilitli başlar.",
+              "Uygulama açılınca pencere açılmaz, görev çubuğunda küçük başlar (yukarıdaki ayar açıksa yalnızca saatin yanındaki simgede durur). Kasa her zaman kilitli başlar.",
             )}
             {toggle(
               "runAtStartup",
@@ -475,6 +504,14 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
                   }
                 />
               </Row>
+            ))}
+          </section>
+        )}
+
+        {category === "keys" && (
+          <section className="set-card">
+            {KEYS.map(([k, text]) => (
+              <Row key={k} title={<span className="kbd">{k}</span>} text={text} />
             ))}
           </section>
         )}
