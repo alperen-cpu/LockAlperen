@@ -588,6 +588,51 @@ function Avatar({ title, size, icon }: { title: string; size: number; icon?: str
   );
 }
 
+/** Special list views besides folders: "totp", "health", "expiring" and
+ *  "tag:<name>". */
+const TAG_PREFIX = "tag:";
+
+function sameTag(a: string, b: string) {
+  return a.toLocaleLowerCase("tr") === b.toLocaleLowerCase("tr");
+}
+
+type SearchScope = {
+  title: boolean;
+  username: boolean;
+  url: boolean;
+  tags: boolean;
+  notes: boolean;
+  fields: boolean;
+};
+const DEFAULT_SCOPE: SearchScope = {
+  title: true,
+  username: true,
+  url: true,
+  tags: true,
+  notes: false,
+  fields: false,
+};
+const SCOPE_KEY = "lockalperen.searchScope";
+const SCOPE_LABELS: [keyof SearchScope, string][] = [
+  ["title", "Başlık"],
+  ["username", "Kullanıcı adı"],
+  ["url", "Web sitesi"],
+  ["tags", "Etiketler"],
+  ["notes", "Notlar"],
+  ["fields", "Özel alanlar (gizli olmayan)"],
+];
+
+/** Inline colours of an entry row (KeePass entry colours). Rust only lets
+ *  "#rrggbb" through. */
+function entryStyle(e: EntrySummary, active: boolean): React.CSSProperties | undefined {
+  if (!e.fgColor && !e.bgColor) return undefined;
+  return {
+    color: e.fgColor ?? undefined,
+    backgroundColor: active ? undefined : (e.bgColor ?? undefined),
+    boxShadow: e.bgColor ? `inset 4px 0 0 ${e.bgColor}` : undefined,
+  };
+}
+
 const DETAIL_W_KEY = "lockalperen.detailWidth";
 const DETAIL_MIN = 340;
 const LIST_MIN = 280;
@@ -692,6 +737,67 @@ function VaultScreen({
   }, [onAutoLocked]);
 
   const [query, setQuery] = useState("");
+  // Which fields the search looks in (KeePass "Find" options), remembered
+  // per user in this profile. Notes and custom fields are searched by Rust.
+  const [searchScope, setSearchScope] = useState<SearchScope>(() => {
+    try {
+      return { ...DEFAULT_SCOPE, ...JSON.parse(localStorage.getItem(SCOPE_KEY) ?? "{}") };
+    } catch {
+      return DEFAULT_SCOPE;
+    }
+  });
+  const [searchOpen, setSearchOpen] = useState(false);
+  function changeScope(patch: Partial<SearchScope>) {
+    setSearchScope((s) => {
+      const next = { ...s, ...patch };
+      try {
+        localStorage.setItem(SCOPE_KEY, JSON.stringify(next));
+      } catch {
+        /* still applies until restart */
+      }
+      return next;
+    });
+  }
+  const [hiddenHits, setHiddenHits] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const q = query.trim();
+    if (!q || !(searchScope.notes || searchScope.fields)) {
+      setHiddenHits(new Set());
+      return;
+    }
+    let alive = true;
+    const t = window.setTimeout(() => {
+      api
+        .searchHidden(q, { notes: searchScope.notes, fields: searchScope.fields })
+        .then((ids) => alive && setHiddenHits(new Set(ids)))
+        .catch(() => alive && setHiddenHits(new Set()));
+    }, 200);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [query, searchScope.notes, searchScope.fields, open.entries]);
+  // "Süresi dolacaklar": expired or expiring within this many days.
+  const [expiringDays, setExpiringDays] = useState(30);
+  // Tags of live entries, with counts, for the "Etiketler" list.
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, { name: string; count: number }>();
+    for (const e of open.entries) {
+      if (e.inRecycleBin) continue;
+      for (const t of e.tags) {
+        const k = t.toLocaleLowerCase("tr");
+        const cur = m.get(k);
+        if (cur) cur.count++;
+        else m.set(k, { name: t, count: 1 });
+      }
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+  }, [open.entries]);
+  const expiringCount = useMemo(() => {
+    const soon = Date.now() / 1000 + expiringDays * 86400;
+    return open.entries.filter((e) => !e.inRecycleBin && e.expires != null && e.expires <= soon)
+      .length;
+  }, [open.entries, expiringDays]);
   // null = all; "totp" / "health" = special filters; otherwise a group id.
   const [group, setGroup] = useState<string | null>(null);
   const [health, setHealth] = useState<api.HealthReport | null>(null);
@@ -1182,7 +1288,11 @@ function VaultScreen({
         ? "TOTP kodları"
         : group === "health"
           ? "Parola sağlığı"
-          : (allGroups.find((g) => g.id === group)?.name ?? "Klasör");
+          : group === "expiring"
+            ? `Süresi dolacaklar (${expiringDays} gün)`
+            : group.startsWith(TAG_PREFIX)
+              ? `Etiket: ${group.slice(TAG_PREFIX.length)}`
+              : (allGroups.find((g) => g.id === group)?.name ?? "Klasör");
 
   /** "İş › Geliştirme": the folder and its parents, without the root. */
   function groupPath(id: string) {
@@ -1199,7 +1309,15 @@ function VaultScreen({
 
   const shown = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr");
-    return open.entries.filter(
+    const soon = Date.now() / 1000 + expiringDays * 86400;
+    const tag = group?.startsWith(TAG_PREFIX) ? group.slice(TAG_PREFIX.length) : null;
+    const fields = (e: EntrySummary) => [
+      ...(searchScope.title ? [e.title] : []),
+      ...(searchScope.username ? [e.username] : []),
+      ...(searchScope.url ? [e.url] : []),
+      ...(searchScope.tags ? e.tags : []),
+    ];
+    const list = open.entries.filter(
       (e) =>
         (group === null
           ? !e.inRecycleBin
@@ -1207,10 +1325,19 @@ function VaultScreen({
             ? e.hasTotp && !e.inRecycleBin
             : group === "health"
               ? issuesOf.has(e.id)
-              : e.groupId === group) &&
-        (!q || [e.title, e.username, e.url].some((f) => f.toLocaleLowerCase("tr").includes(q))),
+              : group === "expiring"
+                ? !e.inRecycleBin && e.expires != null && e.expires <= soon
+                : tag !== null
+                  ? !e.inRecycleBin && e.tags.some((t) => sameTag(t, tag))
+                  : e.groupId === group) &&
+        (!q ||
+          fields(e).some((f) => f.toLocaleLowerCase("tr").includes(q)) ||
+          hiddenHits.has(e.id)),
     );
-  }, [open.entries, query, group, issuesOf]);
+    // Soonest first in the expiring view.
+    if (group === "expiring") list.sort((a, b) => a.expires! - b.expires!);
+    return list;
+  }, [open.entries, query, group, issuesOf, searchScope, hiddenHits, expiringDays]);
 
   const sortedShown = useMemo(() => {
     const list = shown.slice();
@@ -1322,6 +1449,7 @@ function VaultScreen({
             setSettingsOpen(false);
             void startImport();
           }}
+          onEntries={onEntries}
         />
       ) : (
       <>
@@ -1360,6 +1488,40 @@ function VaultScreen({
           />
           <span className="kbd">Ctrl+F</span>
         </label>
+        <div className="search-scope">
+          <button
+            type="button"
+            className={"btn scope-btn" + (searchScope.notes || searchScope.fields ? " on" : "")}
+            aria-expanded={searchOpen}
+            aria-haspopup="true"
+            title="Aramanın baktığı alanlar"
+            onClick={() => setSearchOpen((o) => !o)}
+          >
+            Alanlar
+          </button>
+          {searchOpen && (
+            <div
+              className="scope-pop"
+              role="group"
+              aria-label="Aramanın baktığı alanlar"
+              onKeyDown={(e) => e.key === "Escape" && setSearchOpen(false)}
+            >
+              {SCOPE_LABELS.map(([k, label]) => (
+                <label key={k} className="check">
+                  <input
+                    type="checkbox"
+                    checked={searchScope[k]}
+                    onChange={(e) => changeScope({ [k]: e.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+              <p className="muted small">
+                Parolalar ve gizli alan değerleri hiçbir zaman aranmaz.
+              </p>
+            </div>
+          )}
+        </div>
         <div className="topbar-right">
           {lockIn !== null && (
             <span className="autolock muted" title="Klavye ya da fare kullanılınca sıfırlanır">
@@ -1443,6 +1605,39 @@ function VaultScreen({
               {open.entries.filter((e) => e.hasTotp && !e.inRecycleBin).length}
             </span>
           </button>
+          <button
+            type="button"
+            className={"nav" + (group === "expiring" ? " active" : "")}
+            onClick={() => setGroup("expiring")}
+            title={`Süresi dolmuş ya da ${expiringDays} gün içinde dolacak kayıtlar`}
+          >
+            <FaIcon def={folderIconDef("calendar")!} />
+            Süresi dolacaklar
+            <span className={"count" + (expiringCount > 0 ? " warn-count" : "")}>
+              {expiringCount}
+            </span>
+          </button>
+          {tagCounts.length > 0 && <div className="lbl section">Etiketler</div>}
+          {tagCounts.length > 0 && (
+            <div className="tag-cloud">
+              {tagCounts.map((t) => {
+                const key = TAG_PREFIX + t.name;
+                const on = group !== null && group.startsWith(TAG_PREFIX) && sameTag(group.slice(TAG_PREFIX.length), t.name);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={"chip-btn tag-chip" + (on ? " on" : "")}
+                    aria-pressed={on}
+                    onClick={() => setGroup(on ? null : key)}
+                  >
+                    #{t.name}
+                    <span className="count">{t.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {groups.length > 0 && <div className="lbl section">Klasörler</div>}
           {groups.map(([id, g]) =>
             renaming?.id === id ? (
@@ -1669,6 +1864,20 @@ function VaultScreen({
           </div>
           <div className="list-toolbar">
             <span className="muted small">{shown.length} kayıt</span>
+            {group === "expiring" && (
+              <select
+                className="text-input small-input days-select"
+                aria-label="Kaç gün içinde"
+                value={expiringDays}
+                onChange={(e) => setExpiringDays(Number(e.target.value))}
+              >
+                {[7, 30, 90, 365].map((d) => (
+                  <option key={d} value={d}>
+                    {d} gün içinde
+                  </option>
+                ))}
+              </select>
+            )}
               <div className="view-switch" role="group" aria-label="Görünüm">
                 {(
                   [
@@ -1772,6 +1981,7 @@ function VaultScreen({
                       <tr
                         key={e.id}
                         className={e.id === selected ? "active" : ""}
+                        style={entryStyle(e, e.id === selected)}
                         onClick={() => {
                           setSelected(e.id);
                           setView("detail");
@@ -1840,6 +2050,7 @@ function VaultScreen({
                   <button
                     type="button"
                     className={"row" + (e.id === selected ? " active" : "")}
+                    style={entryStyle(e, e.id === selected)}
                     onClick={() => {
                       setSelected(e.id);
                       setView("detail");
