@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.8.0] - 2026-11-18: Google Drive yedeği
 
 - **Google Drive yedeği:** Ayarlar › Google Drive. Google hesabınızı bağlayın; kasa `LockAlperen
   yedekleri` klasörüne yüklenir. Elle ("Bu kasayı şimdi yedekle") ya da açık kasalar değişince
