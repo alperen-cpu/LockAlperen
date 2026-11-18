@@ -1,6 +1,6 @@
 [package]
 name = "lockalperen-desktop"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 license = "MIT"
 publish = false
@@ -47,6 +47,8 @@ keepass = { version = "=0.17.0", default-features = false, features = ["save_kdb
 # Same versions keepass already uses: Argon2id for the exported file, its dates.
 kp_argon2 = { package = "rust-argon2", version = "=3.0.0" }
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
+# Google Drive backup (src/gdrive.rs). Same version and TLS setup as lav-favicon.
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls-native-roots", "json"] }
 # Already in Tauri's tree at this version; used only by src/clipboard.rs
 # src/autolock.rs and src/hardening.rs (the only unsafe code in the app).
 windows-sys = { version = "=0.61.2", features = [
@@ -63,6 +65,7 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_Security_Authorization",
     "Win32_System_Threading",
 ] }
@@ -74,6 +77,8 @@ windows-sys = { version = "=0.61.2", features = [
 minisign-verify = "=0.3.0"
 # src/lockicon.rs preview test only (already in the tree via lav-favicon).
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
+# src/gdrive.rs tests: a runtime for the HTTP client against a local fake server.
+tokio = { version = "1", features = ["rt", "time", "net"] }
 
 [profile.dev.package."*"]
 # Argon2 is extremely slow without optimizations.

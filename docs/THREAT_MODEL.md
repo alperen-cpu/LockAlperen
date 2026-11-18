@@ -90,7 +90,9 @@ Windows'ta dizin `FlushFileBuffers`'ının rename'i kalıcı yaptığı belgelen
 3. Yanlış parola ile bozuk dosya kullanıcıya aynı hatayı verir (`Error::user_message`). Saldırgana
    ipucu vermeyiz. v2'den itibaren key commitment, bir dosyanın birden fazla parolayla doğrulanmasını
    da engeller.
-4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı iki yer var: site ikonu indirme (doğrudan
-   sitenin kendisinden; şu an kapatılamıyor) ve GitHub Releases üzerinden sürüm denetimi
-   (Ayarlar'dan kapatılabilir). Sızıntı kontrolü (HIBP) yoktur. Ayrıntı:
+4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı yerler: site ikonu indirme (doğrudan
+   sitenin kendisinden; şu an kapatılamıyor), GitHub Releases üzerinden sürüm denetimi
+   (Ayarlar'dan kapatılabilir) ve isteğe bağlı Google Drive yedeği. Drive'a yalnızca şifreli
+   kasa dosyası gider; Google'ın elindeki dosya, ana parola olmadan çözülemez (KDF maliyeti
+   çevrimdışı tahmini yavaşlatır, zayıf ana parola yine risktir). Sızıntı kontrolü (HIBP) yoktur. Ayrıntı:
    [SECURITY.md](../SECURITY.md), [UPDATES.md](UPDATES.md).

@@ -334,6 +334,262 @@ export function VaultSettingsPanel(props: {
   );
 }
 
+function when(secs: number) {
+  return new Date(secs * 1000).toLocaleString("tr-TR");
+}
+
+export function DrivePanel(props: {
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  onMsg: (m: string | null) => void;
+}) {
+  const { busy, setBusy, onMsg } = props;
+  const [st, setSt] = useState<api.DriveStatus | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [files, setFiles] = useState<api.DriveFile[] | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const secret = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api.gdriveStatus().then(
+      (s) => {
+        setSt(s);
+        setClientId(s.clientId);
+      },
+      (e) => onMsg(api.errorText(e)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function run(work: () => Promise<string | null>) {
+    setBusy(true);
+    onMsg(null);
+    try {
+      onMsg(await work());
+    } catch (e) {
+      onMsg(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!st) return null;
+
+  return (
+    <>
+      <Card
+        title="1. Google OAuth istemcisi"
+        text={
+          <>
+            LockAlperen'in Google'a bağlanabilmesi için Google Cloud'da size ait bir “Masaüstü
+            uygulaması” istemcisi gerekir (bir kerelik, ücretsiz).{" "}
+            {st.configured ? "Ayarlı." : "Henüz ayarlanmadı."}
+          </>
+        }
+        onSubmit={(e) => {
+          e.preventDefault();
+          const s = secret.current?.value ?? "";
+          if (secret.current) secret.current.value = "";
+          void run(async () => {
+            setSt(await api.gdriveSetClient(clientId, s));
+            return "İstemci bilgileri kaydedildi.";
+          });
+        }}
+      >
+        <details className="advanced">
+          <summary>İstemci nasıl oluşturulur?</summary>
+          <ol className="steps small">
+            <li>console.cloud.google.com adresinde bir proje oluşturun.</li>
+            <li>“API'ler ve Hizmetler › Kitaplık”tan <b>Google Drive API</b>'yi etkinleştirin.</li>
+            <li>
+              “OAuth izin ekranı”nı “Harici” olarak ayarlayın, kendi Google hesabınızı “Test
+              kullanıcıları”na ekleyin. Kapsam olarak yalnızca <code>drive.file</code> yeterli.
+            </li>
+            <li>
+              “Kimlik bilgileri › Kimlik bilgisi oluştur › OAuth istemci kimliği” seçin, uygulama
+              türü <b>Masaüstü uygulaması</b> olsun.
+            </li>
+            <li>Verilen istemci kimliğini ve gizli anahtarı buraya girin.</li>
+          </ol>
+        </details>
+        <div className="set-fields">
+          <label className="set-field wide-field">
+            İstemci kimliği
+            <input
+              className="text-input mono"
+              value={clientId}
+              placeholder="….apps.googleusercontent.com"
+              onChange={(e) => setClientId(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="set-field wide-field">
+            İstemci gizli anahtarı
+            <input
+              ref={secret}
+              className="text-input mono"
+              type="password"
+              placeholder={st.configured ? "(kayıtlı; değiştirmek için yeniden girin)" : "GOCSPX-…"}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+        <div className="set-actions">
+          <button type="submit" className="btn" disabled={busy || !clientId.trim()}>
+            Kaydet
+          </button>
+        </div>
+      </Card>
+
+      <Card
+        title="2. Google hesabı"
+        text={
+          st.connected
+            ? "Bağlı. LockAlperen Drive'ınızda yalnızca kendi oluşturduğu dosyaları görebilir."
+            : "Tarayıcıda Google'a giriş yapıp izin verin. Parolanız LockAlperen'e gelmez."
+        }
+      >
+        <div className="set-actions">
+          {st.connected ? (
+            <button
+              type="button"
+              className="btn danger"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  setSt(await api.gdriveDisconnect());
+                  setFiles(null);
+                  return "Google hesabının bağlantısı kesildi; erişim izni geri alındı. Drive'daki yedekler yerinde duruyor.";
+                })
+              }
+            >
+              Bağlantıyı kes
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-accent"
+              disabled={busy || !st.configured}
+              onClick={() => {
+                setConnecting(true);
+                void run(async () => {
+                  try {
+                    setSt(await api.gdriveConnect());
+                    return "Google hesabı bağlandı.";
+                  } finally {
+                    setConnecting(false);
+                  }
+                });
+              }}
+            >
+              {connecting ? "Tarayıcıda giriş bekleniyor…" : "Google hesabını bağla"}
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {st.connected && (
+        <>
+          <Card
+            title="3. Yedekleme"
+            text={
+              <>
+                Drive'a yalnızca kasa dosyasının kendisi gider: ana parolayla şifreli hâliyle. Drive'da
+                “{"LockAlperen yedekleri"}” klasörüne yazılır, her yedek bir öncekinin yerini alır
+                (Drive kendi sürüm geçmişini tutar).
+                {st.lastBackup !== null && <> Bu kasanın son yedeği: {when(st.lastBackup)}.</>}
+              </>
+            }
+          >
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={st.auto}
+                disabled={busy}
+                onChange={(e) =>
+                  void run(async () => {
+                    setSt(await api.gdriveSetAuto(e.target.checked));
+                    return null;
+                  })
+                }
+              />
+              Açık kasalar değişince otomatik yedekle (dakikada bir denetlenir)
+            </label>
+            {st.lastError && <p className="error small">Son otomatik yedek başarısız: {st.lastError}</p>}
+            <div className="set-actions">
+              <button
+                type="button"
+                className="btn btn-accent"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    setSt(await api.gdriveBackupNow());
+                    return "Kasa Google Drive'a yedeklendi.";
+                  })
+                }
+              >
+                {busy ? "Yükleniyor…" : "Bu kasayı şimdi yedekle"}
+              </button>
+            </div>
+          </Card>
+
+          <Card
+            title="Drive'daki yedekler"
+            text="Bir yedeği bu bilgisayara indirip “Kasa aç” ile açabilirsiniz. Açık bir kasanın üzerine yazılmaz."
+          >
+            <div className="set-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    setFiles(await api.gdriveList());
+                    return null;
+                  })
+                }
+              >
+                Listeyi getir
+              </button>
+            </div>
+            {files !== null &&
+              (files.length === 0 ? (
+                <p className="muted small">Henüz yedek yok.</p>
+              ) : (
+                <ul className="drive-list">
+                  {files.map((f) => (
+                    <li key={f.id}>
+                      <span className="ellipsis">{f.name}</span>
+                      <span className="muted small">
+                        {f.modifiedTime ? new Date(f.modifiedTime).toLocaleString("tr-TR") : ""}
+                        {f.size ? ` · ${Math.ceil(Number(f.size) / 1024)} KB` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            const n = await api.gdriveRestore(f.id, f.name);
+                            return n ? `İndirildi: ${n}. Açmak için “Yeni sekmede kasa aç” ya da “Kasa aç”ı kullanın.` : null;
+                          })
+                        }
+                      >
+                        İndir…
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
+
 export function DataTools(props: {
   busy: boolean;
   setBusy: (b: boolean) => void;

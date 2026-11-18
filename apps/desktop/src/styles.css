@@ -2738,3 +2738,27 @@ input[type="range"] {
   margin-left: 8px;
   white-space: nowrap;
 }
+/* Google Drive panel. */
+.steps {
+  margin: 8px 0 4px;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.drive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drive-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}

@@ -18,6 +18,8 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **KeePass'teki ileri özellikler:** kayda özel otomatik yazma dizisi ve pencere kuralı, alan
   referansları (`{REF:…}`), kayıt renkleri, etiket ve "süresi dolacaklar" görünümleri, aramada alan
   seçimi, üretici profilleri ve desenler, kasa ayarları (geçmiş, şifreleme gücü, anahtar dosyası)
+- **Google Drive yedeği (isteğe bağlı):** Şifreli kasa dosyası Drive'a elle ya da otomatik yedeklenir;
+  uygulama Drive'da yalnızca kendi dosyalarını görür, Google erişimi Windows ile şifreli saklanır
 - **Arka planda çalışma:** Kapatınca saatin yanındaki simgede çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
 - **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
   geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
@@ -39,7 +41,8 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 3. Sonraki sürümler uygulama açılınca önerilir ve tek tıkla kurulur. Kasa dosyalarınız ve
    ayarlarınız korunur. Bu denetim Ayarlar'dan kapatılabilir.
 
-Ağa çıkan yalnızca iki işlem var: site ikonlarının indirilmesi ve GitHub'dan sürüm denetimi.
+Ağa çıkan işlemler: site ikonlarının indirilmesi, GitHub'dan sürüm denetimi ve isteğe bağlı Google Drive yedeği.
+Drive'a yalnızca şifreli kasa dosyası gider; Google hesabı bağlanmadıkça hiçbir şey gönderilmez.
 
 ## Durum
 

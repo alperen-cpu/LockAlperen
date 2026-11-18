@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import * as api from "./api";
 import { UpdateSettings } from "./Update";
-import { DataTools, VaultSettingsPanel } from "./VaultTools";
+import { DataTools, DrivePanel, VaultSettingsPanel } from "./VaultTools";
 import { BackIcon, DownloadIcon } from "./icons";
 
 type Category =
@@ -15,6 +15,7 @@ type Category =
   | "look"
   | "window"
   | "keys"
+  | "drive"
   | "updates"
   | "data";
 
@@ -66,6 +67,11 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     id: "keys",
     label: "Klavye kısayolları",
     intro: "Kasa açıkken çalışan kısayollar. Bir yazı alanındayken çalışmazlar.",
+  },
+  {
+    id: "drive",
+    label: "Google Drive",
+    intro: "Kasanızı Google Drive'a yedekleyin. Yalnızca şifreli kasa dosyası yüklenir.",
   },
   { id: "updates", label: "Güncellemeler", intro: "Yeni sürümler GitHub'dan imzası doğrulanarak kurulur." },
   {
@@ -573,6 +579,8 @@ export function SettingsPage(props: {
             <DataTools busy={busy} setBusy={setBusy} onMsg={setMsg} onEntries={props.onEntries} />
           </>
         )}
+
+        {category === "drive" && <DrivePanel busy={busy} setBusy={setBusy} onMsg={setMsg} />}
 
         {category === "vault" && (
           <VaultSettingsPanel

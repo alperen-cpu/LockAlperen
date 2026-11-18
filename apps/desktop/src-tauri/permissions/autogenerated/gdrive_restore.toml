@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-restore"
+description = "Enables the gdrive_restore command without any pre-configured scope."
+commands.allow = ["gdrive_restore"]
+
+[[permission]]
+identifier = "deny-gdrive-restore"
+description = "Denies the gdrive_restore command without any pre-configured scope."
+commands.deny = ["gdrive_restore"]
