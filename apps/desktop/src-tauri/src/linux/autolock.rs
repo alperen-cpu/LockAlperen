@@ -256,10 +256,16 @@ pub fn session_change(interface: &str, changed: &HashMap<String, OwnedValue>) ->
     if interface != SESSION {
         return None;
     }
-    if matches!(changed.get("LockedHint").map(|v| &**v), Some(Value::Bool(true))) {
+    if matches!(
+        changed.get("LockedHint").map(|v| &**v),
+        Some(Value::Bool(true))
+    ) {
         return Some(Reason::SessionLocked);
     }
-    if matches!(changed.get("Active").map(|v| &**v), Some(Value::Bool(false))) {
+    if matches!(
+        changed.get("Active").map(|v| &**v),
+        Some(Value::Bool(false))
+    ) {
         return Some(Reason::Disconnected);
     }
     None
@@ -281,7 +287,12 @@ pub fn watch(on_lock: impl Fn(Reason) + Send + Sync + 'static) -> Option<()> {
     let on: Callback = Arc::new(on_lock);
     let mut any = false;
     if let Some(c) = system_bus() {
-        any |= listen(c, signal_rule(MANAGER, "PrepareForSleep", None), on_sleep, &on);
+        any |= listen(
+            c,
+            signal_rule(MANAGER, "PrepareForSleep", None),
+            on_sleep,
+            &on,
+        );
         any |= listen(
             c,
             signal_rule(MANAGER, "PrepareForShutdown", None),
@@ -344,7 +355,10 @@ mod tests {
         // Unlocking or coming back never unlocks anything.
         assert_eq!(session_change(SESSION, &props("LockedHint", false)), None);
         assert_eq!(session_change(SESSION, &props("Active", true)), None);
-        assert_eq!(session_change("other.Interface", &props("Active", false)), None);
+        assert_eq!(
+            session_change("other.Interface", &props("Active", false)),
+            None
+        );
     }
 
     #[test]

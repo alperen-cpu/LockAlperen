@@ -182,7 +182,10 @@ mod tests {
     #[test]
     fn only_our_marker_is_looked_up() {
         assert_eq!(unprotect(b"").err(), Some(super::super::EXPIRED));
-        assert_eq!(unprotect(b"refresh-token").err(), Some(super::super::EXPIRED));
+        assert_eq!(
+            unprotect(b"refresh-token").err(),
+            Some(super::super::EXPIRED)
+        );
         let mut other = MARKER.to_vec();
         other.push(b'x');
         assert_eq!(unprotect(&other).err(), Some(super::super::EXPIRED));
