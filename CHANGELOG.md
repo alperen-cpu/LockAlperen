@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmamış]
+## [0.6.0] - 2026-11-18: otomatik yazma siteyi açar, parola sütunu, üzerindeyken Ctrl+C, boyutlanan panel, onay penceresi
 
 - **Otomatik yaz önce siteyi açar:** Kaydın web sitesi varsa "Otomatik yaz" siteyi varsayılan
   tarayıcıda yeni sekmede açar; sayfa yüklenip başlığı kayda uyunca kullanıcı adını ve parolayı
