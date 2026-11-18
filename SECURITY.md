@@ -17,7 +17,7 @@ tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 | Bellek güvenliği | Rust; çekirdekte `unsafe` kod yasak (`#![forbid(unsafe_code)]`) |
 | Ağ erişimi | Çekirdek (`lav-core`) ağa hiç dokunmaz. Uygulamanın iki ağ işlemi var: site ikonu (favicon) indirme (şu an kapatılamıyor) ve açılışta GitHub Releases üzerinden sürüm denetimi (Ayarlar'dan kapatılabilir, [docs/UPDATES.md](docs/UPDATES.md)) |
 | Veri nerede | Tek bir şifreli `.lav` dosyasında, kullanıcının seçtiği yerde |
-| Bağımlılık taraması | Her commit'te ve haftalık olarak CI'da çalışır. Çekirdek için `cargo audit` (RustSec) ve `cargo deny` (lisans, kaynak, advisory); masaüstü için `cargo audit` ve `npm audit`. Yalnızca Linux derlemesine giren bağımlılıklar için istisnalar gerekçeleriyle `.github/workflows/ci.yml`'de |
+| Bağımlılık taraması | Her commit'te ve haftalık olarak CI'da çalışır. Çekirdek için `cargo audit` (RustSec) ve `cargo deny` (lisans, kaynak, advisory); masaüstü için `cargo audit` ve `npm audit`. `npm audit` uygulamaya giren paketler için CI'yi durdurur (`--omit=dev`); yalnızca derlemede kullanılan araçlar (Vite vb.) için de çalışır ama yalnızca uyarı verir, çünkü bunlar kurulan uygulamaya girmez ve bir açık, düzeltilmiş sürüm çıkmadan duyurulabilir (2026-11-18: picomatch, GHSA-fc5q-39xc-vjpf). Yalnızca Linux derlemesine giren bağımlılıklar için istisnalar gerekçeleriyle `.github/workflows/ci.yml`'de |
 | Test | Her bulgu için regresyon testi, canlı süreç belleği taraması, serbest bırakılan blokları tarayan allocator testi, fuzz testi |
 | Kaynak kodu | Açık (MIT) |
 
