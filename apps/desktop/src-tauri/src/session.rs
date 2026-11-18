@@ -137,6 +137,11 @@ fn file_name(p: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
+/// The same file (canonical paths), or the same path if one is missing.
+pub fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    same_file(a, b)
+}
+
 fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(x), Ok(y)) => x == y,

@@ -6,6 +6,7 @@ mod autotype;
 mod browser;
 mod clipboard;
 mod export;
+mod gdrive;
 mod hardening;
 mod health;
 mod hotkey;
@@ -537,6 +538,361 @@ async fn export_csv(
     bytes.extend_from_slice(csv.as_bytes());
     std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
+}
+
+// ----- Google Drive backup (src/gdrive.rs) -----
+
+use base64::Engine as _;
+
+/// The Drive store (google-drive.json), the cached access token and the
+/// last automatic-backup error.
+#[derive(Default, Clone)]
+struct Drive(Arc<Mutex<DriveState>>);
+
+#[derive(Default)]
+struct DriveState {
+    file: Option<std::path::PathBuf>,
+    store: gdrive::Store,
+    access: Option<(Zeroizing<String>, std::time::Instant)>,
+    last_error: Option<String>,
+}
+
+impl Drive {
+    fn get<T>(&self, f: impl FnOnce(&mut DriveState) -> T) -> Result<T, String> {
+        let mut g = self.0.lock().map_err(|_| INTERNAL.to_owned())?;
+        Ok(f(&mut g))
+    }
+
+    fn save(&self) -> Result<(), String> {
+        self.get(|d| match &d.file {
+            Some(f) => gdrive::save(f, &d.store).map_err(str::to_owned),
+            None => Ok(()),
+        })?
+    }
+
+    /// A valid access token (cached for 50 minutes; Google's last an hour).
+    async fn token(&self) -> Result<(reqwest::Client, Zeroizing<String>), String> {
+        let c = gdrive::client().map_err(str::to_owned)?;
+        if let Some(t) = self.get(|d| {
+            d.access
+                .as_ref()
+                .filter(|(_, at)| at.elapsed() < Duration::from_secs(50 * 60))
+                .map(|(t, _)| t.clone())
+        })? {
+            return Ok((c, t));
+        }
+        let (creds, blob) = self.get(|d| (d.store.credentials(), d.store.refresh_token.clone()))?;
+        let creds = creds.ok_or(gdrive::NOT_CONFIGURED)?;
+        let blob = blob.ok_or(gdrive::NOT_CONNECTED)?;
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(blob)
+            .map_err(|_| gdrive::EXPIRED.to_owned())?;
+        let refresh = gdrive::unprotect(&raw).map_err(str::to_owned)?;
+        let refresh = Zeroizing::new(String::from_utf8_lossy(&refresh).into_owned());
+        let at = gdrive::access_token(&c, &gdrive::Endpoints::default(), &creds, &refresh)
+            .await
+            .map_err(str::to_owned)?;
+        self.get(|d| d.access = Some((at.clone(), std::time::Instant::now())))?;
+        Ok((c, at))
+    }
+
+    /// Uploads one vault file (as it is on disk: encrypted) and remembers it.
+    async fn backup(&self, path: &std::path::Path) -> Result<i64, String> {
+        let bytes =
+            Zeroizing::new(std::fs::read(path).map_err(|_| "Kasa dosyası okunamadı.".to_owned())?);
+        lav_core::Vault::peek_header(&bytes).map_err(|_| gdrive::NOT_A_VAULT.to_owned())?;
+        let mtime = file_mtime(path);
+        let (c, at) = self.token().await?;
+        let ep = gdrive::Endpoints::default();
+        let key = gdrive::file_key(path);
+        let (known_folder, known_file) =
+            self.get(|d| (d.store.folder_id.clone(), d.store.files.get(&key).cloned()))?;
+        let folder = gdrive::ensure_folder(&c, &ep, &at, known_folder.as_deref())
+            .await
+            .map_err(str::to_owned)?;
+        // A file id from an older, deleted folder would put the backup outside.
+        let known_file = known_file.filter(|_| known_folder.as_deref() == Some(folder.as_str()));
+        let id = gdrive::upload(
+            &c,
+            &ep,
+            &at,
+            &folder,
+            known_file.as_deref(),
+            &gdrive::display_name(path),
+            &bytes,
+        )
+        .await
+        .map_err(str::to_owned)?;
+        let now = recent::now() as i64;
+        self.get(|d| {
+            d.store.folder_id = Some(folder);
+            d.store.files.insert(key.clone(), id);
+            d.store.uploaded.insert(key, (mtime, now));
+            d.last_error = None;
+        })?;
+        self.save()?;
+        Ok(now)
+    }
+}
+
+fn file_mtime(p: &std::path::Path) -> u64 {
+    std::fs::metadata(p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveStatus {
+    configured: bool,
+    connected: bool,
+    auto: bool,
+    /// Not secret (a desktop OAuth client id); shown so the user sees what is set.
+    client_id: String,
+    /// When the active tab's vault was last backed up (Unix seconds).
+    last_backup: Option<i64>,
+    last_error: Option<String>,
+}
+
+fn drive_status(drive: &Drive, shared: &Shared) -> Result<DriveStatus, String> {
+    let path = shared.with(|s| s.open_path())?;
+    drive.get(|d| DriveStatus {
+        configured: d.store.credentials().is_some(),
+        connected: d.store.connected(),
+        auto: d.store.auto,
+        client_id: d.store.client_id.clone(),
+        last_backup: path
+            .as_deref()
+            .and_then(|p| d.store.uploaded.get(&gdrive::file_key(p)))
+            .map(|(_, at)| *at),
+        last_error: d.last_error.clone(),
+    })
+}
+
+#[tauri::command]
+fn gdrive_status(drive: State<'_, Drive>, state: State<'_, Shared>) -> Result<DriveStatus, String> {
+    drive_status(&drive, &state)
+}
+
+/// The OAuth client the user created in Google Cloud ("Desktop app").
+#[tauri::command]
+fn gdrive_set_client(
+    client_id: String,
+    client_secret: String,
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<DriveStatus, String> {
+    let ok = |s: &str| {
+        s.len() <= 256
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    let (id, secret) = (
+        client_id.trim().to_owned(),
+        Zeroizing::new(client_secret.trim().to_owned()),
+    );
+    if !ok(&id) || !ok(&secret) {
+        return Err("İstemci kimliği ya da gizli anahtar geçersiz görünüyor.".into());
+    }
+    drive.get(|d| {
+        if d.store.client_id != id {
+            // Another client: the old token does not belong to it.
+            d.store.refresh_token = None;
+            d.access = None;
+        }
+        d.store.client_id = id;
+        d.store.client_secret = secret.to_string();
+    })?;
+    drive.save()?;
+    drive_status(&drive, &state)
+}
+
+/// Google sign-in in the system browser (PKCE, loopback redirect).
+#[tauri::command]
+async fn gdrive_connect(
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<DriveStatus, String> {
+    let creds = drive
+        .get(|d| d.store.credentials())?
+        .ok_or(gdrive::NOT_CONFIGURED)?;
+    let ep = gdrive::Endpoints::default();
+    let (listener, redirect) = gdrive::listen().map_err(str::to_owned)?;
+    let (verifier, challenge) = gdrive::pkce();
+    let st = gdrive::random_state();
+    let url = gdrive::auth_url(&ep, &creds.0, &redirect, &challenge, &st);
+    let url = url::Url::parse(&url).map_err(|_| INTERNAL.to_owned())?;
+    browser::open(&url).map_err(str::to_owned)?;
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        gdrive::wait_for_code(&listener, &st, gdrive::SIGN_IN_WAIT)
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+    .map_err(str::to_owned)?;
+    let c = gdrive::client().map_err(str::to_owned)?;
+    let (refresh, access) = gdrive::exchange_code(&c, &ep, &creds, &code, &verifier, &redirect)
+        .await
+        .map_err(str::to_owned)?;
+    let blob = gdrive::protect(refresh.as_bytes()).map_err(str::to_owned)?;
+    drive.get(|d| {
+        d.store.refresh_token = Some(base64::engine::general_purpose::STANDARD.encode(blob));
+        d.access = Some((access, std::time::Instant::now()));
+        d.last_error = None;
+    })?;
+    drive.save()?;
+    if let Some(w) = main_window() {
+        let _ = w.set_focus();
+    }
+    drive_status(&drive, &state)
+}
+
+/// Revokes the token at Google and forgets everything stored locally. The
+/// backups in Drive stay.
+#[tauri::command]
+async fn gdrive_disconnect(
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<DriveStatus, String> {
+    let blob = drive.get(|d| d.store.refresh_token.clone())?;
+    if let Some(b) = blob {
+        if let Some(t) = base64::engine::general_purpose::STANDARD
+            .decode(b)
+            .ok()
+            .and_then(|raw| gdrive::unprotect(&raw).ok())
+        {
+            if let Ok(c) = gdrive::client() {
+                gdrive::revoke(
+                    &c,
+                    &gdrive::Endpoints::default(),
+                    &String::from_utf8_lossy(&t),
+                )
+                .await;
+            }
+        }
+    }
+    drive.get(|d| {
+        d.store.refresh_token = None;
+        d.store.folder_id = None;
+        d.store.files.clear();
+        d.store.uploaded.clear();
+        d.access = None;
+        d.last_error = None;
+    })?;
+    drive.save()?;
+    drive_status(&drive, &state)
+}
+
+#[tauri::command]
+fn gdrive_set_auto(
+    on: bool,
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<DriveStatus, String> {
+    drive.get(|d| d.store.auto = on)?;
+    drive.save()?;
+    drive_status(&drive, &state)
+}
+
+/// Backs up the active tab's vault file now.
+#[tauri::command]
+async fn gdrive_backup_now(
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<DriveStatus, String> {
+    let path = state.with(|s| s.open_path())?.ok_or(session::LOCKED)?;
+    if let Err(e) = drive.backup(&path).await {
+        let _ = drive.get(|d| d.last_error = Some(e.clone()));
+        return Err(e);
+    }
+    drive_status(&drive, &state)
+}
+
+#[tauri::command]
+async fn gdrive_list(drive: State<'_, Drive>) -> Result<Vec<gdrive::DriveFile>, String> {
+    let folder = drive.get(|d| d.store.folder_id.clone())?;
+    let Some(folder) = folder else {
+        return Ok(Vec::new());
+    };
+    let (c, at) = drive.token().await?;
+    gdrive::list(&c, &gdrive::Endpoints::default(), &at, &folder)
+        .await
+        .map_err(str::to_owned)
+}
+
+/// Downloads a backup to a place the user picks (never over a vault that is
+/// open in a tab). Returns the file name, or None if cancelled.
+#[tauri::command]
+async fn gdrive_restore(
+    id: String,
+    name: String,
+    app: AppHandle,
+    drive: State<'_, Drive>,
+    state: State<'_, Shared>,
+) -> Result<Option<String>, String> {
+    let (c, at) = drive.token().await?;
+    let bytes = Zeroizing::new(
+        gdrive::download(&c, &gdrive::Endpoints::default(), &at, &id)
+            .await
+            .map_err(str::to_owned)?,
+    );
+    let suggested: String = name
+        .chars()
+        .filter(|ch| !matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .take(100)
+        .collect();
+    let suggested = if suggested.to_lowercase().ends_with(".lav") {
+        suggested
+    } else {
+        format!("{suggested}.lav")
+    };
+    let Some(path) = pick_path(app, Some(suggested), "İndirilen kasanın kaydedileceği yer").await?
+    else {
+        return Ok(None);
+    };
+    let busy = state.tabs(|t| {
+        t.all()
+            .any(|s| s.open_path().is_some_and(|p| session::same_path(&p, &path)))
+    })?;
+    if busy {
+        return Err("Bu dosya bir sekmede açık; üzerine yazılamaz. Başka bir yer seçin.".into());
+    }
+    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    Ok(Some(gdrive::display_name(&path)))
+}
+
+/// Every minute: backs up open vaults whose file changed since the last
+/// upload (only when automatic backup is on and an account is connected).
+fn start_drive_auto_backup(drive: Drive, shared: Shared) {
+    let _ = std::thread::Builder::new()
+        .name("lav-gdrive".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(60));
+            let on = drive
+                .get(|d| d.store.auto && d.store.connected())
+                .unwrap_or(false);
+            if !on {
+                continue;
+            }
+            let paths: Vec<std::path::PathBuf> = shared
+                .tabs(|t| t.all().filter_map(|s| s.open_path()).collect())
+                .unwrap_or_default();
+            for p in paths {
+                let key = gdrive::file_key(&p);
+                let last = drive
+                    .get(|d| d.store.uploaded.get(&key).map(|(m, _)| *m))
+                    .ok()
+                    .flatten();
+                if last == Some(file_mtime(&p)) {
+                    continue;
+                }
+                if let Err(e) = tauri::async_runtime::block_on(drive.backup(&p)) {
+                    let _ = drive.get(|d| d.last_error = Some(e));
+                }
+            }
+        });
 }
 
 #[tauri::command]
@@ -1410,6 +1766,7 @@ pub fn run() {
         .manage(last)
         .manage(Recent::default())
         .manage(SettingsFile::default())
+        .manage(Drive::default())
         .manage(update::Pending::default())
         .manage(Notice::default())
         .on_window_event(|window, event| {
@@ -1467,6 +1824,14 @@ pub fn run() {
             if let Ok(dir) = app.path().app_local_data_dir() {
                 let sfile = dir.join("settings.json");
                 settings::apply(settings::load(&sfile));
+                {
+                    let dfile = gdrive::store_path(&sfile);
+                    let store = gdrive::load(&dfile);
+                    let _ = app.state::<Drive>().get(|d| {
+                        d.store = store;
+                        d.file = Some(dfile);
+                    });
+                }
                 if let Ok(mut g) = app.state::<SettingsFile>().0.lock() {
                     *g = Some(sfile);
                 }
@@ -1504,6 +1869,11 @@ pub fn run() {
             {
                 let shared = app.state::<Shared>().inner().clone();
                 lockicon::watch(app.handle(), move || shared.any_unlocked());
+            }
+            {
+                let drive = app.state::<Drive>().inner().clone();
+                let shared = app.state::<Shared>().inner().clone();
+                start_drive_auto_backup(drive, shared);
             }
             Ok(())
         })
@@ -1578,6 +1948,14 @@ pub fn run() {
             switch_tab,
             close_tab,
             tab_state,
+            gdrive_status,
+            gdrive_set_client,
+            gdrive_connect,
+            gdrive_disconnect,
+            gdrive_set_auto,
+            gdrive_backup_now,
+            gdrive_list,
+            gdrive_restore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");

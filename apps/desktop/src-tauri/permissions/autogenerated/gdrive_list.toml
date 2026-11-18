@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-list"
+description = "Enables the gdrive_list command without any pre-configured scope."
+commands.allow = ["gdrive_list"]
+
+[[permission]]
+identifier = "deny-gdrive-list"
+description = "Denies the gdrive_list command without any pre-configured scope."
+commands.deny = ["gdrive_list"]

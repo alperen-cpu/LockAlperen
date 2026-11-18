@@ -316,6 +316,33 @@ export const KDF_PRESETS: { label: string; memoryMib: number; iterations: number
   { label: "Çok güçlü (1 GiB, 4 geçiş)", memoryMib: 1024, iterations: 4, parallelism: 4 },
 ];
 
+/** Google Drive backup (src-tauri/src/gdrive.rs). Only the encrypted vault
+ *  file goes to Drive; the app can see only the files it created. */
+export interface DriveStatus {
+  configured: boolean;
+  connected: boolean;
+  auto: boolean;
+  clientId: string;
+  lastBackup: number | null;
+  lastError: string | null;
+}
+export interface DriveFile {
+  id: string;
+  name: string;
+  modifiedTime: string;
+  size: string | null;
+}
+export const gdriveStatus = () => invoke<DriveStatus>("gdrive_status");
+export const gdriveSetClient = (clientId: string, clientSecret: string) =>
+  invoke<DriveStatus>("gdrive_set_client", { clientId, clientSecret });
+export const gdriveConnect = () => invoke<DriveStatus>("gdrive_connect");
+export const gdriveDisconnect = () => invoke<DriveStatus>("gdrive_disconnect");
+export const gdriveSetAuto = (on: boolean) => invoke<DriveStatus>("gdrive_set_auto", { on });
+export const gdriveBackupNow = () => invoke<DriveStatus>("gdrive_backup_now");
+export const gdriveList = () => invoke<DriveFile[]>("gdrive_list");
+export const gdriveRestore = (id: string, name: string) =>
+  invoke<string | null>("gdrive_restore", { id, name });
+
 /** One open vault tab (no secrets: vault or file name). */
 export interface TabView {
   index: number;

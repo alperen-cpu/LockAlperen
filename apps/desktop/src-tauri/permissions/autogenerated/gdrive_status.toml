@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-status"
+description = "Enables the gdrive_status command without any pre-configured scope."
+commands.allow = ["gdrive_status"]
+
+[[permission]]
+identifier = "deny-gdrive-status"
+description = "Denies the gdrive_status command without any pre-configured scope."
+commands.deny = ["gdrive_status"]
