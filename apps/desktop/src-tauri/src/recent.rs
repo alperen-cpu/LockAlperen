@@ -147,12 +147,18 @@ mod tests {
 
     #[test]
     fn view_has_name_and_folder() {
+        // A path in this platform's own syntax.
+        let folder = if cfg!(windows) {
+            r"C:\Users\x\OneDrive\Kasalar"
+        } else {
+            "/home/x/Belgeler/Kasalar"
+        };
         let v = View::from(&Item {
-            path: p(r"C:\Users\x\OneDrive\Kasalar\Kişisel.lav"),
+            path: Path::new(folder).join("Kişisel.lav"),
             opened: 5,
         });
         assert_eq!(v.file_name, "Kişisel.lav");
-        assert_eq!(v.folder, r"C:\Users\x\OneDrive\Kasalar");
+        assert_eq!(v.folder, folder);
     }
 
     #[test]

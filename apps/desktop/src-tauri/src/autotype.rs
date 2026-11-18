@@ -9,13 +9,18 @@
 //! against a malicious program imitating the right one.
 #![allow(unsafe_code)]
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(windows)]
+use std::time::Instant;
 
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::HWND;
+#[cfg(windows)]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
     VIRTUAL_KEY, VK_RETURN, VK_TAB,
 };
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
@@ -254,6 +259,7 @@ pub fn title_matches(window_title: &str, markers: &[String]) -> bool {
     !markers.is_empty() && markers.iter().any(|m| w.contains(m.as_str()))
 }
 
+#[cfg(windows)]
 pub fn window_title(h: HWND) -> String {
     let mut buf = [0u16; 512];
     // SAFETY: buffer and its length are passed together.
@@ -261,6 +267,7 @@ pub fn window_title(h: HWND) -> String {
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
+#[cfg(windows)]
 pub fn pid_of(h: HWND) -> u32 {
     let mut pid = 0u32;
     // SAFETY: valid out-pointer.
@@ -270,6 +277,7 @@ pub fn pid_of(h: HWND) -> u32 {
 
 /// Waits for the user to switch to another program's window and verifies
 /// it. Returns that window.
+#[cfg(windows)]
 pub fn wait_for_target(target: &Target) -> Result<HWND, &'static str> {
     let me = std::process::id();
     let start = Instant::now();
@@ -299,6 +307,7 @@ pub fn wait_for_target(target: &Target) -> Result<HWND, &'static str> {
 pub const WAIT_OPENED: Duration = Duration::from_secs(25);
 /// Extra time after the title matches, so the page can put the cursor in
 /// its login form before we type.
+#[cfg(windows)]
 const SETTLE_OPENED: Duration = Duration::from_millis(1500);
 
 pub const OPENED_WRONG_TARGET: &str =
@@ -311,6 +320,7 @@ pub const OPENED_NO_TARGET: &str =
 /// program's foreground window has a matching title (the page title shows
 /// up only once the page loads), lets the page settle, and checks again.
 /// The same title rule as [`wait_for_target`]; only the waiting differs.
+#[cfg(windows)]
 pub fn wait_for_opened_site(target: &Target) -> Result<HWND, &'static str> {
     let me = std::process::id();
     let start = Instant::now();
@@ -338,6 +348,7 @@ pub fn wait_for_opened_site(target: &Target) -> Result<HWND, &'static str> {
     })
 }
 
+#[cfg(windows)]
 fn key(vk: VIRTUAL_KEY, scan: u16, flags: u32) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,
@@ -353,6 +364,7 @@ fn key(vk: VIRTUAL_KEY, scan: u16, flags: u32) -> INPUT {
     }
 }
 
+#[cfg(windows)]
 fn send(inputs: &[INPUT]) {
     // SAFETY: slice pointer and length passed together; INPUT size given.
     unsafe {
@@ -366,6 +378,7 @@ fn send(inputs: &[INPUT]) {
 
 /// Types the steps into `target`, checking before every key that it is
 /// still the foreground window.
+#[cfg(windows)]
 pub fn type_into(target: HWND, steps: &[Step]) -> Result<(), &'static str> {
     let still = || unsafe { GetForegroundWindow() } == target;
     for step in steps {

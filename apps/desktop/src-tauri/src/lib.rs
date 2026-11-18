@@ -1,22 +1,39 @@
 //! LockAlperen desktop shell. The WebView only renders; every decision and
 //! every secret stays on the Rust side (`session`).
+//!
+//! Platforms: Windows and Linux (Ubuntu desktop). Modules that talk to the
+//! operating system have a Linux twin in `src/linux/` with the same public
+//! functions; see the README for what differs (auto-type and the global
+//! shortcuts are Windows-only for now).
+
+// Windows-only features (auto-type, global shortcuts) leave shared code unused
+// on Linux. The Windows build keeps the dead-code check.
+#![cfg_attr(not(windows), allow(dead_code))]
+
+#[cfg(not(any(windows, target_os = "linux")))]
+compile_error!("LockAlperen desktop supports Windows and Linux only.");
 
 mod autolock;
 mod autotype;
 mod browser;
+#[cfg_attr(target_os = "linux", path = "linux/clipboard.rs")]
 mod clipboard;
 mod export;
 mod gdrive;
+#[cfg_attr(target_os = "linux", path = "linux/hardening.rs")]
 mod hardening;
 mod health;
+#[cfg_attr(target_os = "linux", path = "linux/hotkey.rs")]
 mod hotkey;
 mod import;
 mod lockicon;
 mod recent;
 mod session;
 mod settings;
+#[cfg_attr(target_os = "linux", path = "linux/startup.rs")]
 mod startup;
 mod tabs;
+#[cfg(windows)]
 mod titlebar;
 mod totp;
 mod tray;
@@ -100,11 +117,15 @@ fn set_settings(
 }
 
 /// Colours the native title bar like the app (Windows 11; ignored on 10).
+/// On Linux the title bar belongs to the desktop theme: nothing to do.
 #[tauri::command]
 fn set_titlebar(dark: bool, window: tauri::WebviewWindow) {
+    #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         titlebar::paint(hwnd.0 as _, dark);
     }
+    #[cfg(not(windows))]
+    let _ = (dark, window);
 }
 
 /// Whether the global auto-type shortcut is registered (Settings shows a
@@ -143,6 +164,7 @@ impl Notice {
 /// Ctrl+Alt+A (src/hotkey.rs), on the hotkey thread. Types into `target`
 /// only if exactly one entry matches its title, after the keys are released
 /// and while it is still the foreground window.
+#[cfg(windows)]
 fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::HWND) {
     use tauri::Manager;
     if target.is_null() || autotype::pid_of(target) == std::process::id() {
@@ -1256,6 +1278,7 @@ async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
 /// username, Tab, password, Enter. If the entry has a web site, the site is
 /// opened in the default browser first (a new tab) and the page that loads
 /// is the target; otherwise the user switches to the target window.
+#[cfg(windows)]
 #[tauri::command]
 async fn auto_type(
     id: String,
@@ -1283,6 +1306,20 @@ async fn auto_type(
     .map_err(|_| INTERNAL.to_owned())?
     .map_err(str::to_owned)
 }
+
+/// Linux: not available yet. Wayland (Ubuntu's default session) lets no
+/// program read another window's title or send it keys, so the target window
+/// could not be verified (README, "Linux").
+#[cfg(not(windows))]
+#[tauri::command]
+async fn auto_type(id: String) -> Result<(), String> {
+    let _ = id;
+    Err(AUTOTYPE_UNSUPPORTED.to_owned())
+}
+
+#[cfg(not(windows))]
+const AUTOTYPE_UNSUPPORTED: &str =
+    "Otomatik yazma Linux'ta henüz desteklenmiyor. Kullanıcı adını ve parolayı kopyalayıp yapıştırın.";
 
 #[tauri::command]
 fn entry_extras(id: String, state: State<'_, Shared>) -> Result<session::EntryExtras, String> {
@@ -1738,11 +1775,14 @@ fn start_autolock(shared: Shared, last: LastCopy) {
 
 pub fn run() {
     // Before anything else loads a DLL or holds a secret.
+    #[cfg(windows)]
     if !hardening::restrict_dll_search() {
         eprintln!("LockAlperen: SetDefaultDllDirectories failed");
     }
+    // Windows: process DACL. Linux: not dumpable (no ptrace, no
+    // /proc/<pid>/mem for other processes of the user) and no core dumps.
     if !hardening::protect_process() {
-        eprintln!("LockAlperen: process DACL could not be set");
+        eprintln!("LockAlperen: process protection could not be set");
     }
     let shared = Shared::default();
     let last = LastCopy::default();
@@ -1810,7 +1850,10 @@ pub fn run() {
             use tauri::Manager;
             // Keep the window out of screenshots and screen sharing. Debug
             // builds may opt out with LAV_ALLOW_CAPTURE=1 (for UI testing).
+            // Linux (X11 and Wayland) has no such window flag: documented.
+            #[cfg(windows)]
             let allow = cfg!(debug_assertions) && std::env::var_os("LAV_ALLOW_CAPTURE").is_some();
+            #[cfg(windows)]
             if !allow {
                 if let Some(w) = app.get_webview_window("main") {
                     if let Ok(hwnd) = w.hwnd() {
@@ -1842,6 +1885,7 @@ pub fn run() {
                 }
             }
             let _ = APP.set(app.handle().clone());
+            #[cfg(windows)]
             {
                 let handle = app.handle().clone();
                 let show = app.handle().clone();

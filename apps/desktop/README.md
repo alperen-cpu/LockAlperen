@@ -153,7 +153,42 @@ var.
 - **KDF satırı** ("Argon2id · 64 MiB · 3 geçiş") henüz doğrulanmamış header'dan okunuyor; yalnızca
   bilgi amaçlı.
 
+## Linux
+
+Aynı uygulama Ubuntu masaüstünde (22.04 ve sonrası, Wayland ve X11) çalışacak şekilde derleniyor.
+İşletim sistemiyle konuşan modüllerin Linux karşılıkları `src-tauri/src/linux/` altında, aynı
+fonksiyon adlarıyla:
+
+| Windows | Linux |
+|---|---|
+| Pano: `SetClipboardData`, geçmiş/bulut işaretleri | GTK panosu; `x-kde-passwordManagerHint: secret` (pano yöneticileri geçmişe almaz); başkası kopyalayınca bizim değerimiz silinmez |
+| Otomatik kilit: `GetLastInputInfo`, `WM_WTSSESSION_CHANGE`, `WM_POWERBROADCAST` | D-Bus: Mutter/KDE boşta kalma süresi (yoksa logind `IdleHint`); ekran koruyucu `ActiveChanged`, logind `Lock`, `LockedHint`, `Active`, `PrepareForSleep`, `PrepareForShutdown` |
+| Süreç DACL'ı, `SetDefaultDllDirectories` | `PR_SET_DUMPABLE=0` (ptrace ve `/proc/<pid>/mem` kapalı), core dump sınırı 0 |
+| Ekran görüntüsünden gizleme | Yok (X11 ve Wayland'de böyle bir ayar yok) |
+| Google erişim anahtarı: DPAPI | Secret Service (GNOME Keyring / KWallet); ayar dosyasında yalnızca bir işaretçi durur |
+| Açılışta başlat: HKCU `Run` | `~/.config/autostart/com.alperen.lockalperen.desktop` (AppImage'da `$APPIMAGE` yolu) |
+| Siteyi aç: `ShellExecuteW` | `xdg-open` (yalnızca http/https; AppImage kütüphane yolları tarayıcıya geçmez) |
+| Başlık çubuğu rengi: DWM | Masaüstü temasına bırakılır |
+| Otomatik yazma, global kısayollar | **Yok.** Wayland başka pencerenin başlığını okumaya ve tuş göndermeye izin vermiyor; arayüz bu seçenekleri Linux'ta göstermiyor |
+
+Paketler: `.deb` (bağımlılıklar: WebKitGTK 4.1, `libayatana-appindicator3-1`, `xdg-utils`) ve
+AppImage. Ubuntu 22.04'te derleniyor; böylece 22.04 ve 24.04'te çalışıyor.
+
+**Doğrulanan:** CI'da (Ubuntu 22.04) `cargo fmt`, `clippy -D warnings`, testler ve iki paketin
+oluşması. **Doğrulanmayan:** Gerçek bir Ubuntu masaüstünde çalıştırma: pano, ekran kilidiyle kilitlenme,
+boşta kilit, tepsi simgesi, anahtarlık ve `.deb`/AppImage güncellemesi elle denenmeli.
+
+Linux'ta geliştirme için gerekenler:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
+  libssl-dev build-essential file patchelf
+```
+
 ## Henüz yapılmayanlar
+
+- **Linux'ta otomatik yazma ve global kısayollar:** X11 oturumunda (XTest) ve yeni GNOME'larda
+  (GlobalShortcuts portalı) yapılabilir; henüz yok.
 
 - **Windows Hello:** proje sahibinin kararıyla yapılmıyor.
 - **Kod imzası:** sertifika gerekiyor. Kurulum dosyası (NSIS) imzasız.

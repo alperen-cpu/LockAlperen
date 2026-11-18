@@ -47,7 +47,11 @@ pub const EXPIRED: &str =
 pub const NOT_A_VAULT: &str = "İndirilen dosya bir LockAlperen kasası değil.";
 pub const TOO_BIG: &str = "Dosya çok büyük.";
 pub const STORE_FAILED: &str = "Google Drive ayarları kaydedilemedi.";
+#[cfg(windows)]
 pub const PROTECT_FAILED: &str = "Erişim anahtarı Windows ile şifrelenemedi.";
+#[cfg(target_os = "linux")]
+pub const PROTECT_FAILED: &str =
+    "Erişim anahtarı sistem anahtarlığına kaydedilemedi (anahtarlık açık mı?).";
 
 // ----- endpoints (tests point them at a local fake server) -----
 
@@ -149,15 +153,28 @@ pub fn save(file: &Path, s: &Store) -> Result<(), &'static str> {
     .map_err(|_| STORE_FAILED)
 }
 
-/// The key a vault file is remembered under.
+/// The key a vault file is remembered under. Windows paths ignore case;
+/// Linux paths do not (`Kasa.lav` and `kasa.lav` are two files).
 pub fn file_key(path: &Path) -> String {
-    path.canonicalize()
+    let key = path
+        .canonicalize()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
-        .to_lowercase()
+        .into_owned();
+    if cfg!(windows) {
+        key.to_lowercase()
+    } else {
+        key
+    }
 }
 
-// ----- DPAPI -----
+// ----- DPAPI (Windows) / Secret Service (Linux, src/linux/secret.rs) -----
+
+#[cfg(target_os = "linux")]
+#[path = "linux/secret.rs"]
+mod secret;
+#[cfg(target_os = "linux")]
+pub use secret::{protect, unprotect};
 
 #[cfg(windows)]
 pub fn protect(data: &[u8]) -> Result<Vec<u8>, &'static str> {
@@ -776,6 +793,7 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn dpapi_round_trip() {
         let blob = protect(b"refresh-token-123").unwrap();

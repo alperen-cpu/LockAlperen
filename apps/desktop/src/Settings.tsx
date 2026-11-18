@@ -47,11 +47,16 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     intro:
       "Açık kasanın kendi ayarları (KeePass “Veritabanı ayarları”): kasanın içinde saklanır, kasayla birlikte taşınır.",
   },
-  {
-    id: "autotype",
-    label: "Otomatik yazma",
-    intro: "Kullanıcı adını ve parolayı başka bir pencereye yazma.",
-  },
+  // Not on Linux yet (src-tauri/src/linux/hotkey.rs).
+  ...(api.IS_LINUX
+    ? []
+    : [
+        {
+          id: "autotype" as const,
+          label: "Otomatik yazma",
+          intro: "Kullanıcı adını ve parolayı başka bir pencereye yazma.",
+        },
+      ]),
   {
     id: "generator",
     label: "Parola üretici",
@@ -61,7 +66,9 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
   {
     id: "window",
     label: "Pencere",
-    intro: "Pencerenin nasıl davranacağı, kısayol ve Windows ile başlatma.",
+    intro: api.IS_LINUX
+      ? "Pencerenin nasıl davranacağı ve oturum açılışında başlatma."
+      : "Pencerenin nasıl davranacağı, kısayol ve Windows ile başlatma.",
   },
   {
     id: "keys",
@@ -273,7 +280,11 @@ export function SettingsPage(props: {
               </Row>
               <Row
                 title={<label htmlFor="s-sys">Bilgisayar kilitlenince kasayı da kilitle</label>}
-                text="Win+L'ye basınca, uyku moduna geçince ya da oturum kapanınca kasa kilitlenir. Kilitliyken görev çubuğu simgesinde kırmızı kilit görünür."
+                text={
+                  api.IS_LINUX
+                    ? "Ekran kilitlenince (Super+L), uyku moduna geçince, oturum kapanınca ya da başka bir kullanıcıya geçilince kasa kilitlenir. Kilitliyken pencere simgesinde kırmızı kilit görünür."
+                    : "Win+L'ye basınca, uyku moduna geçince ya da oturum kapanınca kasa kilitlenir. Kilitliyken görev çubuğu simgesinde kırmızı kilit görünür."
+                }
               >
                 <input
                   id="s-sys"
@@ -386,7 +397,14 @@ export function SettingsPage(props: {
 
         {category === "look" && (
           <section className="set-card">
-            <Row title={<label htmlFor="s-theme">Tema</label>} text="“Windows ile aynı” seçiliyken Windows’un açık ya da koyu ayarına uyar.">
+            <Row
+              title={<label htmlFor="s-theme">Tema</label>}
+              text={
+                api.IS_LINUX
+                  ? "“Sistemle aynı” seçiliyken masaüstünün açık ya da koyu ayarına uyar."
+                  : "“Windows ile aynı” seçiliyken Windows’un açık ya da koyu ayarına uyar."
+              }
+            >
               <select
                 id="s-theme"
                 className="text-input set-select"
@@ -398,7 +416,7 @@ export function SettingsPage(props: {
                   void change({ theme });
                 }}
               >
-                <option value="system">Windows ile aynı</option>
+                <option value="system">{api.IS_LINUX ? "Sistemle aynı" : "Windows ile aynı"}</option>
                 <option value="light">Açık</option>
                 <option value="dark">Koyu</option>
               </select>
@@ -410,7 +428,11 @@ export function SettingsPage(props: {
           <section className="set-card">
             <Row
               title={<label htmlFor="s-tray">Kapatınca arka planda çalışmaya devam etsin</label>}
-              text="Pencereyi kapattığınızda LockAlperen kapanmaz; görev çubuğunun sağında, saatin yanındaki simgelerin arasında çalışır. Oradan tıklayarak yeniden açabilirsiniz. Tamamen kapatmak için o simgeye sağ tıklayıp “Kilitle ve çık”ı seçin. Arka plandayken de otomatik kilit çalışır."
+              text={
+                api.IS_LINUX
+                  ? "Pencereyi kapattığınızda LockAlperen kapanmaz; üst çubuğun sağındaki simgelerin arasında çalışır. O simgenin menüsünden “LockAlperen'i göster” ile yeniden açabilir, “Kilitle ve çık” ile tamamen kapatabilirsiniz. Arka plandayken de otomatik kilit çalışır."
+                  : "Pencereyi kapattığınızda LockAlperen kapanmaz; görev çubuğunun sağında, saatin yanındaki simgelerin arasında çalışır. Oradan tıklayarak yeniden açabilirsiniz. Tamamen kapatmak için o simgeye sağ tıklayıp “Kilitle ve çık”ı seçin. Arka plandayken de otomatik kilit çalışır."
+              }
             >
               <input
                 id="s-tray"
@@ -424,7 +446,9 @@ export function SettingsPage(props: {
             {toggle(
               "minimizeToTray",
               "Küçültünce görev çubuğunda gösterme",
-              "Küçült düğmesine basınca pencere görev çubuğundan da kaybolur; LockAlperen saatin yanındaki simgelerin arasında çalışmaya devam eder. Oradaki simgeye tıklayarak geri açabilirsiniz.",
+              api.IS_LINUX
+                ? "Küçült düğmesine basınca pencere görev çubuğundan da kaybolur; LockAlperen üst çubuktaki simgesinde çalışmaya devam eder. O simgenin menüsünden geri açabilirsiniz."
+                : "Küçült düğmesine basınca pencere görev çubuğundan da kaybolur; LockAlperen saatin yanındaki simgelerin arasında çalışmaya devam eder. Oradaki simgeye tıklayarak geri açabilirsiniz.",
             )}
             {toggle(
               "minimizeAfterCopy",
@@ -444,30 +468,33 @@ export function SettingsPage(props: {
             )}
             {toggle(
               "runAtStartup",
-              "Windows açılışında başlat",
+              api.IS_LINUX ? "Oturum açılışında başlat" : "Windows açılışında başlat",
               "Oturum açınca LockAlperen kendiliğinden başlar (yalnızca sizin kullanıcı hesabınız için; yönetici izni gerekmez).",
             )}
-            <Row
-              title={<label htmlFor="s-show">Pencereyi gösterme kısayolu</label>}
-              text="Her yerden basınca LockAlperen penceresi öne gelir."
-            >
-              <select
-                id="s-show"
-                className="text-input set-select"
-                value={settings?.showWindowShortcut ?? ""}
-                disabled={off}
-                onChange={(e) =>
-                  void change({ showWindowShortcut: e.target.value as api.ShowShortcut })
-                }
+            {/* Global shortcuts: Windows only for now (src-tauri/src/linux/hotkey.rs). */}
+            {!api.IS_LINUX && (
+              <Row
+                title={<label htmlFor="s-show">Pencereyi gösterme kısayolu</label>}
+                text="Her yerden basınca LockAlperen penceresi öne gelir."
               >
-                {api.SHOW_SHORTCUTS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </Row>
-            {settings !== null && settings.showWindowShortcut !== "off" && showKeyOk === false && (
+                <select
+                  id="s-show"
+                  className="text-input set-select"
+                  value={settings?.showWindowShortcut ?? ""}
+                  disabled={off}
+                  onChange={(e) =>
+                    void change({ showWindowShortcut: e.target.value as api.ShowShortcut })
+                  }
+                >
+                  {api.SHOW_SHORTCUTS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+            )}
+            {!api.IS_LINUX && settings !== null && settings.showWindowShortcut !== "off" && showKeyOk === false && (
               <p className="warn set-note">
                 Bu kısayol başka bir program tarafından kullanılıyor (ör. açık olan KeePass), bu
                 yüzden çalışmıyor. KeePass'i kapatın ya da başka bir kısayol seçin.

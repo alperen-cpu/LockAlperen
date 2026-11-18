@@ -1,6 +1,6 @@
 //! Automatic locking (SECURITY.md, "Otomatik kilit"). All decisions are made
 //! here in Rust; the WebView only displays the countdown and cannot keep the
-//! vault open.
+//! vault open. Below: Windows. Linux: src/linux/autolock.rs.
 //!
 //! - Idle: system-wide time since the last keyboard/mouse input
 //!   (`GetLastInputInfo`), not activity inside the WebView.
@@ -9,16 +9,23 @@
 //!   and suspend (`WM_POWERBROADCAST` / `PBT_APMSUSPEND`).
 #![allow(unsafe_code)]
 
+#[cfg(windows)]
 use std::sync::OnceLock;
 use std::time::Duration;
 
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+#[cfg(windows)]
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+#[cfg(windows)]
 use windows_sys::Win32::System::RemoteDesktop::{
     WTSRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION,
 };
+#[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
+#[cfg(windows)]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
     TranslateMessage, MSG, PBT_APMSUSPEND, WM_POWERBROADCAST, WM_WTSSESSION_CHANGE, WNDCLASSW,
@@ -40,9 +47,13 @@ pub fn idle_timeout() -> Duration {
 }
 
 // wParam values of WM_WTSSESSION_CHANGE (WinUser.h).
+#[cfg(windows)]
 const WTS_CONSOLE_DISCONNECT: usize = 0x2;
+#[cfg(windows)]
 const WTS_REMOTE_DISCONNECT: usize = 0x4;
+#[cfg(windows)]
 const WTS_SESSION_LOGOFF: usize = 0x6;
+#[cfg(windows)]
 const WTS_SESSION_LOCK: usize = 0x7;
 
 /// Why the vault was locked by the system.
@@ -55,6 +66,7 @@ pub enum Reason {
 }
 
 /// Maps a window message to a lock reason. Pure, so it can be tested.
+#[cfg(windows)]
 pub fn reason_for(msg: u32, wparam: usize) -> Option<Reason> {
     match (msg, wparam) {
         (WM_WTSSESSION_CHANGE, WTS_SESSION_LOCK) => Some(Reason::SessionLocked),
@@ -73,6 +85,7 @@ pub fn seconds_left(idle: Duration, timeout: Duration) -> u64 {
 }
 
 /// System-wide time since the last user input.
+#[cfg(windows)]
 pub fn system_idle() -> Duration {
     let mut info = LASTINPUTINFO {
         cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
@@ -89,9 +102,12 @@ pub fn system_idle() -> Duration {
     Duration::from_millis(u64::from(now.wrapping_sub(info.dwTime)))
 }
 
+#[cfg(windows)]
 type Callback = Box<dyn Fn(Reason) + Send + Sync>;
+#[cfg(windows)]
 static CALLBACK: OnceLock<Callback> = OnceLock::new();
 
+#[cfg(windows)]
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if let (Some(reason), Some(cb)) = (reason_for(msg, wparam), CALLBACK.get()) {
         cb(reason);
@@ -100,12 +116,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
+#[cfg(windows)]
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 /// Starts the watcher thread once. Returns the hidden window handle (as an
 /// integer, for tests) or None if Windows refused to create it.
+#[cfg(windows)]
 pub fn watch(on_lock: impl Fn(Reason) + Send + Sync + 'static) -> Option<isize> {
     if CALLBACK.set(Box::new(on_lock)).is_err() {
         return None; // already running
@@ -162,10 +180,18 @@ pub fn watch(on_lock: impl Fn(Reason) + Send + Sync + 'static) -> Option<isize> 
     rx.recv().ok().flatten()
 }
 
+// Linux: logind / screensaver D-Bus signals and the desktop's idle time.
+#[cfg(target_os = "linux")]
+#[path = "linux/autolock.rs"]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{system_idle, watch};
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn lock_reasons() {
         assert_eq!(
@@ -208,6 +234,7 @@ mod tests {
     /// Delivers real window messages to the real hidden window and checks the
     /// callback fires. Does NOT prove Windows itself sends them on Win+L or
     /// sleep: that was checked by hand (see README).
+    #[cfg(windows)]
     #[test]
     fn hidden_window_turns_messages_into_lock_calls() {
         use std::sync::atomic::{AtomicUsize, Ordering};

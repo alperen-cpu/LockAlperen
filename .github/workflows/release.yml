@@ -1,9 +1,9 @@
 name: Release
 
-# Pushing a tag like v0.2.0 builds the signed NSIS installer and creates a
-# DRAFT GitHub Release with the installer, its signature and latest.json.
-# Installed copies see the update only after the draft is published
-# (releases/latest ignores drafts). See docs/UPDATES.md.
+# Pushing a tag like v0.2.0 builds and signs the Windows NSIS installer and
+# the Linux .deb and AppImage, then creates a DRAFT GitHub Release with them,
+# their signatures and latest.json. Installed copies see the update only after
+# the draft is published (releases/latest ignores drafts). See docs/UPDATES.md.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
@@ -17,13 +17,12 @@ env:
 # Same pinned actions as ci.yml (full commit SHAs).
 # actions/checkout v4            = 11d5960a326750d5838078e36cf38b85af677262
 # dtolnay/rust-toolchain stable  = b725eda525362e7cf34af9a7243cac1e3f01a7ec
+# actions/upload-artifact v4.6.2 = ea165f8d65b6e75b540449e92b4886f43607fa02
+# actions/download-artifact v4.3.0 = d3f86a106a0bac45b974a628896c90dbdf5c8093
 
 jobs:
-  release:
+  windows:
     runs-on: windows-latest
-    # The only job in the repository that may write: it creates the release.
-    permissions:
-      contents: write
     defaults:
       run:
         shell: pwsh
@@ -67,22 +66,111 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "verify_release failed" }
         working-directory: apps/desktop/src-tauri
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/LockAlperen_*_x64-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/LockAlperen_*_x64-setup.exe.sig
+          if-no-files-found: error
+
+  linux:
+    # 22.04: the oldest supported Ubuntu, so the packages also run on 24.04.
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: apps/desktop
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+      - name: Build dependencies (WebKitGTK, tray, AppImage tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev build-essential file patchelf
+
+      - run: npm ci --no-audit --no-fund
+      - run: cargo test --locked
+        working-directory: apps/desktop/src-tauri
+
+      - name: Build and sign the .deb and the AppImage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --ci --config src-tauri/tauri.release.conf.json
+
+      - name: Signatures verify with the key built into the app
+        working-directory: apps/desktop/src-tauri
+        run: |
+          set -euo pipefail
+          v="${TAG#v}"
+          deb="target/release/bundle/deb/LockAlperen_${v}_amd64.deb"
+          appimage="target/release/bundle/appimage/LockAlperen_${v}_amd64.AppImage"
+          ls -l target/release/bundle/deb target/release/bundle/appimage
+          for f in "$deb" "$appimage"; do
+            test -f "$f" && test -f "$f.sig" || { echo "missing $f or $f.sig"; exit 1; }
+            cargo run --locked --example verify_release -- "$f" "$v"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linux
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/deb/LockAlperen_*_amd64.deb
+            apps/desktop/src-tauri/target/release/bundle/deb/LockAlperen_*_amd64.deb.sig
+            apps/desktop/src-tauri/target/release/bundle/appimage/LockAlperen_*_amd64.AppImage
+            apps/desktop/src-tauri/target/release/bundle/appimage/LockAlperen_*_amd64.AppImage.sig
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    # The only job in the repository that may write: it creates the release.
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: dist
+          merge-multiple: true
+
       - name: Write latest.json
         run: |
           $v = $env:TAG.Substring(1)
-          $name = "LockAlperen_${v}_x64-setup.exe"
-          $exe = "src-tauri/target/release/bundle/nsis/$name"
-          $entry = [ordered]@{
-            signature = (Get-Content "$exe.sig" -Raw).Trim()
-            url       = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/$name"
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG"
+          function Entry($name) {
+            $file = Join-Path dist $name
+            if (-not (Test-Path $file) -or -not (Test-Path "$file.sig")) { throw "missing $name or its .sig" }
+            [ordered]@{
+              signature = (Get-Content "$file.sig" -Raw).Trim()
+              url       = "$base/$name"
+            }
           }
+          $win = Entry "LockAlperen_${v}_x64-setup.exe"
+          $deb = Entry "LockAlperen_${v}_amd64.deb"
+          $app = Entry "LockAlperen_${v}_amd64.AppImage"
+          # The updater asks for "<os>-<arch>-<bundle>" first, then "<os>-<arch>":
+          # each install gets the package of its own kind.
           [ordered]@{
             version   = $v
             notes     = "Sürüm notları: https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:TAG"
             pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = [ordered]@{
-              "windows-x86_64-nsis" = $entry
-              "windows-x86_64"      = $entry
+              "windows-x86_64-nsis"   = $win
+              "windows-x86_64"        = $win
+              "linux-x86_64-deb"      = $deb
+              "linux-x86_64-appimage" = $app
+              "linux-x86_64"          = $app
             }
           } | ConvertTo-Json -Depth 5 | Set-Content latest.json -Encoding utf8NoBOM
           Get-Content latest.json
@@ -92,7 +180,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = $env:TAG.Substring(1)
-          $exe = "src-tauri/target/release/bundle/nsis/LockAlperen_${v}_x64-setup.exe"
-          gh release create $env:TAG --draft --verify-tag --title "LockAlperen $v" --generate-notes `
-            $exe "$exe.sig" latest.json
+          $files = @(
+            "dist/LockAlperen_${v}_x64-setup.exe", "dist/LockAlperen_${v}_x64-setup.exe.sig",
+            "dist/LockAlperen_${v}_amd64.deb", "dist/LockAlperen_${v}_amd64.deb.sig",
+            "dist/LockAlperen_${v}_amd64.AppImage", "dist/LockAlperen_${v}_amd64.AppImage.sig",
+            "latest.json"
+          )
+          gh release create $env:TAG --repo $env:GITHUB_REPOSITORY --draft --verify-tag `
+            --title "LockAlperen $v" --generate-notes @files
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

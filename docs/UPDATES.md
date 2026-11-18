@@ -7,6 +7,12 @@ ya da yeniden indirmesi gerekmez. Kasa dosyaları ve `%LOCALAPPDATA%` altındaki
 > **Ön koşul:** Uygulama `LockAlperen_x.y.z_x64-setup.exe` ile **kurulmuş** olmalı. Derleme
 > klasöründen tek başına çalıştırılan `.exe` kendini güncelleyemez: kurulum dosyası onu bulamaz.
 
+**Linux:** `latest.json` her paket türüne kendi dosyasını verir (`linux-x86_64-deb`,
+`linux-x86_64-appimage`). `.deb` ile kurulan uygulama yeni `.deb`'i `pkexec dpkg -i` ile kurar,
+bu yüzden sistem yönetici parolasını sorar. AppImage kendi dosyasını değiştirir ve yönetici izni
+istemez. İki türde de imza aynı anahtarla, kurulumdan önce doğrulanır; ardından uygulama yeniden
+başlatılır. Ayarlar `~/.local/share/com.alperen.lockalperen/` altında kalır.
+
 ## Kullanıcı ne görür
 
 1. Uygulama açılınca (Ayarlar'da "Açılışta yeni sürümü denetle" açıksa, varsayılan **açık**)
@@ -79,7 +85,8 @@ git push origin v0.2.0
 `.github/workflows/release.yml` sırasıyla şunları yapar:
 1. Etiketin üç sürüm dosyasıyla aynı olduğunu ve `pubkey`'in dolu olduğunu kontrol eder.
 2. Testleri çalıştırır.
-3. Kurulumu derleyip imzalar (`tauri.release.conf.json`: `createUpdaterArtifacts`).
+3. Windows kurulumunu (NSIS) ve Linux paketlerini (`.deb`, AppImage) paralel derleyip imzalar
+   (`tauri.release.conf.json`: `createUpdaterArtifacts`).
 4. **İmzayı uygulamadaki açık anahtarla doğrular** (`cargo run --example verify_release`).
    Böylece yanlış anahtarla imzalanmış, hiçbir kopyanın kuramayacağı bir sürüm yayınlanmaz.
 5. `latest.json`'u yazar.

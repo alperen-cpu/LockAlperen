@@ -4,7 +4,8 @@
 //!
 //! The badge is drawn here from the app's own icon (no extra image files).
 //! A watcher polls the lock state, so every way of locking is covered: the
-//! button, Ctrl+L, the tray, idle time, Win+L, sleep, logoff.
+//! button, Ctrl+L, the tray, idle time, Win+L, sleep, logoff. On Linux the
+//! window and tray icons carry the badge (there is no taskbar overlay).
 
 use std::time::Duration;
 
@@ -101,12 +102,16 @@ fn apply(app: &AppHandle, icon: &Image<'static>, overlay: &Image<'static>, unloc
         let _ = w.set_icon(icon.clone());
         // The taskbar button shows the app's own icon (pinned or not), so
         // the lock is shown there as an overlay badge, as KeePass does.
+        // Linux has no overlay badge: the window icon above carries the lock.
+        #[cfg(windows)]
         let _ = w.set_overlay_icon(if unlocked {
             None
         } else {
             Some(overlay.clone())
         });
     }
+    #[cfg(not(windows))]
+    let _ = overlay;
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_icon(Some(icon.clone()));
         let tip = if unlocked {

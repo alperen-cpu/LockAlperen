@@ -14,6 +14,8 @@
 //!
 //! Installing locks the vault and clears our clipboard value first; on
 //! Windows the plugin then starts the NSIS installer and exits the process.
+//! On Linux it replaces the AppImage, or installs the .deb with `pkexec dpkg
+//! -i` (the system asks for the password), and we restart.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -137,7 +139,14 @@ pub async fn install(app: &AppHandle, before_install: impl FnOnce()) -> Result<(
         .await
         .map_err(|e| message(&e).to_owned())?;
     before_install();
-    update.install(bytes).map_err(|e| message(&e).to_owned())
+    update.install(bytes).map_err(|e| message(&e).to_owned())?;
+    // Windows: the plugin has started the installer and exits the process.
+    // Linux: the AppImage (or, through pkexec, the .deb package) was replaced
+    // in place; start the new version (the vault is already locked).
+    if cfg!(not(windows)) {
+        app.restart();
+    }
+    Ok(())
 }
 
 #[cfg(test)]
