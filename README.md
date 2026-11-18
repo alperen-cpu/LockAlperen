@@ -9,8 +9,11 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **Günlük kullanım:** Kayıt ekleme, düzenleme ve çoğaltma (Ctrl+K), son kullanma tarihi, Geri Dönüşüm Kutusu, klasör ağacı (sürükle-bırak ile taşıma), parola
   üretici, TOTP kodları, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
 - **Otomatik yazma:** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
-  doğrulanan pencereye yazar
-- **Sistem tepsisi:** Kapatınca tepside çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
+  doğrulanan pencereye yazar. Kaydın sitesi varsa düğme önce siteyi tarayıcıda açar, sonra yazar
+- **Hızlı kullanım:** Tablo görünümünde parola ve son kullanma sütunları; fare bir kullanıcı adı ya da
+  parolanın üzerindeyken Ctrl+C ile kopyalama; KeePass kısayolları (Ctrl+B, Ctrl+U, Ctrl+E, Delete);
+  sürükleyerek genişletilen ayrıntı paneli; silmeden önce onay penceresi
+- **Arka planda çalışma:** Kapatınca saatin yanındaki simgede çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
 - **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
   geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
 - **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf
@@ -44,7 +47,8 @@ Ağa çıkan yalnızca iki işlem var: site ikonlarının indirilmesi ve GitHub'
 | 3 | KeePass içe aktarma (KDBX 4), CSV dışa aktarma | ✅ KDBX 3.1 ve CSV içe aktarma yok |
 | 4 | TOTP, otomatik yazma (düğme ve global kısayol) | ✅ |
 | 5 | İmzalı sürümler ve uygulama içi güncelleme ([UPDATES.md](docs/UPDATES.md)) | ✅ |
-| 6 | Sistem tepsisi, tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
+| 6 | Arka planda çalışma (saatin yanındaki simge), tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
+| 7 | KeePass özellikleri: çoğaltma, son kullanma tarihi, Geri Dönüşüm Kutusu, KeePass seçenekleri, kısayollar | ✅ |
 
 **Bilinçli olarak yapılmayanlar ve eksikler:**
 - Windows Hello yok (proje sahibinin kararı).

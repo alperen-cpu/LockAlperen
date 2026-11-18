@@ -586,8 +586,10 @@ async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
     })
 }
 
-/// Minimizes the app, waits for the user to switch to the target window,
-/// verifies it, then types username, Tab, password, Enter.
+/// Minimizes the app and finds the target window, verifies it, then types
+/// username, Tab, password, Enter. If the entry has a web site, the site is
+/// opened in the default browser first (a new tab) and the page that loads
+/// is the target; otherwise the user switches to the target window.
 #[tauri::command]
 async fn auto_type(
     id: String,
@@ -598,9 +600,17 @@ async fn auto_type(
     if markers.is_empty() {
         return Err("Bu kaydın başlığı ya da web sitesi yok; hedef pencere doğrulanamaz.".into());
     }
+    let site = state.with(|s| s.web_address(&id).ok())?;
     minimize_quietly(&window);
+    if let Some(u) = &site {
+        browser::open(u).map_err(str::to_owned)?;
+    }
     tauri::async_runtime::spawn_blocking(move || {
-        let target = autotype::wait_for_target(&markers)?;
+        let target = if site.is_some() {
+            autotype::wait_for_opened_site(&markers)?
+        } else {
+            autotype::wait_for_target(&markers)?
+        };
         autotype::type_into(
             target,
             &[

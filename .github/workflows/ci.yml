@@ -58,7 +58,14 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: npm ci --no-audit --no-fund
-      - run: npm audit --audit-level=low
+      # Blocking: everything that ends up in the installed app.
+      - run: npm audit --omit=dev --audit-level=low
+      # Build tools (Vite and its dependencies) never ship, and an advisory
+      # can land before any fixed version exists (picomatch, GHSA-fc5q-39xc-vjpf,
+      # 2026-11-18). Still run so it shows in the log, but do not block.
+      - name: npm audit (build tools, warning only)
+        run: npm audit --audit-level=low
+        continue-on-error: true
       - run: npm run build
       - run: cargo fmt --check
         working-directory: apps/desktop/src-tauri

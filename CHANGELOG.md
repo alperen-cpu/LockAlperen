@@ -1,5 +1,29 @@
 # Sürüm Notları
 
+## [0.6.0] - 2026-11-18: otomatik yazma siteyi açar, parola sütunu, üzerindeyken Ctrl+C, boyutlanan panel, onay penceresi
+
+- **Otomatik yaz önce siteyi açar:** Kaydın web sitesi varsa "Otomatik yaz" siteyi varsayılan
+  tarayıcıda yeni sekmede açar; sayfa yüklenip başlığı kayda uyunca kullanıcı adını ve parolayı
+  yazar (en fazla 25 sn bekler). Başlık uymazsa eskisi gibi hiçbir şey yazılmaz. Sitesi olmayan
+  kayıtlarda davranış aynı: 10 sn içinde hedef pencereye geçilir.
+- **Tabloda parola ve son kullanma sütunları:** Parola tabloda yalnızca nokta olarak görünür
+  (tablo için parola arayüze gönderilmez). Son kullanma tarihine göre sıralanabilir; süresi geçenler uyarı
+  renginde.
+- **Üzerindeyken Ctrl+C:** Fare bir kullanıcı adının ya da parolanın üzerindeyken (tablo, liste
+  ya da ayrıntı paneli) Ctrl+C o değeri kopyalar. Fare bir değerin üzerinde değilse seçili kaydın
+  parolasını kopyalar (KeePass'teki gibi). Seçili metin varsa normal kopyalama yapılır.
+- **Yeni kısayollar (KeePass'teki gibi):** Ctrl+B kullanıcı adını kopyalar, Ctrl+U siteyi açar,
+  Ctrl+E ya da Enter kaydı düzenler, Delete kaydı siler (önce sorar). Bütün kısayollar
+  Ayarlar › Klavye kısayolları'nda.
+- **Ayrıntı paneli boyutlandırılabilir:** Liste ile ayrıntı paneli arasındaki çubuk sürüklenerek
+  panel genişletilip daraltılır; çift tıklayınca eski haline döner. Çubuk seçiliyken ← / → ile de
+  ayarlanır. Genişlik hatırlanır.
+- **Silme onayı pencerede:** Klasör silme, kayıt silme ve Geri Dönüşüm Kutusu'nu boşaltma artık
+  "tekrar tıklayın" yazısı yerine ne silineceğini (alt klasör ve kayıt sayısı) gösteren bir onay
+  penceresi açar. Kalıcı silmelerde düğme kırmızıdır; Enter tek başına silmez ("Vazgeç" seçili gelir).
+- **Ayarlar metinleri:** "Küçültünce tepsiye gizle" ayarı "Küçültünce görev çubuğunda gösterme"
+  oldu; açıklamalar simgenin nerede durduğunu (saatin yanı) anlatıyor.
+
 ## [0.5.0] - 2026-11-17: Geri Dönüşüm Kutusu, kayıt çoğaltma, son kullanma tarihi, KeePass seçenekleri
 
 - **Kaydı çoğalt (KeePass'teki gibi, Ctrl+K):** Ayrıntıdaki "Çoğalt" düğmesi kaydın bir

@@ -10,6 +10,7 @@ import {
 import * as api from "./api";
 import { Editor } from "./Editor";
 import { ImportDialog } from "./Import";
+import { ConfirmDialog } from "./Confirm";
 import { ExtrasView } from "./Extras";
 import { SettingsPage } from "./Settings";
 import { FOLDER_ICONS, FaIcon, folderIconDef } from "./folderIcons";
@@ -587,6 +588,10 @@ function Avatar({ title, size, icon }: { title: string; size: number; icon?: str
   );
 }
 
+const DETAIL_W_KEY = "lockalperen.detailWidth";
+const DETAIL_MIN = 340;
+const LIST_MIN = 280;
+
 const AVATAR_SIZE: Record<api.ListStyle, number> = { list: 42, compact: 28, grid: 56, table: 28 };
 
 const ISSUE_LABEL: Record<api.Issue, string> = {
@@ -594,6 +599,11 @@ const ISSUE_LABEL: Record<api.Issue, string> = {
   reused: "Tekrar",
   expired: "Süresi dolmuş",
 };
+
+/** Unix seconds as a local date, e.g. "17.11.2026". */
+function formatDay(secs: number) {
+  return new Date(secs * 1000).toLocaleDateString("tr-TR");
+}
 
 function formatClock(secs: number) {
   const m = Math.floor(secs / 60);
@@ -840,6 +850,79 @@ function VaultScreen({
     }
   }
 
+  // Detail panel width, set by dragging the bar between the list and the
+  // panel (double click: back to automatic). Remembered in this browser
+  // profile only; null = automatic layout.
+  const panesRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLElement>(null);
+  const [detailW, setDetailW] = useState<number | null>(() => {
+    try {
+      const v = Number(localStorage.getItem(DETAIL_W_KEY));
+      return Number.isFinite(v) && v >= DETAIL_MIN ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  const [resizing, setResizing] = useState(false);
+  function saveDetailW(w: number | null) {
+    setDetailW(w);
+    try {
+      if (w === null) localStorage.removeItem(DETAIL_W_KEY);
+      else localStorage.setItem(DETAIL_W_KEY, String(Math.round(w)));
+    } catch {
+      /* the width still applies until restart */
+    }
+  }
+  /** Keeps the list at least LIST_MIN wide. */
+  function clampDetail(w: number): number {
+    const total = panesRef.current?.clientWidth ?? 0;
+    const max = Math.max(DETAIL_MIN, total - LIST_MIN - 60);
+    return Math.min(Math.max(w, DETAIL_MIN), max);
+  }
+  function startResize(ev: React.PointerEvent<HTMLDivElement>) {
+    if (ev.button !== 0 || !detailRef.current) return;
+    ev.preventDefault();
+    const bar = ev.currentTarget;
+    bar.setPointerCapture(ev.pointerId);
+    const startX = ev.clientX;
+    const startW = detailRef.current.getBoundingClientRect().width;
+    let last = startW;
+    setResizing(true);
+    const move = (e: PointerEvent) => {
+      // The panel is on the right: dragging left makes it wider.
+      last = clampDetail(startW - (e.clientX - startX));
+      setDetailW(last);
+    };
+    const up = () => {
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", up);
+      bar.removeEventListener("pointercancel", up);
+      setResizing(false);
+      saveDetailW(last);
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up);
+    bar.addEventListener("pointercancel", up);
+  }
+  function resizeKey(ev: KeyboardEvent<HTMLDivElement>) {
+    const now = detailRef.current?.getBoundingClientRect().width ?? DETAIL_MIN;
+    const step = ev.shiftKey ? 80 : 20;
+    if (ev.key === "ArrowLeft") saveDetailW(clampDetail(now + step));
+    else if (ev.key === "ArrowRight") saveDetailW(clampDetail(now - step));
+    else if (ev.key === "Home" || ev.key === "Escape") saveDetailW(null);
+    else return;
+    ev.preventDefault();
+  }
+  // A smaller window must not leave the list squeezed by an old width.
+  useEffect(() => {
+    if (detailW === null) return;
+    const onResize = () => setDetailW((w) => (w === null ? null : clampDetail(w)));
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailW === null]);
+
   // Entry list style (Settings: listStyle), remembered across starts.
   const [listStyle, setListStyle] = useState<api.ListStyle>("list");
   useEffect(() => {
@@ -876,7 +959,7 @@ function VaultScreen({
   }
 
   // Table sorting (table style only).
-  type SortKey = "title" | "username" | "url" | "group";
+  type SortKey = "title" | "username" | "url" | "group" | "expires";
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "title", dir: 1 });
   function sortBy(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
@@ -912,7 +995,10 @@ function VaultScreen({
   }
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  // The open confirm dialog, if any (folder delete, entry delete, empty bin).
+  type Ask = { kind: "folder"; id: string } | { kind: "entry"; id: string } | { kind: "empty" };
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const [askBusy, setAskBusy] = useState(false);
 
   async function createFolder(ev: React.FormEvent) {
     ev.preventDefault();
@@ -941,43 +1027,116 @@ function VaultScreen({
   // inside it, or emptying it, is permanent and asks twice.
   const binId = allGroups.find((g) => g.recycleBin)?.id ?? null;
   const rootId = allGroups.find((g) => g.parent === null)?.id ?? null;
-  const [confirmEmpty, setConfirmEmpty] = useState(false);
 
-  async function removeFolder(id: string) {
-    const permanent = api.inRecycleBin(id, allGroups);
-    if (permanent && confirmDel !== id) {
-      setConfirmDel(id);
-      return;
-    }
-    const name = allGroups.find((g) => g.id === id)?.name ?? "";
+  /** Runs the action the user confirmed in the dialog. */
+  async function confirmAsk() {
+    if (!ask || askBusy) return;
+    setAskBusy(true);
     try {
-      onEntries(await api.deleteGroup(id));
-      setConfirmDel(null);
-      setGroup(null);
-      setGroupTick((t) => t + 1);
-      setToast(
-        permanent
-          ? `"${name}" kalıcı olarak silindi.`
-          : `"${name}" Geri Dönüşüm Kutusu'na taşındı.`,
-      );
+      if (ask.kind === "folder") {
+        const permanent = api.inRecycleBin(ask.id, allGroups);
+        const name = allGroups.find((g) => g.id === ask.id)?.name ?? "";
+        onEntries(await api.deleteGroup(ask.id));
+        setGroup(null);
+        setGroupTick((t) => t + 1);
+        setToast(
+          permanent
+            ? `"${name}" kalıcı olarak silindi.`
+            : `"${name}" Geri Dönüşüm Kutusu'na taşındı.`,
+        );
+      } else if (ask.kind === "entry") {
+        const e = open.entries.find((x) => x.id === ask.id);
+        const permanent = !!e?.inRecycleBin;
+        const entries = await api.deleteEntry(ask.id);
+        onEntries(entries);
+        if (selected === ask.id) setSelected(null);
+        setToast(
+          permanent
+            ? `"${e?.title ?? ""}" kalıcı olarak silindi.`
+            : `"${e?.title ?? ""}" Geri Dönüşüm Kutusu'na taşındı.`,
+        );
+      } else {
+        onEntries(await api.emptyRecycleBin());
+        setGroupTick((t) => t + 1);
+        setToast("Geri Dönüşüm Kutusu boşaltıldı.");
+      }
     } catch (e) {
       setToast(api.errorText(e));
+    } finally {
+      setAskBusy(false);
+      setAsk(null);
     }
   }
 
-  async function emptyBin() {
-    if (!confirmEmpty) {
-      setConfirmEmpty(true);
-      return;
+  /** The dialog for the pending question: what goes, and where. */
+  function askDialog(a: Ask) {
+    if (a.kind === "empty") {
+      const total = allGroups.find((g) => g.id === binId)?.totalEntries ?? 0;
+      return (
+        <ConfirmDialog
+          title="Geri Dönüşüm Kutusu boşaltılsın mı?"
+          confirmLabel="Kalıcı olarak boşalt"
+          danger
+          busy={askBusy}
+          onConfirm={() => void confirmAsk()}
+          onCancel={() => setAsk(null)}
+        >
+          <p>
+            Kutudaki <strong>{total} kayıt</strong> ve bütün klasörler kalıcı olarak silinecek.
+          </p>
+          <p className="warn">Bu işlem geri alınamaz.</p>
+        </ConfirmDialog>
+      );
     }
-    try {
-      onEntries(await api.emptyRecycleBin());
-      setGroupTick((t) => t + 1);
-      setToast("Geri Dönüşüm Kutusu boşaltıldı.");
-    } catch (e) {
-      setToast(api.errorText(e));
+    if (a.kind === "folder") {
+      const g = allGroups.find((x) => x.id === a.id);
+      const permanent = api.inRecycleBin(a.id, allGroups);
+      const subfolders = subtree(a.id).size - 1;
+      return (
+        <ConfirmDialog
+          title={permanent ? "Klasör kalıcı olarak silinsin mi?" : "Klasör silinsin mi?"}
+          confirmLabel={permanent ? "Kalıcı olarak sil" : "Çöpe taşı"}
+          danger={permanent}
+          busy={askBusy}
+          onConfirm={() => void confirmAsk()}
+          onCancel={() => setAsk(null)}
+        >
+          <p>
+            <strong>"{g?.name ?? ""}"</strong> klasörü
+            {subfolders > 0 ? `, ${subfolders} alt klasörü` : ""} ve içindeki{" "}
+            <strong>{g?.totalEntries ?? 0} kayıt</strong>{" "}
+            {permanent ? "kalıcı olarak silinecek." : "Geri Dönüşüm Kutusu'na taşınacak."}
+          </p>
+          {permanent ? (
+            <p className="warn">Bu işlem geri alınamaz.</p>
+          ) : (
+            <p className="muted">Kutudan sürükleyerek ya da "Geri yükle" ile geri alabilirsiniz.</p>
+          )}
+        </ConfirmDialog>
+      );
     }
-    setConfirmEmpty(false);
+    const e = open.entries.find((x) => x.id === a.id);
+    const permanent = !!e?.inRecycleBin;
+    return (
+      <ConfirmDialog
+        title={permanent ? "Kayıt kalıcı olarak silinsin mi?" : "Kayıt silinsin mi?"}
+        confirmLabel={permanent ? "Kalıcı olarak sil" : "Çöpe taşı"}
+        danger={permanent}
+        busy={askBusy}
+        onConfirm={() => void confirmAsk()}
+        onCancel={() => setAsk(null)}
+      >
+        <p>
+          <strong>"{e?.title || "(başlıksız)"}"</strong>{" "}
+          {permanent ? "kalıcı olarak silinecek." : "Geri Dönüşüm Kutusu'na taşınacak."}
+        </p>
+        {permanent ? (
+          <p className="warn">Bu işlem geri alınamaz.</p>
+        ) : (
+          <p className="muted">Kutudan "Geri yükle" ile geri alabilirsiniz.</p>
+        )}
+      </ConfirmDialog>
+    );
   }
 
   /** Puts an entry from the recycle bin back into the main folder. */
@@ -1003,7 +1162,11 @@ function VaultScreen({
 
   async function autoType() {
     if (!current) return;
-    setToast("Hedef pencereye geçin (10 sn). Pencere başlığı doğrulanınca yazılacak.");
+    setToast(
+      looksLikeWeb(current.url)
+        ? "Site tarayıcıda yeni sekmede açılıyor. Sayfa yüklenip başlığı doğrulanınca bilgiler yazılacak; bu sırada başka pencereye geçmeyin."
+        : "Hedef pencereye geçin (10 sn). Pencere başlığı doğrulanınca yazılacak.",
+    );
     try {
       await api.autoType(current.id);
       setToast("Otomatik yazma tamamlandı.");
@@ -1051,7 +1214,18 @@ function VaultScreen({
 
   const sortedShown = useMemo(() => {
     const list = shown.slice();
-    list.sort((a, b) => sort.dir * a[sort.key].localeCompare(b[sort.key], "tr"));
+    list.sort((a, b) => {
+      if (sort.key === "expires") {
+        // Entries that never expire go last either way.
+        const x = a.expires ?? Infinity;
+        const y = b.expires ?? Infinity;
+        if (x === y) return 0;
+        if (x === Infinity) return 1;
+        if (y === Infinity) return -1;
+        return sort.dir * (x - y);
+      }
+      return sort.dir * a[sort.key].localeCompare(b[sort.key], "tr");
+    });
     return list;
   }, [shown, sort]);
 
@@ -1063,10 +1237,9 @@ function VaultScreen({
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  async function copy(field: api.CopyField) {
-    if (!current) return;
+  async function copyOf(id: string, field: api.CopyField) {
     try {
-      const secs = await api.copyField(current.id, field);
+      const secs = await api.copyField(id, field);
       const what =
         field === "password" ? "Parola" : field === "totp" ? "Kod" : "Kullanıcı adı";
       setToast(`${what} kopyalandı · pano ${secs} sn sonra temizlenecek`);
@@ -1074,6 +1247,71 @@ function VaultScreen({
       setToast(api.errorText(e));
     }
   }
+
+  async function copy(field: api.CopyField) {
+    if (current) await copyOf(current.id, field);
+  }
+
+  // The value under the mouse (a username or password cell), for Ctrl+C.
+  // The element is kept so a stale value (cell removed without a mouseleave)
+  // is never used: Ctrl+C checks it is still under the mouse.
+  const hovered = useRef<{ id: string; field: api.CopyField; el: Element } | null>(null);
+  function hoverCopy(id: string, field: api.CopyField): HoverProps {
+    return {
+      onMouseEnter: (e) => {
+        hovered.current = { id, field, el: e.currentTarget };
+      },
+      onMouseLeave: () => {
+        if (hovered.current?.id === id && hovered.current.field === field) hovered.current = null;
+      },
+    };
+  }
+
+  // KeePass-style keys on the entry list. They never fire while typing in a
+  // field, while a dialog is open, or when text is selected (Ctrl+C then
+  // copies the selection as usual).
+  //   Ctrl+C  value under the mouse; otherwise the selected entry's password
+  //   Ctrl+B  selected entry's username
+  //   Ctrl+U  open the selected entry's site
+  //   Ctrl+E / Enter  edit the selected entry
+  //   Delete  delete the selected entry (asks first)
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (editing !== undefined || settingsOpen || ask || importing !== null) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest("input, textarea, select, [contenteditable='true']") !== null)) return;
+      const k = e.key.toLowerCase();
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && k === "c") {
+        if ((window.getSelection()?.toString() ?? "") !== "") return;
+        const h = hovered.current;
+        if (h && h.el.isConnected && h.el.matches(":hover")) {
+          e.preventDefault();
+          void copyOf(h.id, h.field);
+        } else if (current) {
+          e.preventDefault();
+          void copyOf(current.id, "password");
+        }
+      } else if (e.ctrlKey && !e.altKey && !e.shiftKey && k === "b" && current) {
+        e.preventDefault();
+        if (current.username) void copyOf(current.id, "username");
+      } else if (e.ctrlKey && !e.altKey && !e.shiftKey && k === "u" && current) {
+        e.preventDefault();
+        if (looksLikeWeb(current.url)) void openSite();
+      } else if (
+        current &&
+        ((e.ctrlKey && !e.altKey && k === "e") ||
+          (!e.ctrlKey && !e.altKey && e.key === "Enter" && t?.closest("button") === null))
+      ) {
+        e.preventDefault();
+        setEditing(current.id);
+      } else if (!e.ctrlKey && !e.altKey && e.key === "Delete" && current) {
+        e.preventDefault();
+        setAsk({ kind: "entry", id: current.id });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <div className={"app" + (navOpen ? " nav-open" : "")} data-view={view} data-list={listStyle}>
@@ -1144,6 +1382,7 @@ function VaultScreen({
         </div>
       </header>
 
+      {ask && askDialog(ask)}
       {importing !== null && (
         <ImportDialog
           fileName={importing}
@@ -1170,7 +1409,11 @@ function VaultScreen({
           }}
         />
       ) : (
-      <div className="panes">
+      <div
+        ref={panesRef}
+        className={"panes" + (detailW !== null ? " sized" : "") + (resizing ? " resizing" : "")}
+        style={detailW !== null ? ({ "--detail-w": `${detailW}px` } as React.CSSProperties) : undefined}
+      >
         <div className="nav-backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />
         <nav
           className="nav-pane"
@@ -1287,15 +1530,10 @@ function VaultScreen({
                     {id === binId && (
                       <button
                         type="button"
-                        className={"ghost-icon tiny" + (confirmEmpty ? " danger-bg" : "")}
+                        className="ghost-icon tiny"
                         aria-label="Geri Dönüşüm Kutusu'nu boşalt"
-                        title={
-                          confirmEmpty
-                            ? `Emin misiniz? İçindeki ${g.total} kayıt kalıcı olarak silinecek. Boşaltmak için tekrar tıklayın.`
-                            : "Boşalt"
-                        }
-                        onClick={() => void emptyBin()}
-                        onBlur={() => setConfirmEmpty(false)}
+                        title="Boşalt"
+                        onClick={() => setAsk({ kind: "empty" })}
                       >
                         <FaIcon def={folderIconDef("trash")!} size={13} />
                       </button>
@@ -1303,17 +1541,14 @@ function VaultScreen({
                     {!g.root && (
                       <button
                         type="button"
-                        className={"ghost-icon tiny" + (confirmDel === id ? " danger-bg" : "")}
+                        className="ghost-icon tiny"
                         aria-label="Klasörü sil"
                         title={
-                          confirmDel === id
-                            ? `Emin misiniz? Klasör, alt klasörleri ve ${g.total} kayıt kalıcı olarak silinecek. Silmek için tekrar tıklayın.`
-                            : api.inRecycleBin(id, allGroups)
-                              ? "Kalıcı olarak sil"
-                              : "Sil (Geri Dönüşüm Kutusu'na taşınır)"
+                          api.inRecycleBin(id, allGroups)
+                            ? "Kalıcı olarak sil"
+                            : "Sil (Geri Dönüşüm Kutusu'na taşınır)"
                         }
-                        onClick={() => removeFolder(id)}
-                        onBlur={() => setConfirmDel(null)}
+                        onClick={() => setAsk({ kind: "folder", id })}
                       >
                         <XIcon />
                       </button>
@@ -1379,13 +1614,6 @@ function VaultScreen({
                   ))}
               </select>
             </div>
-          )}
-          {confirmDel && (
-            <p className="warn small del-warn">
-              Klasör, alt klasörleri ve içindeki{" "}
-              {groups.find(([i]) => i === confirmDel)?.[1].total ?? 0} kayıt silinecek. Onaylamak
-              için × düğmesine tekrar basın.
-            </p>
           )}
           {newFolder === null ? (
             <button type="button" className="nav muted-nav" onClick={() => setNewFolder("")}>
@@ -1510,23 +1738,33 @@ function VaultScreen({
                         [
                           ["title", "Başlık"],
                           ["username", "Kullanıcı adı"],
+                          [null, "Parola"],
                           ["url", "Web sitesi"],
                           ["group", "Klasör"],
-                        ] as [SortKey, string][]
-                      ).map(([key, label]) => (
-                        <th
-                          key={key}
-                          scope="col"
-                          aria-sort={
-                            sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : "none"
-                          }
-                        >
-                          <button type="button" className="th-btn" onClick={() => sortBy(key)}>
-                            {label}
-                            {sort.key === key && <span aria-hidden="true">{sort.dir === 1 ? " ↑" : " ↓"}</span>}
-                          </button>
-                        </th>
-                      ))}
+                          ["expires", "Son kullanma"],
+                        ] as [SortKey | null, string][]
+                      ).map(([key, label]) =>
+                        key === null ? (
+                          <th key={label} scope="col" className="th-plain">
+                            <span className="th-btn">{label}</span>
+                          </th>
+                        ) : (
+                          <th
+                            key={key}
+                            scope="col"
+                            aria-sort={
+                              sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : "none"
+                            }
+                          >
+                            <button type="button" className="th-btn" onClick={() => sortBy(key)}>
+                              {label}
+                              {sort.key === key && (
+                                <span aria-hidden="true">{sort.dir === 1 ? " ↑" : " ↓"}</span>
+                              )}
+                            </button>
+                          </th>
+                        ),
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1563,9 +1801,32 @@ function VaultScreen({
                             <span className="ellipsis">{e.title || "(başlıksız)"}</span>
                           </button>
                         </td>
-                        <td className="ellipsis">{e.username}</td>
+                        <td
+                          className={"ellipsis" + (e.username ? " copy-hover" : "")}
+                          title={e.username ? "Üzerindeyken Ctrl+C ile kopyalanır" : undefined}
+                          {...(e.username ? hoverCopy(e.id, "username") : {})}
+                        >
+                          {e.username}
+                        </td>
+                        {/* Only dots: the WebView never receives the password. */}
+                        <td
+                          className="ellipsis pw-cell copy-hover"
+                          title="Üzerindeyken Ctrl+C ile kopyalanır"
+                          aria-label="Parola (gizli)"
+                          {...hoverCopy(e.id, "password")}
+                        >
+                          ••••••••
+                        </td>
                         <td className="ellipsis muted">{e.url}</td>
                         <td className="ellipsis muted">{e.group}</td>
+                        <td
+                          className={
+                            "ellipsis" +
+                            (e.expires != null && e.expires <= Date.now() / 1000 ? " warn" : " muted")
+                          }
+                        >
+                          {e.expires != null ? formatDay(e.expires) : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1597,7 +1858,12 @@ function VaultScreen({
                     <Avatar title={e.title} size={AVATAR_SIZE[listStyle]} icon={e.icon} />
                     <span className="row-text">
                       <span className="row-title ellipsis">{e.title || "(başlıksız)"}</span>
-                      <span className="row-sub ellipsis muted">{e.username}</span>
+                      <span
+                        className="row-sub ellipsis muted"
+                        {...(e.username ? hoverCopy(e.id, "username") : {})}
+                      >
+                        {e.username}
+                      </span>
                     </span>
                     {(issuesOf.get(e.id) ?? []).map((i) => (
                       <span key={i} className="badge">
@@ -1612,7 +1878,18 @@ function VaultScreen({
           )}
         </section>
 
-        <main className="detail-pane">
+        <div
+          className={"pane-splitter" + (resizing ? " dragging" : "")}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ayrıntı panelinin genişliği"
+          title="Sürükleyerek genişletin ya da daraltın · çift tıklayınca eski haline döner"
+          tabIndex={0}
+          onPointerDown={startResize}
+          onDoubleClick={() => saveDetailW(null)}
+          onKeyDown={resizeKey}
+        />
+        <main className="detail-pane" ref={detailRef}>
           {current ? (
             <>
               <div className="detail-head">
@@ -1633,7 +1910,11 @@ function VaultScreen({
                   type="button"
                   className="btn"
                   onClick={autoType}
-                  title="Uygulama küçülür; 10 sn içinde hedef pencereye geçin. Başlığı doğrulanmayan pencereye yazılmaz."
+                  title={
+                    looksLikeWeb(current.url)
+                      ? "Site tarayıcıda yeni sekmede açılır; sayfa yüklenip başlığı doğrulanınca kullanıcı adı ve parola yazılır."
+                      : "Uygulama küçülür; 10 sn içinde hedef pencereye geçin. Başlığı doğrulanmayan pencereye yazılmaz."
+                  }
                 >
                   Otomatik yaz
                 </button>
@@ -1667,7 +1948,13 @@ function VaultScreen({
                 <div className="card-row">
                   <div className="card-text">
                     <div className="lbl">Kullanıcı adı</div>
-                    <div className="value ellipsis">{current.username || "—"}</div>
+                    <div
+                      className={"value ellipsis" + (current.username ? " copy-hover" : "")}
+                      title={current.username ? "Üzerindeyken Ctrl+C ile kopyalanır" : undefined}
+                      {...(current.username ? hoverCopy(current.id, "username") : {})}
+                    >
+                      {current.username || "—"}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -1680,7 +1967,12 @@ function VaultScreen({
                   </button>
                 </div>
                 {/* key: a new entry always starts hidden. */}
-                <PasswordRow key={current.id} id={current.id} onCopy={() => copy("password")} />
+                <PasswordRow
+                  key={current.id}
+                  id={current.id}
+                  onCopy={() => copy("password")}
+                  hover={hoverCopy(current.id, "password")}
+                />
                 {current.hasTotp && (
                   <TotpRow key={`t-${current.id}`} id={current.id} onCopy={() => copy("totp")} />
                 )}
@@ -1786,7 +2078,21 @@ function TotpRow({ id, onCopy }: { id: string; onCopy: () => void }) {
 /** Seconds a revealed password stays visible. */
 const REVEAL_SECONDS = 15;
 
-function PasswordRow({ id, onCopy }: { id: string; onCopy: () => void }) {
+/** Mouse handlers that tell Ctrl+C which value the pointer is over. */
+type HoverProps = {
+  onMouseEnter: (e: React.MouseEvent<Element>) => void;
+  onMouseLeave: () => void;
+};
+
+function PasswordRow({
+  id,
+  onCopy,
+  hover,
+}: {
+  id: string;
+  onCopy: () => void;
+  hover: HoverProps;
+}) {
   // Shown only on request, dropped from state after REVEAL_SECONDS and when
   // the row unmounts (other entry selected, vault locked).
   const [shown, setShown] = useState<string | null>(null);
@@ -1813,7 +2119,11 @@ function PasswordRow({ id, onCopy }: { id: string; onCopy: () => void }) {
     <div className="card-row">
       <div className="card-text">
         <div className="lbl">Parola</div>
-        <div className={"value mono" + (shown === null ? " dots" : " revealed")}>
+        <div
+          className={"value mono copy-hover" + (shown === null ? " dots" : " revealed")}
+          title="Üzerindeyken Ctrl+C ile kopyalanır"
+          {...hover}
+        >
           {shown ?? "••••••••••••"}
         </div>
       </div>

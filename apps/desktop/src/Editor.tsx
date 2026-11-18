@@ -6,6 +6,7 @@
 // (documented limit in SECURITY.md).
 import { useEffect, useState, type FormEvent } from "react";
 import * as api from "./api";
+import { ConfirmDialog } from "./Confirm";
 import type { EntryForm, EntrySummary, FormField, GenOptions, GroupView } from "./api";
 import { dateInputValue, expiryAfterMonths, fromDateInput } from "./api";
 import { EyeIcon, EyeOffIcon, KeyIcon, PlusIcon, RefreshIcon, XIcon } from "./icons";
@@ -139,16 +140,13 @@ export function Editor(props: {
 
   async function remove() {
     if (!form?.id || busy) return;
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
     setBusy(true);
     try {
       props.onDeleted(await api.deleteEntry(form.id));
     } catch (e) {
       setError(api.errorText(e));
       setBusy(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -173,7 +171,7 @@ export function Editor(props: {
             <button
               type="button"
               className="btn danger"
-              onClick={remove}
+              onClick={() => setConfirmDelete(true)}
               disabled={busy}
               title={
                 binned
@@ -181,14 +179,28 @@ export function Editor(props: {
                   : "Kayıt Geri Dönüşüm Kutusu'na taşınır; oradan geri alınabilir."
               }
             >
-              {binned
-                ? confirmDelete
-                  ? "Emin misiniz? Kalıcı olarak sil"
-                  : "Kalıcı olarak sil"
-                : confirmDelete
-                  ? "Emin misiniz? Çöpe taşı"
-                  : "Sil"}
+              {binned ? "Kalıcı olarak sil" : "Sil"}
             </button>
+          )}
+          {confirmDelete && (
+            <ConfirmDialog
+              title={binned ? "Kayıt kalıcı olarak silinsin mi?" : "Kayıt silinsin mi?"}
+              confirmLabel={binned ? "Kalıcı olarak sil" : "Çöpe taşı"}
+              danger={binned}
+              busy={busy}
+              onConfirm={() => void remove()}
+              onCancel={() => setConfirmDelete(false)}
+            >
+              <p>
+                <strong>"{form.title || "(başlıksız)"}"</strong>{" "}
+                {binned ? "kalıcı olarak silinecek." : "Geri Dönüşüm Kutusu'na taşınacak."}
+              </p>
+              {binned ? (
+                <p className="warn">Bu işlem geri alınamaz.</p>
+              ) : (
+                <p className="muted">Kutudan "Geri yükle" ile geri alabilirsiniz.</p>
+              )}
+            </ConfirmDialog>
           )}
           <button type="button" className="btn" onClick={() => props.onClose()} disabled={busy}>
             Vazgeç <span className="kbd">Esc</span>
