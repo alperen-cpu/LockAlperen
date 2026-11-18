@@ -13,6 +13,11 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
 - **Hızlı kullanım:** Tablo görünümünde parola ve son kullanma sütunları; fare bir kullanıcı adı ya da
   parolanın üzerindeyken Ctrl+C ile kopyalama; KeePass kısayolları (Ctrl+B, Ctrl+U, Ctrl+E, Delete);
   sürükleyerek genişletilen ayrıntı paneli; silmeden önce onay penceresi
+- **Birden fazla kasa:** Kasalar sekmelerde aynı anda açık kalır; başka bir kasayla birleştirme (KeePass
+  "Synchronize"), KeePass (KDBX 4) olarak dışa aktarma ve yazdırılabilir acil durum sayfası
+- **KeePass'teki ileri özellikler:** kayda özel otomatik yazma dizisi ve pencere kuralı, alan
+  referansları (`{REF:…}`), kayıt renkleri, etiket ve "süresi dolacaklar" görünümleri, aramada alan
+  seçimi, üretici profilleri ve desenler, kasa ayarları (geçmiş, şifreleme gücü, anahtar dosyası)
 - **Arka planda çalışma:** Kapatınca saatin yanındaki simgede çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
 - **Güvenlik:** Otomatik kilit (boşta kalınca, Win+L ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
   geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez ([SECURITY.md](SECURITY.md))
@@ -49,6 +54,7 @@ Ağa çıkan yalnızca iki işlem var: site ikonlarının indirilmesi ve GitHub'
 | 5 | İmzalı sürümler ve uygulama içi güncelleme ([UPDATES.md](docs/UPDATES.md)) | ✅ |
 | 6 | Arka planda çalışma (saatin yanındaki simge), tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
 | 7 | KeePass özellikleri: çoğaltma, son kullanma tarihi, Geri Dönüşüm Kutusu, KeePass seçenekleri, kısayollar | ✅ |
+| 8 | Sekmeler, birleştirme, KDBX/HTML dışa aktarma, otomatik yazma dizileri, referanslar, renkler, kasa ayarları | ✅ |
 
 **Bilinçli olarak yapılmayanlar ve eksikler:**
 - Windows Hello yok (proje sahibinin kararı).

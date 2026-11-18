@@ -316,6 +316,21 @@ export const KDF_PRESETS: { label: string; memoryMib: number; iterations: number
   { label: "Çok güçlü (1 GiB, 4 geçiş)", memoryMib: 1024, iterations: 4, parallelism: 4 },
 ];
 
+/** One open vault tab (no secrets: vault or file name). */
+export interface TabView {
+  index: number;
+  title: string;
+  unlocked: boolean;
+  active: boolean;
+}
+export const listTabs = () => invoke<TabView[]>("list_tabs");
+export const newTab = () => invoke<TabView[]>("new_tab");
+export const switchTab = (index: number) => invoke<TabView[]>("switch_tab", { index });
+export const closeTab = (index: number) => invoke<TabView[]>("close_tab", { index });
+/** The active tab: its chosen file and, if unlocked, the vault. */
+export const tabState = () =>
+  invoke<{ file: SelectedFile | null; info: VaultInfo | null }>("tab_state");
+
 export const listGroups = () => invoke<GroupView[]>("list_groups");
 
 /** Sets a folder's icon (a key from folderIcons.tsx; null = default). Rust

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -50,15 +51,105 @@ export function App() {
       () => {},
     );
   }, []);
+  // Several vaults at once (KeePass tabs). Each tab is a session in Rust;
+  // the screens below show the active one and are rebuilt on a switch.
+  const [tabs, setTabs] = useState<api.TabView[]>([]);
+  const [tabKey, setTabKey] = useState(0);
+  const [tabError, setTabError] = useState<string | null>(null);
+  const refreshTabs = useCallback(() => {
+    api.listTabs().then(setTabs, () => {});
+  }, []);
+  useEffect(() => {
+    refreshTabs();
+    // Auto-lock and Win+L change tabs from Rust; keep the bar current.
+    const t = window.setInterval(refreshTabs, 2000);
+    return () => window.clearInterval(t);
+  }, [refreshTabs]);
+  async function tabAction(p: Promise<api.TabView[]>) {
+    try {
+      setTabs(await p);
+      setTabError(null);
+      setTabKey((k) => k + 1);
+    } catch (e) {
+      setTabError(api.errorText(e));
+    }
+  }
+  const tabApi: TabApi = {
+    count: tabs.length,
+    onNew: () => void tabAction(api.newTab()),
+    onChanged: refreshTabs,
+  };
   return (
-    <>
-      <Screens />
+    <div className="shell">
+      {tabs.length > 1 && (
+        <TabBar
+          tabs={tabs}
+          error={tabError}
+          onSwitch={(i) => {
+            if (!tabs[i]?.active) void tabAction(api.switchTab(i));
+          }}
+          onClose={(i) => void tabAction(api.closeTab(i))}
+          onNew={tabApi.onNew}
+        />
+      )}
+      <div className="shell-body">
+        <Screens key={tabKey} tabs={tabApi} />
+      </div>
       <UpdateBanner />
-    </>
+    </div>
   );
 }
 
-function Screens() {
+type TabApi = { count: number; onNew: () => void; onChanged: () => void };
+
+function TabBar(props: {
+  tabs: api.TabView[];
+  error: string | null;
+  onSwitch: (i: number) => void;
+  onClose: (i: number) => void;
+  onNew: () => void;
+}) {
+  return (
+    <div className="tabbar" role="tablist" aria-label="Açık kasalar">
+      {props.tabs.map((t) => (
+        <div key={t.index} className={"tab" + (t.active ? " active" : "")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={t.active}
+            className="tab-btn"
+            title={t.unlocked ? `${t.title} (açık)` : `${t.title} (kilitli)`}
+            onClick={() => props.onSwitch(t.index)}
+          >
+            {t.unlocked ? null : <LockIcon />}
+            <span className="ellipsis">{t.title}</span>
+          </button>
+          <button
+            type="button"
+            className="ghost-icon tiny tab-close"
+            aria-label={`${t.title} sekmesini kapat`}
+            title="Kilitle ve kapat"
+            onClick={() => props.onClose(t.index)}
+          >
+            <XIcon />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="ghost-icon tab-new"
+        aria-label="Yeni sekmede kasa aç"
+        title="Yeni sekmede kasa aç (en fazla 8)"
+        onClick={props.onNew}
+      >
+        <PlusIcon />
+      </button>
+      {props.error && <span className="error small tab-error">{props.error}</span>}
+    </div>
+  );
+}
+
+function Screens({ tabs }: { tabs: TabApi }) {
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [open, setOpen] = useState<Open | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,14 +167,40 @@ function Screens() {
     }
   }
 
-  // On start, offer the most recently opened vault.
+  // A tab we switch to may already have a file chosen or a vault open.
+  // Otherwise, on the very first tab, offer the most recently opened vault.
   useEffect(() => {
-    void refreshRecents(true);
+    let alive = true;
+    (async () => {
+      try {
+        const st = await api.tabState();
+        if (!alive) return;
+        if (st.file) {
+          setFile(st.file);
+          if (st.info) {
+            const entries = await api.listEntries();
+            if (alive) setOpen({ info: st.info, entries });
+          }
+          void refreshRecents(false);
+          return;
+        }
+      } catch {
+        /* fall back to the start screen */
+      }
+      if (alive) void refreshRecents(tabs.count <= 1);
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // After unlocking or creating, Rust has updated the list.
+  // After unlocking or creating, Rust has updated the list (and the tab's
+  // title).
   useEffect(() => {
     if (open) void refreshRecents(false);
+    tabs.onChanged();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function pickRecent(i: number) {
@@ -165,6 +282,7 @@ function Screens() {
         onLock={doLock}
         onAutoLocked={autoLocked}
         onEntries={(entries) => setOpen((o) => (o ? { ...o, entries } : o))}
+        onNewTab={tabs.onNew}
       />
     );
   }
@@ -662,12 +780,14 @@ function VaultScreen({
   onLock,
   onAutoLocked,
   onEntries,
+  onNewTab,
 }: {
   file: SelectedFile;
   open: Open;
   onLock: () => void;
   onAutoLocked: () => void;
   onEntries: (entries: EntrySummary[]) => void;
+  onNewTab: () => void;
 }) {
   const [lockIn, setLockIn] = useState<number | null>(null);
   // undefined = not editing; null = new entry; string = entry id.
@@ -1528,6 +1648,15 @@ function VaultScreen({
               Kilit {formatClock(lockIn)}
             </span>
           )}
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Yeni sekmede başka bir kasa aç"
+            title="Yeni sekmede başka bir kasa aç"
+            onClick={onNewTab}
+          >
+            <PlusIcon />
+          </button>
           <button
             type="button"
             className="icon-btn"

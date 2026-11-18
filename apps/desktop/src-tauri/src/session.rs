@@ -522,8 +522,41 @@ impl Session {
         self.lock();
         // A key file belongs to one vault; never carry it over silently.
         self.keyfile = None;
-        let header = read_header(&path);
-        let info = SelectedFile {
+        let info = describe(&path);
+        self.path = Some(path);
+        info
+    }
+
+    /// The chosen file, as the unlock screen shows it (after switching tabs).
+    pub fn selected_file(&self) -> Option<SelectedFile> {
+        self.path.as_deref().map(describe)
+    }
+
+    /// Name and size of the open vault; None while locked.
+    pub fn info(&self) -> Option<VaultInfo> {
+        self.vault.as_ref().map(|v| VaultInfo {
+            name: v.data.name.clone(),
+            entry_count: v.data.entries.len(),
+        })
+    }
+
+    /// The selected file is the same file as `other` (one vault must not
+    /// be open in two tabs: their saves would refuse each other).
+    pub fn has_file(&self, other: &std::path::Path) -> bool {
+        self.path.as_deref().is_some_and(|p| same_file(p, other))
+    }
+
+    /// The file chosen for unlocking, if any.
+    pub fn selected_path(&self) -> Option<&std::path::Path> {
+        self.path.as_deref()
+    }
+}
+
+/// What the unlock screen shows about a file (header values unauthenticated).
+fn describe(path: &std::path::Path) -> SelectedFile {
+    {
+        let header = read_header(path);
+        SelectedFile {
             file_name: path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -538,11 +571,11 @@ impl Session {
                 parallelism: h.kdf.parallelism,
             }),
             keyfile_required: header.is_some_and(|h| h.requires_keyfile()),
-        };
-        self.path = Some(path);
-        info
+        }
     }
+}
 
+impl Session {
     /// Sets (Some) or clears (None) the key file for the next unlock.
     /// Returns the file name to display.
     pub fn set_keyfile(&mut self, path: Option<PathBuf>) -> Option<String> {
@@ -2197,7 +2230,7 @@ mod tests {
         let simple = uuid::Uuid::parse_str(&zeta).unwrap().simple().to_string();
         let mut f = form(&s, None, "Ref");
         f.username = format!("{{REF:U@I:{}}}", simple.to_uppercase());
-        f.password = format!("ön-{{REF:P@T:zeta}}-son {{REF:P@I:yok}}");
+        f.password = "ön-{REF:P@T:zeta}-son {REF:P@I:yok}".into();
         f.autotype_sequence = "{USERNAME}{TAB}{PASSWORD}{DELAY 5}{S:hesap tipi}{ENTER}".into();
         f.autotype_window = "*Örnek*Giriş*".into();
         let id = s.save_entry(&f).unwrap();

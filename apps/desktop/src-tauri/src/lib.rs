@@ -15,6 +15,7 @@ mod recent;
 mod session;
 mod settings;
 mod startup;
+mod tabs;
 mod titlebar;
 mod totp;
 mod tray;
@@ -148,8 +149,22 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
     }
     let (shared, notice) = (app.state::<Shared>(), app.state::<Notice>());
     let title = autotype::window_title(target);
-    let found = match shared.with(|s| s.autotype_matches(&title)) {
-        Ok(Ok(found)) => found,
+    // Every unlocked tab is searched (as KeePass searches all open databases).
+    let found = match shared.tabs(|t| {
+        let mut out: Vec<(usize, String, String)> = Vec::new();
+        let mut any = false;
+        for (i, s) in t.all().enumerate() {
+            if !s.is_unlocked() {
+                continue;
+            }
+            any = true;
+            if let Ok(m) = s.autotype_matches(&title) {
+                out.extend(m.into_iter().map(|(id, name)| (i, id, name)));
+            }
+        }
+        any.then_some(out)
+    }) {
+        Ok(Some(found)) => found,
         // Locked: bring the window forward to unlock; nothing is typed.
         _ => return tray::show_main(app),
     };
@@ -157,15 +172,15 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
         notice.set(text);
         tray::show_main(app);
     };
-    let id = match found.as_slice() {
-        [(id, _)] => id.clone(),
+    let (tab, id) = match found.as_slice() {
+        [(tab, id, _)] => (*tab, id.clone()),
         [] => {
             return tell(format!(
                 "\"{title}\" penceresine uyan kayıt yok; hiçbir şey yazılmadı."
             ))
         }
         many => {
-            let names: Vec<&str> = many.iter().take(5).map(|(_, t)| t.as_str()).collect();
+            let names: Vec<&str> = many.iter().take(5).map(|(_, _, t)| t.as_str()).collect();
             return tell(format!(
                 "{} kayıt bu pencereye uyuyor ({}); hiçbir şey yazılmadı. Kaydı seçip \"Otomatik yaz\" düğmesini kullanın.",
                 many.len(),
@@ -174,7 +189,12 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
         }
     };
     let typed = (|| -> Result<(), String> {
-        let (steps, _) = shared.with(|s| s.autotype_data(&id)).and_then(|r| r)?;
+        let (steps, _) = shared
+            .tabs(|t| match t.get(tab) {
+                Some(s) => s.autotype_data(&id),
+                None => Err(session::LOCKED.to_owned()),
+            })
+            .and_then(|r| r)?;
         hotkey::wait_for_release()?;
         autotype::type_into(target, &steps)?;
         Ok(())
@@ -256,7 +276,7 @@ impl Recent {
 /// How long a copied secret stays on the clipboard.
 
 #[derive(Default, Clone)]
-struct Shared(Arc<Mutex<Session>>);
+struct Shared(Arc<Mutex<tabs::Tabs>>);
 
 /// The last thing we put on the clipboard, so that locking can clear it.
 #[derive(Default, Clone)]
@@ -271,9 +291,21 @@ impl LastCopy {
 }
 
 impl Shared {
+    /// Runs `f` on the active tab's session (every command works there).
     fn with<T>(&self, f: impl FnOnce(&mut Session) -> T) -> Result<T, String> {
         let mut guard = self.0.lock().map_err(|_| INTERNAL.to_owned())?;
+        Ok(f(guard.active()))
+    }
+
+    /// Runs `f` on all tabs.
+    fn tabs<T>(&self, f: impl FnOnce(&mut tabs::Tabs) -> T) -> Result<T, String> {
+        let mut guard = self.0.lock().map_err(|_| INTERNAL.to_owned())?;
         Ok(f(&mut guard))
+    }
+
+    /// Any tab unlocked (idle lock, the padlock on the icon).
+    fn any_unlocked(&self) -> bool {
+        self.tabs(|t| t.any_unlocked()).unwrap_or(false)
     }
 }
 
@@ -505,6 +537,57 @@ async fn export_csv(
     bytes.extend_from_slice(csv.as_bytes());
     std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
+}
+
+#[tauri::command]
+fn list_tabs(state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state.tabs(|t| t.views())
+}
+
+#[tauri::command]
+fn new_tab(state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state
+        .tabs(|t| t.open_new().map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+#[tauri::command]
+fn switch_tab(index: usize, state: State<'_, Shared>) -> Result<Vec<tabs::TabView>, String> {
+    state
+        .tabs(|t| t.switch(index).map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+/// Locks and closes a tab. Our clipboard value is cleared if that vault was
+/// open (it may have come from it).
+#[tauri::command]
+fn close_tab(
+    index: usize,
+    state: State<'_, Shared>,
+    last: State<'_, LastCopy>,
+) -> Result<Vec<tabs::TabView>, String> {
+    let was_open = state.tabs(|t| t.get(index).is_some_and(|s| s.is_unlocked()))?;
+    if was_open {
+        last.clear();
+    }
+    state
+        .tabs(|t| t.close(index).map(|()| t.views()))?
+        .map_err(str::to_owned)
+}
+
+#[derive(serde::Serialize)]
+struct TabState {
+    file: Option<SelectedFile>,
+    info: Option<VaultInfo>,
+}
+
+/// The active tab after a switch: its file and, if open, the vault.
+#[tauri::command]
+fn tab_state(state: State<'_, Shared>) -> Result<TabState, String> {
+    state.with(|s| TabState {
+        file: s.selected_file(),
+        info: s.info(),
+    })
 }
 
 /// Runs a session call off the main thread (KDF work, file I/O).
@@ -1138,10 +1221,15 @@ async fn unlock(
 ) -> Result<VaultInfo, String> {
     let password = Zeroizing::new(password);
     let shared = state.inner().clone();
-    let info = tauri::async_runtime::spawn_blocking(move || shared.with(|s| s.unlock(&password)))
-        .await
-        .map_err(|_| INTERNAL.to_owned())?
-        .and_then(|r| r)?;
+    let info = tauri::async_runtime::spawn_blocking(move || {
+        shared.tabs(|t| {
+            t.check_not_open_elsewhere().map_err(str::to_owned)?;
+            t.active().unlock(&password)
+        })
+    })
+    .await
+    .map_err(|_| INTERNAL.to_owned())?
+    .and_then(|r| r)?;
     recent.record(&state);
     Ok(info)
 }
@@ -1193,8 +1281,8 @@ fn copy_and_schedule_clear(value: &str, last: &LastCopy) -> Result<u64, String> 
 /// Ctrl+L, idle timeout and Windows session/power events alike.
 fn lock_all(shared: &Shared, last: &LastCopy) {
     last.clear();
-    let was_open = shared.with(|s| s.is_unlocked()).unwrap_or(false);
-    let _ = shared.with(Session::lock);
+    let was_open = shared.any_unlocked();
+    let _ = shared.tabs(tabs::Tabs::lock_all);
     // KeePass "Minimize main window after locking the workspace".
     if was_open && settings::minimize_on_lock() {
         if let Some(w) = main_window() {
@@ -1277,7 +1365,7 @@ fn start_autolock(shared: Shared, last: LastCopy) {
         .name("lav-idle".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(1));
-            let unlocked = shared.with(|s| s.is_unlocked()).unwrap_or(false);
+            let unlocked = shared.any_unlocked();
             if unlocked && autolock::system_idle() >= autolock::idle_timeout() {
                 lock_all(&shared, &last);
                 // KeePass "Exit instead of locking the workspace after the
@@ -1415,9 +1503,7 @@ pub fn run() {
             // Red padlock on the window and tray icon while locked.
             {
                 let shared = app.state::<Shared>().inner().clone();
-                lockicon::watch(app.handle(), move || {
-                    shared.with(|s| s.is_unlocked()).unwrap_or(false)
-                });
+                lockicon::watch(app.handle(), move || shared.any_unlocked());
             }
             Ok(())
         })
@@ -1487,6 +1573,11 @@ pub fn run() {
             merge_vault,
             export_kdbx,
             export_html,
+            list_tabs,
+            new_tab,
+            switch_tab,
+            close_tab,
+            tab_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LockAlperen");
