@@ -76,7 +76,8 @@ ciphertext = XChaCha20-Poly1305(key = payload_key, nonce = header.nonce,
 `VaultData` (CBOR, alan adlarıyla):
 
 ```
-VaultData { schema: 1, name, root: uuid, groups: [Group], entries: [Entry], created, modified }
+VaultData { schema: 1, name, root: uuid, groups: [Group], entries: [Entry], created, modified,
+            recycle_bin?: uuid }
 Group     { id, parent?, name, icon?, created, modified }
 Entry     { id, group, title, username, password, url, notes, totp?, tags: [str],
             fields: [ { name, value, protected } ], attachments: [ { name, data: bytes } ],
@@ -86,6 +87,11 @@ Entry     { id, group, title, username, password, url, notes, totp?, tags: [str]
 
 `icon` yalnızca uygulamanın yeniden kodladığı 64×64 PNG'yi tutar, indirilen ham resmi değil.
 Zaman damgaları Unix saniyesidir. Her kayıtta en fazla 20 geçmiş sürümü tutulur.
+
+`recycle_bin` (2026-11, isteğe bağlı): Geri Dönüşüm Kutusu klasörünün kimliği. İlk silmede
+kökün altında oluşturulur. Yoksa (eski dosya) `None` okunur; eski uygulama sürümleri alanı yok
+sayar ve kutuyu sıradan bir klasör olarak gösterir. Bu yüzden `schema` artırılmadı.
+`repair_structure`, var olmayan bir klasörü ya da kökü gösteren değeri temizler.
 
 Payload tam olarak **tek** bir CBOR değeri olmalıdır. Sonunda fazladan bayt varsa dosya reddedilir.
 

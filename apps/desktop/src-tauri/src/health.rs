@@ -73,7 +73,13 @@ pub fn is_weak(pw: &str) -> bool {
     pw.chars().count() < MIN_LEN || estimate_bits(pw) < WEAK_BITS
 }
 
+#[cfg(test)]
 pub fn check(entries: &[Entry], now: i64) -> Report {
+    check_refs(&entries.iter().collect::<Vec<_>>(), now)
+}
+
+/// Same as [`check`], over a chosen subset (e.g. without the recycle bin).
+pub fn check_refs(entries: &[&Entry], now: i64) -> Report {
     // Counts by password, borrowing the strings (no copies of secrets).
     let mut seen: HashMap<&str, usize> = HashMap::new();
     for e in entries {

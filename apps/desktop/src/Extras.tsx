@@ -241,6 +241,16 @@ export function ExtrasView(props: {
       <div className="meta-line muted small">
         <span>Oluşturuldu: {fmtDate(x.created)}</span>
         <span>Değiştirildi: {fmtDate(x.modified)}</span>
+        {x.expires != null && (
+          <span className={x.expires * 1000 <= Date.now() ? "badge" : undefined}>
+            {x.expires * 1000 <= Date.now() ? "Süresi doldu: " : "Son kullanma: "}
+            {new Date(x.expires * 1000).toLocaleDateString("tr-TR", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          </span>
+        )}
         {x.history.length > 0 && (
           <button type="button" className="link" onClick={() => setShowHistory((v) => !v)}>
             Geçmiş ({x.history.length} sürüm)

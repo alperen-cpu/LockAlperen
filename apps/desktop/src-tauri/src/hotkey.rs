@@ -27,9 +27,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_HOTKEY,
 };
 
-use crate::settings::Shortcut;
+use crate::settings::{Shortcut, ShowShortcut};
 
 const HOTKEY_ID: i32 = 1;
+/// The global "show window" shortcut (KeePass Ctrl+Alt+K).
+const SHOW_ID: i32 = 2;
 /// Posted to the hotkey thread when the setting changes.
 const WM_REFRESH: u32 = WM_APP + 1;
 pub const RELEASE_WAIT: Duration = Duration::from_secs(3);
@@ -42,6 +44,46 @@ static CURRENT: AtomicU8 = AtomicU8::new(Shortcut::Off as u8);
 static REGISTERED: AtomicBool = AtomicBool::new(false);
 /// The letter key of the registered shortcut, for `wait_for_release`.
 static LETTER: AtomicU32 = AtomicU32::new(0);
+/// The show-window shortcut registered right now (ShowShortcut as u8).
+static SHOW_CURRENT: AtomicU8 = AtomicU8::new(ShowShortcut::Off as u8);
+static SHOW_REGISTERED: AtomicBool = AtomicBool::new(false);
+
+/// Modifiers and letter of a show-window choice; None for Off.
+pub fn show_keys(s: ShowShortcut) -> Option<(HOT_KEY_MODIFIERS, u32)> {
+    match s {
+        ShowShortcut::Off => None,
+        ShowShortcut::CtrlAltK => Some((MOD_CONTROL | MOD_ALT, 0x4B)),
+        ShowShortcut::CtrlAltShiftW => Some((MOD_CONTROL | MOD_ALT | MOD_SHIFT, 0x57)),
+    }
+}
+
+/// Whether the show-window shortcut is registered right now.
+pub fn show_active() -> bool {
+    SHOW_REGISTERED.load(Ordering::Relaxed)
+}
+
+/// Registers the chosen show-window shortcut. Hotkey thread only.
+fn apply_show() {
+    let want = crate::settings::show_window_shortcut();
+    if SHOW_REGISTERED.load(Ordering::Relaxed) && SHOW_CURRENT.load(Ordering::Relaxed) == want as u8
+    {
+        return;
+    }
+    if SHOW_REGISTERED.swap(false, Ordering::Relaxed) {
+        // SAFETY: same thread and id as the registration.
+        unsafe { UnregisterHotKey(std::ptr::null_mut(), SHOW_ID) };
+    }
+    SHOW_CURRENT.store(ShowShortcut::Off as u8, Ordering::Relaxed);
+    if let Some((mods, vk)) = show_keys(want) {
+        // SAFETY: null window = post WM_HOTKEY to this thread's queue.
+        let ok =
+            unsafe { RegisterHotKey(std::ptr::null_mut(), SHOW_ID, mods | MOD_NOREPEAT, vk) } != 0;
+        if ok {
+            SHOW_CURRENT.store(want as u8, Ordering::Relaxed);
+        }
+        SHOW_REGISTERED.store(ok, Ordering::Relaxed);
+    }
+}
 
 /// Modifiers and letter of a choice; None for Off.
 pub fn keys(s: Shortcut) -> Option<(HOT_KEY_MODIFIERS, u32)> {
@@ -98,7 +140,7 @@ pub fn refresh() {
 
 /// Starts the hotkey thread. `on_hotkey` runs on that thread with the
 /// window that was in front when the keys were pressed.
-pub fn start(on_hotkey: impl Fn(HWND) + Send + 'static) {
+pub fn start(on_hotkey: impl Fn(HWND) + Send + 'static, on_show: impl Fn() + Send + 'static) {
     let spawned = std::thread::Builder::new()
         .name("lav-hotkey".into())
         .spawn(move || {
@@ -109,6 +151,7 @@ pub fn start(on_hotkey: impl Fn(HWND) + Send + 'static) {
             // SAFETY: no preconditions.
             THREAD.store(unsafe { GetCurrentThreadId() }, Ordering::Relaxed);
             apply();
+            apply_show();
             // SAFETY: standard message loop on the thread that owns the hotkey.
             while unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
                 match msg.message {
@@ -116,7 +159,11 @@ pub fn start(on_hotkey: impl Fn(HWND) + Send + 'static) {
                         // SAFETY: no preconditions.
                         on_hotkey(unsafe { GetForegroundWindow() });
                     }
-                    WM_REFRESH => apply(),
+                    WM_HOTKEY if msg.wParam == SHOW_ID as usize => on_show(),
+                    WM_REFRESH => {
+                        apply();
+                        apply_show();
+                    }
                     _ => {}
                 }
             }
@@ -163,6 +210,13 @@ mod tests {
                     assert!(!seen.contains(&k), "{s:?} repeats another choice");
                     seen.push(k);
                 }
+            }
+        }
+        // The show-window keys never collide with an auto-type choice.
+        for s in ShowShortcut::ALL {
+            match show_keys(s) {
+                None => assert_eq!(s, ShowShortcut::Off),
+                Some(k) => assert!(!seen.contains(&k), "{s:?}"),
             }
         }
     }

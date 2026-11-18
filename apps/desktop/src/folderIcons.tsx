@@ -47,6 +47,7 @@ import {
   faStore,
   faTag,
   faTerminal,
+  faTrash,
   faUser,
   faUsers,
   faUtensils,
@@ -105,6 +106,7 @@ const CHOICES: [IconDefinition, string][] = [
   [faUtensils, "Yemek"],
   [faPaw, "Evcil hayvan"],
   [faLeaf, "Doğa"],
+  [faTrash, "Çöp kutusu"],
 ];
 
 export const FOLDER_ICONS = CHOICES.map(([def, label]) => ({ key: def.iconName, label, def }));

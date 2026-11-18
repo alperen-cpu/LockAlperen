@@ -725,17 +725,35 @@ function VaultScreen({
     return () => window.removeEventListener("keydown", onKey);
   }, [navOpen]);
 
-  // Ctrl+N: new entry.
+  // Ctrl+N: new entry. Ctrl+K: duplicate the selected entry (as in KeePass).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "n" && editing === undefined) {
+      if (!e.ctrlKey || e.altKey || editing !== undefined) return;
+      const k = e.key.toLowerCase();
+      if (k === "n") {
         e.preventDefault();
         setEditing(null);
+      } else if (k === "k" && selected !== null) {
+        e.preventDefault();
+        void duplicate(selected);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing]);
+  });
+
+  async function duplicate(id: string) {
+    try {
+      const r = await api.duplicateEntry(id);
+      onEntries(r.entries);
+      setSelected(r.id);
+      setView("detail");
+      const t = r.entries.find((e) => e.id === r.id)?.title ?? "";
+      setToast(`"${t}" oluşturuldu.`);
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
 
   // All folders (also empty ones), refreshed whenever the list changes.
   const [allGroups, setAllGroups] = useState<api.GroupView[]>([]);
@@ -760,9 +778,13 @@ function VaultScreen({
     const out: (readonly [string, GroupRow])[] = [];
     const seen = new Set<string>();
     const walk = (parent: string | null, depth: number) => {
+      // By name; the recycle bin always last.
       const list = (kids.get(parent) ?? [])
         .slice()
-        .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+        .sort(
+          (a, b) =>
+            Number(a.recycleBin) - Number(b.recycleBin) || a.name.localeCompare(b.name, "tr"),
+        );
       for (const g of list) {
         if (seen.has(g.id)) continue; // Rust repairs cycles; never loop here
         seen.add(g.id);
@@ -821,7 +843,27 @@ function VaultScreen({
   // Entry list style (Settings: listStyle), remembered across starts.
   const [listStyle, setListStyle] = useState<api.ListStyle>("list");
   useEffect(() => {
-    api.getSettings().then((s) => setListStyle(s.listStyle), () => {});
+    api.getSettings().then(
+      (s) => {
+        setListStyle(s.listStyle);
+        // KeePass "Show expired entries (if any) on opening the database",
+        // plus those expiring within a week. Recycle bin left out.
+        if (s.showExpiredOnOpen) {
+          const now = Date.now() / 1000;
+          const live = open.entries.filter((e) => !e.inRecycleBin && e.expires != null);
+          const expired = live.filter((e) => e.expires! <= now).length;
+          const soon = live.filter((e) => e.expires! > now && e.expires! <= now + 7 * 86400).length;
+          if (expired + soon > 0) {
+            const parts = [];
+            if (expired) parts.push(`${expired} kaydın süresi dolmuş`);
+            if (soon) parts.push(`${soon} kaydın süresi 7 gün içinde dolacak`);
+            setToast(parts.join(", ") + ".");
+            if (expired) setGroup("health");
+          }
+        }
+      },
+      () => {},
+    );
   }, []);
   async function changeListStyle(style: api.ListStyle) {
     setListStyle(style);
@@ -895,15 +937,56 @@ function VaultScreen({
     }
   }
 
+  // Recycle bin (KeePass-style): deleting moves things there; deleting
+  // inside it, or emptying it, is permanent and asks twice.
+  const binId = allGroups.find((g) => g.recycleBin)?.id ?? null;
+  const rootId = allGroups.find((g) => g.parent === null)?.id ?? null;
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+
   async function removeFolder(id: string) {
-    if (confirmDel !== id) {
+    const permanent = api.inRecycleBin(id, allGroups);
+    if (permanent && confirmDel !== id) {
       setConfirmDel(id);
       return;
     }
+    const name = allGroups.find((g) => g.id === id)?.name ?? "";
     try {
       onEntries(await api.deleteGroup(id));
       setConfirmDel(null);
       setGroup(null);
+      setGroupTick((t) => t + 1);
+      setToast(
+        permanent
+          ? `"${name}" kalıcı olarak silindi.`
+          : `"${name}" Geri Dönüşüm Kutusu'na taşındı.`,
+      );
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+  }
+
+  async function emptyBin() {
+    if (!confirmEmpty) {
+      setConfirmEmpty(true);
+      return;
+    }
+    try {
+      onEntries(await api.emptyRecycleBin());
+      setGroupTick((t) => t + 1);
+      setToast("Geri Dönüşüm Kutusu boşaltıldı.");
+    } catch (e) {
+      setToast(api.errorText(e));
+    }
+    setConfirmEmpty(false);
+  }
+
+  /** Puts an entry from the recycle bin back into the main folder. */
+  async function restoreFromBin(id: string) {
+    if (!rootId) return;
+    try {
+      onEntries(await api.moveEntry(id, rootId));
+      const root = allGroups.find((g) => g.id === rootId)?.name ?? "";
+      setToast(`Kayıt "${root}" klasörüne geri yüklendi.`);
     } catch (e) {
       setToast(api.errorText(e));
     }
@@ -955,12 +1038,13 @@ function VaultScreen({
     const q = query.trim().toLocaleLowerCase("tr");
     return open.entries.filter(
       (e) =>
-        (group === null ||
-          (group === "totp"
-            ? e.hasTotp
+        (group === null
+          ? !e.inRecycleBin
+          : group === "totp"
+            ? e.hasTotp && !e.inRecycleBin
             : group === "health"
               ? issuesOf.has(e.id)
-              : e.groupId === group)) &&
+              : e.groupId === group) &&
         (!q || [e.title, e.username, e.url].some((f) => f.toLocaleLowerCase("tr").includes(q))),
     );
   }, [open.entries, query, group, issuesOf]);
@@ -1102,7 +1186,8 @@ function VaultScreen({
             onClick={() => setGroup(null)}
           >
             <ListIcon />
-            Tüm kayıtlar<span className="count">{open.entries.length}</span>
+            Tüm kayıtlar
+            <span className="count">{open.entries.filter((e) => !e.inRecycleBin).length}</span>
           </button>
           <button
             type="button"
@@ -1111,7 +1196,9 @@ function VaultScreen({
           >
             <ShieldIcon />
             TOTP kodları
-            <span className="count">{open.entries.filter((e) => e.hasTotp).length}</span>
+            <span className="count">
+              {open.entries.filter((e) => e.hasTotp && !e.inRecycleBin).length}
+            </span>
           </button>
           {groups.length > 0 && <div className="lbl section">Klasörler</div>}
           {groups.map(([id, g]) =>
@@ -1197,6 +1284,22 @@ function VaultScreen({
                         <MoveIcon />
                       </button>
                     )}
+                    {id === binId && (
+                      <button
+                        type="button"
+                        className={"ghost-icon tiny" + (confirmEmpty ? " danger-bg" : "")}
+                        aria-label="Geri Dönüşüm Kutusu'nu boşalt"
+                        title={
+                          confirmEmpty
+                            ? `Emin misiniz? İçindeki ${g.total} kayıt kalıcı olarak silinecek. Boşaltmak için tekrar tıklayın.`
+                            : "Boşalt"
+                        }
+                        onClick={() => void emptyBin()}
+                        onBlur={() => setConfirmEmpty(false)}
+                      >
+                        <FaIcon def={folderIconDef("trash")!} size={13} />
+                      </button>
+                    )}
                     {!g.root && (
                       <button
                         type="button"
@@ -1204,8 +1307,10 @@ function VaultScreen({
                         aria-label="Klasörü sil"
                         title={
                           confirmDel === id
-                            ? `Emin misiniz? Klasör, alt klasörleri ve ${g.total} kayıt silinecek. Silmek için tekrar tıklayın.`
-                            : "Sil"
+                            ? `Emin misiniz? Klasör, alt klasörleri ve ${g.total} kayıt kalıcı olarak silinecek. Silmek için tekrar tıklayın.`
+                            : api.inRecycleBin(id, allGroups)
+                              ? "Kalıcı olarak sil"
+                              : "Sil (Geri Dönüşüm Kutusu'na taşınır)"
                         }
                         onClick={() => removeFolder(id)}
                         onBlur={() => setConfirmDel(null)}
@@ -1531,6 +1636,24 @@ function VaultScreen({
                   title="Uygulama küçülür; 10 sn içinde hedef pencereye geçin. Başlığı doğrulanmayan pencereye yazılmaz."
                 >
                   Otomatik yaz
+                </button>
+                {current.inRecycleBin && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void restoreFromBin(current.id)}
+                    title="Kaydı Geri Dönüşüm Kutusu'ndan ana klasöre taşır"
+                  >
+                    Geri yükle
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void duplicate(current.id)}
+                  title="Aynı klasörde bir kopyasını oluşturur (Ctrl+K). Geçmiş kopyalanmaz."
+                >
+                  Çoğalt
                 </button>
                 <button
                   type="button"

@@ -27,6 +27,10 @@ export interface EntrySummary {
   hasTotp: boolean;
   /** data: URL of a sanitized PNG, or null. */
   icon: string | null;
+  /** In the recycle bin: left out of "Tüm kayıtlar" and TOTP. */
+  inRecycleBin: boolean;
+  /** Unix seconds; null = never expires. */
+  expires: number | null;
 }
 
 /** Opens the native file picker. Returns null if the user cancelled. */
@@ -87,7 +91,24 @@ export interface GroupView {
   totalEntries: number;
   /** Font Awesome key chosen in the app, or null. */
   icon: string | null;
+  /** This folder is the recycle bin. */
+  recycleBin: boolean;
 }
+
+/** True if the folder is the recycle bin or inside it. */
+export function inRecycleBin(groupId: string, groups: GroupView[]): boolean {
+  const seen = new Set<string>();
+  let cur = groups.find((g) => g.id === groupId);
+  while (cur && !seen.has(cur.id)) {
+    if (cur.recycleBin) return true;
+    seen.add(cur.id);
+    cur = groups.find((g) => g.id === cur!.parent);
+  }
+  return false;
+}
+
+/** Deletes everything in the recycle bin for good. */
+export const emptyRecycleBin = () => invoke<EntrySummary[]>("empty_recycle_bin");
 
 /** Holds secrets while the editor is open. */
 export interface EntryForm {
@@ -103,6 +124,8 @@ export interface EntryForm {
   totp: string;
   /** Custom fields; null/absent = keep unchanged. */
   fields?: FormField[] | null;
+  /** Expiry as Unix seconds (KeePass "Expires"); null = never. */
+  expires?: number | null;
 }
 
 export interface FormField {
@@ -142,6 +165,10 @@ export const entryForm = (id: string) => invoke<EntryForm>("entry_form", { id })
 /** Saves to disk; nothing changes on screen if the save fails. */
 export const saveEntry = (form: EntryForm) =>
   invoke<{ id: string; entries: EntrySummary[] }>("save_entry", { form });
+
+/** KeePass "Duplicate Entry": a copy in the same folder, without history. */
+export const duplicateEntry = (id: string) =>
+  invoke<{ id: string; entries: EntrySummary[] }>("duplicate_entry", { id });
 
 export const deleteEntry = (id: string) => invoke<EntrySummary[]>("delete_entry", { id });
 
@@ -201,6 +228,8 @@ export interface EntryExtras {
   hasNotes: boolean;
   created: number;
   modified: number;
+  /** Unix seconds; null = never expires. */
+  expires: number | null;
 }
 
 export type Extra = { kind: "notes" } | { kind: "custom"; index: number };
@@ -231,7 +260,33 @@ export interface Settings {
   clipboardSeconds: number;
   /** Lock on Win+L, sleep, disconnect and logoff. */
   lockOnSystemEvents: boolean;
+  // ----- From KeePass "Options" -----
+  lockOnMinimize: boolean;
+  exitInsteadOfLock: boolean;
+  minimizeAfterCopy: boolean;
+  minimizeOnLock: boolean;
+  alwaysOnTop: boolean;
+  minimizeToTray: boolean;
+  startMinimized: boolean;
+  showWindowShortcut: ShowShortcut;
+  /** Mirrors the HKCU Run key (Rust reads and writes it). */
+  runAtStartup: boolean;
+  showExpiredOnOpen: boolean;
+  autoGeneratePassword: boolean;
+  generator: GenOptions;
 }
+
+export type ShowShortcut = "off" | "ctrl-alt-k" | "ctrl-alt-shift-w";
+
+export const SHOW_SHORTCUTS: { value: ShowShortcut; label: string }[] = [
+  { value: "ctrl-alt-k", label: "Ctrl+Alt+K (KeePass ile aynı)" },
+  { value: "ctrl-alt-shift-w", label: "Ctrl+Alt+Shift+W" },
+  { value: "off", label: "Kapalı" },
+];
+
+/** Generator length limits (Rust clamps to the same). */
+export const GEN_MIN_LENGTH = 8;
+export const GEN_MAX_LENGTH = 128;
 
 export const CLIPBOARD_CHOICES = [5, 10, 12, 15, 20, 30, 45, 60, 90];
 
@@ -273,7 +328,10 @@ export const SHORTCUTS: { value: Shortcut; label: string }[] = [
 ];
 
 /** False if the shortcut is off, or another program already owns it. */
-export const hotkeyActive = () => invoke<boolean>("hotkey_active");
+/** Whether each global shortcut is registered (false: off, or taken by
+ *  another program). */
+export const hotkeyActive = () =>
+  invoke<{ autotype: boolean; showWindow: boolean }>("hotkey_active");
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60];
 
@@ -326,4 +384,30 @@ export const openUrl = (id: string) => invoke<void>("open_url", { id });
 /** Rust returns user-facing strings; anything else is shown generically. */
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : "Beklenmeyen bir hata oluştu.";
+}
+
+// ----- Expiry dates (local calendar day <-> Unix seconds) -----
+
+/** Local midnight of the day `months` from today, in Unix seconds. */
+export function expiryAfterMonths(months: number): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setMonth(d.getMonth() + months);
+  return Math.floor(d.getTime() / 1000);
+}
+
+/** `YYYY-MM-DD` (local) for an <input type="date">. */
+export function dateInputValue(unix: number): string {
+  const d = new Date(unix * 1000);
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${p(d.getFullYear(), 4)}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Local midnight of a `YYYY-MM-DD` value; null if empty or invalid. */
+export function fromDateInput(value: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const t = Math.floor(d.getTime() / 1000);
+  return Number.isFinite(t) && t >= 0 ? t : null;
 }

@@ -6,7 +6,7 @@ import * as api from "./api";
 import { UpdateSettings } from "./Update";
 import { BackIcon, DownloadIcon } from "./icons";
 
-type Category = "security" | "autotype" | "look" | "window" | "updates" | "data";
+type Category = "security" | "autotype" | "generator" | "look" | "window" | "updates" | "data";
 
 const CATEGORIES: { id: Category; label: string; intro: string }[] = [
   {
@@ -19,8 +19,17 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     label: "Otomatik yazma",
     intro: "Kullanıcı adını ve parolayı başka bir pencereye yazma.",
   },
+  {
+    id: "generator",
+    label: "Parola üretici",
+    intro: "Yeni kayıtlar için üretilen parolanın ayarları (KeePass'teki otomatik üretilen parola profili).",
+  },
   { id: "look", label: "Görünüm", intro: "Renk teması." },
-  { id: "window", label: "Pencere", intro: "Pencereyi kapattığınızda ne olacağı." },
+  {
+    id: "window",
+    label: "Pencere",
+    intro: "Pencerenin nasıl davranacağı, kısayol ve Windows ile başlatma.",
+  },
   { id: "updates", label: "Güncellemeler", intro: "Yeni sürümler GitHub'dan imzası doğrulanarak kurulur." },
   {
     id: "data",
@@ -76,9 +85,23 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
 
   // null = not known yet.
   const [hotkeyOk, setHotkeyOk] = useState<boolean | null>(null);
+  const [showKeyOk, setShowKeyOk] = useState<boolean | null>(null);
   const refreshHotkey = () =>
     // The hotkey thread applies the setting asynchronously.
-    window.setTimeout(() => api.hotkeyActive().then(setHotkeyOk, () => setHotkeyOk(null)), 300);
+    window.setTimeout(
+      () =>
+        api.hotkeyActive().then(
+          (r) => {
+            setHotkeyOk(r.autotype);
+            setShowKeyOk(r.showWindow);
+          },
+          () => {
+            setHotkeyOk(null);
+            setShowKeyOk(null);
+          },
+        ),
+      300,
+    );
   useEffect(() => {
     refreshHotkey();
   }, []);
@@ -129,6 +152,26 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
 
   const current = CATEGORIES.find((c) => c.id === category)!;
   const off = settings === null;
+
+  type BoolKey = {
+    [K in keyof api.Settings]: api.Settings[K] extends boolean ? K : never;
+  }[keyof api.Settings];
+  /** One on/off setting row. */
+  function toggle(key: BoolKey, title: string, text: string) {
+    const id = `s-${key}`;
+    return (
+      <Row title={<label htmlFor={id}>{title}</label>} text={text}>
+        <input
+          id={id}
+          type="checkbox"
+          className="switch"
+          checked={settings?.[key] ?? false}
+          disabled={off}
+          onChange={(e) => void change({ [key]: e.target.checked } as Partial<api.Settings>)}
+        />
+      </Row>
+    );
+  }
 
   return (
     <div className="settings-page">
@@ -218,6 +261,21 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
                   ))}
                 </select>
               </Row>
+              {toggle(
+                "lockOnMinimize",
+                "Pencere küçültülünce kilitle",
+                "Pencereyi görev çubuğuna ya da tepsiye küçültünce kasa kilitlenir. Otomatik yazma ve “kopyalayınca küçült” bunu tetiklemez.",
+              )}
+              {toggle(
+                "exitInsteadOfLock",
+                "Süre dolunca kilitlemek yerine kapat",
+                "Otomatik kilit süresi dolunca kasa kilitlenir ve uygulama tamamen kapanır.",
+              )}
+              {toggle(
+                "showExpiredOnOpen",
+                "Açınca süresi dolan kayıtları göster",
+                "Kilidi açınca süresi dolmuş ya da 7 gün içinde dolacak kayıt varsa bildirir ve Parola sağlığı listesini açar.",
+              )}
             </section>
 
             <form className="set-card pad" onSubmit={changeMaster}>
@@ -316,6 +374,108 @@ export function SettingsPage(props: { onClose: () => void; onImport: () => void 
                 onChange={(e) => void change({ closeToTray: e.target.checked })}
               />
             </Row>
+            {toggle(
+              "minimizeToTray",
+              "Küçültünce tepsiye gizle",
+              "Küçült düğmesi pencereyi görev çubuğu yerine saatin yanındaki simgelere gizler.",
+            )}
+            {toggle(
+              "minimizeAfterCopy",
+              "Kopyaladıktan sonra pencereyi küçült",
+              "Kullanıcı adı, parola ya da kod kopyalanınca pencere küçülür; yapıştıracağınız pencere öne gelir.",
+            )}
+            {toggle(
+              "minimizeOnLock",
+              "Kilitleyince pencereyi küçült",
+              "Kasa elle ya da otomatik kilitlenince pencere küçülür.",
+            )}
+            {toggle("alwaysOnTop", "Her zaman üstte", "Pencere diğer pencerelerin üzerinde kalır.")}
+            {toggle(
+              "startMinimized",
+              "Küçültülmüş başlat",
+              "Uygulama açılınca pencere küçük (tepsiye gizleme açıksa tepside) başlar. Kasa her zaman kilitli başlar.",
+            )}
+            {toggle(
+              "runAtStartup",
+              "Windows açılışında başlat",
+              "Oturum açınca LockAlperen kendiliğinden başlar (yalnızca sizin kullanıcı hesabınız için; yönetici izni gerekmez).",
+            )}
+            <Row
+              title={<label htmlFor="s-show">Pencereyi gösterme kısayolu</label>}
+              text="Her yerden basınca LockAlperen penceresi öne gelir."
+            >
+              <select
+                id="s-show"
+                className="text-input set-select"
+                value={settings?.showWindowShortcut ?? ""}
+                disabled={off}
+                onChange={(e) =>
+                  void change({ showWindowShortcut: e.target.value as api.ShowShortcut })
+                }
+              >
+                {api.SHOW_SHORTCUTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </Row>
+            {settings !== null && settings.showWindowShortcut !== "off" && showKeyOk === false && (
+              <p className="warn set-note">
+                Bu kısayol başka bir program tarafından kullanılıyor (ör. açık olan KeePass), bu
+                yüzden çalışmıyor. KeePass'i kapatın ya da başka bir kısayol seçin.
+              </p>
+            )}
+          </section>
+        )}
+
+        {category === "generator" && settings !== null && (
+          <section className="set-card">
+            {toggle(
+              "autoGeneratePassword",
+              "Yeni kayda otomatik parola üret",
+              "Yeni kayıt açılınca parola alanı aşağıdaki ayarlarla üretilmiş bir parolayla dolu gelir.",
+            )}
+            <Row
+              title={<label htmlFor="s-len">Uzunluk</label>}
+              text={`${api.GEN_MIN_LENGTH}–${api.GEN_MAX_LENGTH} karakter.`}
+            >
+              <input
+                id="s-len"
+                type="number"
+                className="text-input set-select"
+                min={api.GEN_MIN_LENGTH}
+                max={api.GEN_MAX_LENGTH}
+                value={settings.generator.length}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n) && n >= api.GEN_MIN_LENGTH && n <= api.GEN_MAX_LENGTH) {
+                    void change({ generator: { ...settings.generator, length: n } });
+                  }
+                }}
+              />
+            </Row>
+            {(
+              [
+                ["uppercase", "Büyük harf (A–Z)"],
+                ["lowercase", "Küçük harf (a–z)"],
+                ["digits", "Rakam (0–9)"],
+                ["symbols", "Sembol (!@#…)"],
+                ["excludeAmbiguous", "Karışabilen karakterleri çıkar (I, l, 1, O, 0…)"],
+              ] as const
+            ).map(([k, label]) => (
+              <Row key={k} title={<label htmlFor={`s-g-${k}`}>{label}</label>}>
+                <input
+                  id={`s-g-${k}`}
+                  type="checkbox"
+                  className="switch"
+                  checked={settings.generator[k]}
+                  onChange={(e) =>
+                    void change({ generator: { ...settings.generator, [k]: e.target.checked } })
+                  }
+                />
+              </Row>
+            ))}
           </section>
         )}
 

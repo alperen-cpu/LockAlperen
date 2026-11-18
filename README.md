@@ -6,7 +6,7 @@ Windows için yerel, açık kaynaklı ve sade bir parola yöneticisi. KeePass'e 
   `.lav` dosyasıdır ve hiçbir sunucuya gönderilmez.
 - **Modern kriptografi:** Argon2id, HKDF-SHA256 ve XChaCha20-Poly1305 ([format](docs/FORMAT.md))
 - **KeePass'ten geçiş:** `.kdbx` (KDBX 4) dosyalarını içe aktarma
-- **Günlük kullanım:** Kayıt ekleme ve düzenleme, klasör ağacı (sürükle-bırak ile taşıma), parola
+- **Günlük kullanım:** Kayıt ekleme, düzenleme ve çoğaltma (Ctrl+K), son kullanma tarihi, Geri Dönüşüm Kutusu, klasör ağacı (sürükle-bırak ile taşıma), parola
   üretici, TOTP kodları, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
 - **Otomatik yazma:** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
   doğrulanan pencereye yazar

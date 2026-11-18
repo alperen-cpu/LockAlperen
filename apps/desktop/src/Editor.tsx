@@ -7,6 +7,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import * as api from "./api";
 import type { EntryForm, EntrySummary, FormField, GenOptions, GroupView } from "./api";
+import { dateInputValue, expiryAfterMonths, fromDateInput } from "./api";
 import { EyeIcon, EyeOffIcon, KeyIcon, PlusIcon, RefreshIcon, XIcon } from "./icons";
 
 const DEFAULT_GEN: GenOptions = {
@@ -53,6 +54,14 @@ export function Editor(props: {
     (async () => {
       try {
         const gs = await api.listGroups();
+        // KeePass "auto-generated passwords for new entries": the saved
+        // generator profile, and a ready password for a new entry.
+        const s = await api.getSettings().catch(() => null);
+        if (s && alive) setGen(s.generator);
+        const fresh =
+          props.id === null && s?.autoGeneratePassword
+            ? await api.generatePassword(s.generator).catch(() => "")
+            : "";
         const f: EntryForm =
           props.id !== null
             ? await api.entryForm(props.id)
@@ -61,12 +70,13 @@ export function Editor(props: {
                 groupId: props.defaultGroupId ?? gs[0]?.id ?? "",
                 title: "",
                 username: "",
-                password: "",
+                password: fresh,
                 url: "",
                 notes: "",
                 tags: [],
                 totp: "",
                 fields: [],
+                expires: null,
               };
         if (!alive) return;
         setGroups(gs);
@@ -146,6 +156,8 @@ export function Editor(props: {
     return <div className="editor">{error ? <p className="error">{error}</p> : null}</div>;
   }
   const groupName = groups.find((g) => g.id === form.groupId)?.name ?? "";
+  // Deleting from the recycle bin is permanent; elsewhere it moves there.
+  const binned = form.id !== null && api.inRecycleBin(form.groupId, groups);
   const bits = entropyBits(gen);
 
   return (
@@ -158,8 +170,24 @@ export function Editor(props: {
         </span>
         <div className="editor-actions">
           {form.id && (
-            <button type="button" className="btn danger" onClick={remove} disabled={busy}>
-              {confirmDelete ? "Emin misiniz? Sil" : "Sil"}
+            <button
+              type="button"
+              className="btn danger"
+              onClick={remove}
+              disabled={busy}
+              title={
+                binned
+                  ? "Geri Dönüşüm Kutusu'ndaki kayıt kalıcı olarak silinir."
+                  : "Kayıt Geri Dönüşüm Kutusu'na taşınır; oradan geri alınabilir."
+              }
+            >
+              {binned
+                ? confirmDelete
+                  ? "Emin misiniz? Kalıcı olarak sil"
+                  : "Kalıcı olarak sil"
+                : confirmDelete
+                  ? "Emin misiniz? Çöpe taşı"
+                  : "Sil"}
             </button>
           )}
           <button type="button" className="btn" onClick={() => props.onClose()} disabled={busy}>
@@ -355,6 +383,50 @@ export function Editor(props: {
               onChange={(e) => setTagsText(e.target.value)}
               autoComplete="off"
             />
+          </div>
+
+          <div className="field">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.expires != null}
+                onChange={(e) =>
+                  set({ expires: e.target.checked ? expiryAfterMonths(3) : null })
+                }
+              />
+              Son kullanma tarihi
+            </label>
+            {form.expires != null && (
+              <div className="field-row">
+                <input
+                  type="date"
+                  className="text-input"
+                  aria-label="Son kullanma tarihi"
+                  value={dateInputValue(form.expires)}
+                  min="1970-01-01"
+                  max="9999-12-31"
+                  onChange={(e) => {
+                    const t = fromDateInput(e.target.value);
+                    if (t !== null) set({ expires: t });
+                  }}
+                />
+                <select
+                  className="text-input"
+                  aria-label="Hızlı seç"
+                  value=""
+                  onChange={(e) => {
+                    const m = Number(e.target.value);
+                    if (m > 0) set({ expires: expiryAfterMonths(m) });
+                  }}
+                >
+                  <option value="">Hızlı seç…</option>
+                  <option value="1">1 ay sonra</option>
+                  <option value="3">3 ay sonra</option>
+                  <option value="6">6 ay sonra</option>
+                  <option value="12">1 yıl sonra</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="field">
