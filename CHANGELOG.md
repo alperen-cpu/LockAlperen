@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmadı]: Linux (Ubuntu masaüstü)
+## [0.9.0] - 2026-11-19: Linux (Ubuntu masaüstü)
 
 - **Linux desteği:** Ubuntu 22.04 ve sonrası için `.deb` ve AppImage. İkisi de uygulama içinden
   güncellenir (`.deb` güncellemesi yönetici parolası ister).

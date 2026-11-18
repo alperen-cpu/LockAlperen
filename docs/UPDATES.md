@@ -85,7 +85,8 @@ git push origin v0.2.0
 `.github/workflows/release.yml` sırasıyla şunları yapar:
 1. Etiketin üç sürüm dosyasıyla aynı olduğunu ve `pubkey`'in dolu olduğunu kontrol eder.
 2. Testleri çalıştırır.
-3. Kurulumu derleyip imzalar (`tauri.release.conf.json`: `createUpdaterArtifacts`).
+3. Windows kurulumunu (NSIS) ve Linux paketlerini (`.deb`, AppImage) paralel derleyip imzalar
+   (`tauri.release.conf.json`: `createUpdaterArtifacts`).
 4. **İmzayı uygulamadaki açık anahtarla doğrular** (`cargo run --example verify_release`).
    Böylece yanlış anahtarla imzalanmış, hiçbir kopyanın kuramayacağı bir sürüm yayınlanmaz.
 5. `latest.json`'u yazar.
