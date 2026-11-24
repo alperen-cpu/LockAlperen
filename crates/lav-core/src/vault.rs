@@ -486,6 +486,11 @@ impl SaveLock {
         let path = sibling(vault, "lock");
         let mut opts = fs::OpenOptions::new();
         opts.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
@@ -561,10 +566,16 @@ fn write_new_synced(
     after_write: Option<SaveEvent>,
     after_sync: SaveEvent,
 ) -> Result<()> {
-    let mut f = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)?;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    // The vault (and its .bak, made by rename) is only the user's: 0600
+    // whatever the umask (0002 would let a group member replace it).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
     let r = f
         .write_all(bytes)
         .and_then(|_| after_write.map_or(Ok(()), save_event))

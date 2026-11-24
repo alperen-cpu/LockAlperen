@@ -6,7 +6,7 @@
 //! path back; it picks an item by its index and Rust resolves it.
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -93,16 +93,8 @@ pub fn load(file: &Path) -> Vec<Item> {
 /// Writes the list via a temp file and rename, so a crash never leaves a
 /// half-written file.
 pub fn save(file: &Path, list: &[Item]) -> std::io::Result<()> {
-    if let Some(dir) = file.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = file.with_extension("json.tmp");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(&serde_json::to_vec_pretty(list).map_err(std::io::Error::other)?)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, file)
+    let bytes = serde_json::to_vec_pretty(list).map_err(std::io::Error::other)?;
+    crate::private::write_atomic(file, "json.tmp", &bytes)
 }
 
 pub fn now() -> u64 {

@@ -6,7 +6,6 @@
 //! Started from an AppImage, the entry names the AppImage file itself
 //! (`$APPIMAGE`): the running binary lives in a temporary mount.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const FILE_NAME: &str = "com.alperen.lockalperen.desktop";
@@ -80,14 +79,10 @@ fn set_in(dir: &Path, on: bool, exe: &Path) -> Result<(), &'static str> {
     }
     let text = entry(exe).ok_or(FAILED)?;
     (|| -> std::io::Result<()> {
+        // 0600 like the app's other files: a group-writable autostart
+        // entry would let a group member choose what runs at login.
         std::fs::create_dir_all(dir)?;
-        let tmp = file.with_extension("desktop.tmp");
-        {
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(text.as_bytes())?;
-            f.sync_all()?;
-        }
-        std::fs::rename(&tmp, &file)
+        crate::private::write_atomic(&file, "desktop.tmp", text.as_bytes())
     })()
     .map_err(|_| FAILED)
 }

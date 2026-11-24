@@ -15,6 +15,7 @@ compile_error!("LockAlperen desktop supports Windows and Linux only.");
 
 mod autolock;
 mod autotype;
+mod bridge;
 mod browser;
 #[cfg_attr(target_os = "linux", path = "linux/clipboard.rs")]
 mod clipboard;
@@ -27,6 +28,7 @@ mod health;
 mod hotkey;
 mod import;
 mod lockicon;
+mod private;
 mod recent;
 mod session;
 mod settings;
@@ -558,7 +560,7 @@ async fn export_csv(
     let mut bytes = Zeroizing::new(Vec::with_capacity(csv.len() + 3));
     bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
     bytes.extend_from_slice(csv.as_bytes());
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -881,7 +883,7 @@ async fn gdrive_restore(
     if busy {
         return Err("Bu dosya bir sekmede açık; üzerine yazılamaz. Başka bir yer seçin.".into());
     }
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(Some(gdrive::display_name(&path)))
 }
 
@@ -1171,7 +1173,7 @@ async fn export_kdbx(
     else {
         return Ok(false);
     };
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -1198,7 +1200,7 @@ async fn export_html(
     else {
         return Ok(false);
     };
-    std::fs::write(&path, page.as_bytes()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, page.as_bytes()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -1363,6 +1365,29 @@ fn after_copy(window: &tauri::WebviewWindow) {
 
 /// Writes an attachment where the user chooses (Rust save dialog). The file
 /// on disk is NOT encrypted; the UI says so.
+/// The name suggested in the save dialog for an attachment. The name comes
+/// from the vault (an imported KDBX is attacker-controlled): only its last
+/// path component is kept, control and bidi-override characters (which can
+/// disguise `exe.txt` as `txt.exe`) are dropped, and Windows-reserved
+/// characters become `_`. The user still chooses the folder and name.
+fn suggested_file_name(name: &str) -> String {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let cleaned: String = last
+        .chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        })
+        .map(|c| if matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim();
+    if cleaned.is_empty() {
+        "ek".to_owned()
+    } else {
+        cleaned.to_owned()
+    }
+}
+
 #[tauri::command]
 async fn save_attachment(
     id: String,
@@ -1371,6 +1396,7 @@ async fn save_attachment(
     state: State<'_, Shared>,
 ) -> Result<bool, String> {
     let (name, bytes) = state.with(|s| s.attachment(&id, index)).and_then(|r| r)?;
+    let name = suggested_file_name(&name);
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
@@ -1383,7 +1409,7 @@ async fn save_attachment(
         return Ok(false);
     };
     let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -1773,6 +1799,26 @@ fn start_autolock(shared: Shared, last: LastCopy) {
         .expect("idle thread");
 }
 
+/// Browser native-messaging host mode: the browser starts this binary (via
+/// `nm-host.sh`) as `--lav-nm-host <socket> chrome-extension://<id>/`. It
+/// only relays frames to the running app and exits (src/bridge/linux.rs).
+/// Returns the exit code, or None for a normal start.
+pub fn native_host_mode() -> Option<i32> {
+    let mut args = std::env::args_os().skip(1);
+    if args.next()? != "--lav-nm-host" {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let socket = std::path::PathBuf::from(args.next()?);
+        Some(bridge::linux::run_host(&socket))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Some(1)
+    }
+}
+
 pub fn run() {
     // Before anything else loads a DLL or holds a secret.
     #[cfg(windows)]
@@ -1807,6 +1853,7 @@ pub fn run() {
         .manage(Recent::default())
         .manage(SettingsFile::default())
         .manage(Drive::default())
+        .manage(bridge::Bridge::default())
         .manage(update::Pending::default())
         .manage(Notice::default())
         .on_window_event(|window, event| {
@@ -1875,6 +1922,7 @@ pub fn run() {
                         d.file = Some(dfile);
                     });
                 }
+                app.state::<bridge::Bridge>().load(&sfile);
                 if let Ok(mut g) = app.state::<SettingsFile>().0.lock() {
                     *g = Some(sfile);
                 }
@@ -1897,6 +1945,7 @@ pub fn run() {
             if tray::create(app.handle()).is_err() {
                 eprintln!("LockAlperen: tray icon could not be created");
             }
+            bridge::start(app.handle());
             if let Some(w) = app.get_webview_window("main") {
                 let s = settings::current();
                 let _ = w.set_always_on_top(s.always_on_top);
@@ -1973,6 +2022,9 @@ pub fn run() {
             app_version,
             check_update,
             install_update,
+            bridge::bridge_status,
+            bridge::bridge_set_enabled,
+            bridge::bridge_revoke,
             search_hidden,
             get_gen_profiles,
             set_gen_profiles,
@@ -2008,6 +2060,22 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::navigation_allowed;
+    use super::suggested_file_name as n;
+
+    #[test]
+    fn attachment_names_cannot_leave_the_chosen_folder_or_disguise_themselves() {
+        assert_eq!(n("rapor.pdf"), "rapor.pdf");
+        assert_eq!(n("../../.bashrc"), "bashrc");
+        assert_eq!(n("..\\..\\Windows\\x.dll"), "x.dll");
+        assert_eq!(n("/etc/passwd"), "passwd");
+        assert_eq!(n("C:x.dll"), "C_x.dll");
+        assert_eq!(n("fatura\u{202E}fdp.exe"), "faturafdp.exe");
+        assert_eq!(n("a\0b\nc"), "abc");
+        assert_eq!(n("con?.txt"), "con_.txt");
+        assert_eq!(n(".."), "ek");
+        assert_eq!(n(""), "ek");
+        assert_eq!(n("dizin/"), "ek");
+    }
 
     fn ok(s: &str) -> bool {
         navigation_allowed(&s.parse().unwrap())

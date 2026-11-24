@@ -139,16 +139,8 @@ pub fn load(file: &Path) -> Store {
 
 pub fn save(file: &Path, s: &Store) -> Result<(), &'static str> {
     (|| -> std::io::Result<()> {
-        if let Some(dir) = file.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = file.with_extension("json.tmp");
-        {
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(&serde_json::to_vec_pretty(s).map_err(std::io::Error::other)?)?;
-            f.sync_all()?;
-        }
-        std::fs::rename(&tmp, file)
+        let bytes = serde_json::to_vec_pretty(s).map_err(std::io::Error::other)?;
+        crate::private::write_atomic(file, "json.tmp", &bytes)
     })()
     .map_err(|_| STORE_FAILED)
 }

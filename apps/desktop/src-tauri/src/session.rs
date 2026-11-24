@@ -1464,11 +1464,8 @@ impl Session {
             hex.push_str(&format!("{b:02X}"));
         }
         hex.push('\n');
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|_| KEYFILE_WRITE_FAILED.to_owned())?;
+        let mut f =
+            crate::private::create_new(&path).map_err(|_| KEYFILE_WRITE_FAILED.to_owned())?;
         std::io::Write::write_all(&mut f, hex.as_bytes())
             .and_then(|()| f.sync_all())
             .map_err(|_| KEYFILE_WRITE_FAILED.to_owned())?;

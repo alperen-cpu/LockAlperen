@@ -112,15 +112,12 @@ fn apply(app: &AppHandle, icon: &Image<'static>, overlay: &Image<'static>, unloc
     }
     #[cfg(not(windows))]
     let _ = overlay;
-    if let Some(t) = app.tray_by_id("main") {
-        let _ = t.set_icon(Some(icon.clone()));
-        let tip = if unlocked {
-            "LockAlperen: kasa açık"
-        } else {
-            "LockAlperen: kilitli"
-        };
-        let _ = t.set_tooltip(Some(tip));
-    }
+    let tip = if unlocked {
+        "LockAlperen: kasa açık"
+    } else {
+        "LockAlperen: kilitli"
+    };
+    crate::tray::replace_icon(app, icon.clone(), tip);
 }
 
 /// Starts the watcher. Call after the tray icon exists.

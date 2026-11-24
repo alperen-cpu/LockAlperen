@@ -69,7 +69,7 @@ Linux'ta farklı olanlar:
 - **Otomatik kilit:** Boşta kalma süresi GNOME'dan (KDE'de KDE'den) okunur. Ekran kilidi (Super+L),
   uyku, kapanma, oturumu kapatma ve başka kullanıcıya geçiş kasayı kilitler.
 - **Arka plan simgesi:** Üst çubukta görünür. Ubuntu'da AppIndicator uzantısı bunu varsayılan olarak
-  sağlar; başka masaüstlerinde bir sistem tepsisi uzantısı gerekebilir.
+  sağlar; başka masaüstlerinde bu simgeleri gösteren bir uzantı gerekebilir.
 
 Ağa çıkan işlemler: site ikonlarının indirilmesi, GitHub'dan sürüm denetimi ve isteğe bağlı Google Drive yedeği.
 Drive'a yalnızca şifreli kasa dosyası gider; Google hesabı bağlanmadıkça hiçbir şey gönderilmez.

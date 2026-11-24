@@ -2,7 +2,7 @@
 //! non-secret preferences. A missing or invalid file means defaults.
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
@@ -231,16 +231,8 @@ pub fn load_profiles(file: &Path) -> Vec<GenProfile> {
 }
 
 pub fn save_profiles(file: &Path, list: &[GenProfile]) -> std::io::Result<()> {
-    if let Some(dir) = file.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = file.with_extension("json.tmp");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(&serde_json::to_vec_pretty(list).map_err(std::io::Error::other)?)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, file)
+    let bytes = serde_json::to_vec_pretty(list).map_err(std::io::Error::other)?;
+    crate::private::write_atomic(file, "json.tmp", &bytes)
 }
 
 /// The full settings in effect (the atomics above are kept for the hot
@@ -446,16 +438,8 @@ pub fn load(file: &Path) -> Settings {
 }
 
 pub fn save(file: &Path, s: Settings) -> std::io::Result<()> {
-    if let Some(dir) = file.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = file.with_extension("json.tmp");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(&serde_json::to_vec_pretty(&s.sanitized()).map_err(std::io::Error::other)?)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, file)
+    let bytes = serde_json::to_vec_pretty(&s.sanitized()).map_err(std::io::Error::other)?;
+    crate::private::write_atomic(file, "json.tmp", &bytes)
 }
 
 #[cfg(test)]
