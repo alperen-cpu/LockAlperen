@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "LockAlperen",
+  "short_name": "LockAlperen",
+  "version": "0.1.0",
+  "description": "LockAlperen masaüstü kasasındaki giriş bilgilerini bu siteye doldurur. Ana parolanızı asla sormaz.",
+  "minimum_chrome_version": "137",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3Azm/mstUj5VjDT3V1njvYRaTNRzVlU+CfZLrauSwh3yxkcig8GQR/aB4DcgeO7xGxgvjkMgQlSupAy6f+UzAL3KaoMbdgPRABHbkjLE2YdEF6XvOPzDObaH9VL99Y40NEAoHnZiWxpqSfnwswZSHVUHZgRy9Ehacu5bY+yer8+/MeG/Em2PtOcdT4n2t+5b+FYg9tFRzCh+U3HbT3/60OYXL5nahsGFJoelXdylhEmRsEe2eg7DuMkd+MPUWoSOWXETFxBiTAh+oWS77c/hcVbCQ0fNsc+MTeMUsPr0eJCOcAPA8SrGxz1sy2Ih/KILX0LnCvBlB6tpbjM/aYMBlQIDAQAB",
+  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "LockAlperen",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Ctrl+Shift+L" },
+      "description": "LockAlperen penceresini aç"
+    },
+    "fill-login": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "Bu site için tek kayıt varsa doldur"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  }
+}

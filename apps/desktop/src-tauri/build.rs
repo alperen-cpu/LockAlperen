@@ -81,6 +81,9 @@ fn main() {
             "app_version",
             "check_update",
             "install_update",
+            "bridge_status",
+            "bridge_set_enabled",
+            "bridge_revoke",
         ]),
     ))
     .expect("failed to run tauri-build");

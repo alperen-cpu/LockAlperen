@@ -81,6 +81,9 @@
     "allow-hotkey-active",
     "allow-app-version",
     "allow-check-update",
-    "allow-install-update"
+    "allow-install-update",
+    "allow-bridge-status",
+    "allow-bridge-set-enabled",
+    "allow-bridge-revoke"
   ]
 }

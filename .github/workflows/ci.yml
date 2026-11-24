@@ -89,6 +89,10 @@ jobs:
         working-directory: apps/desktop/src-tauri
       - run: cargo test --locked
         working-directory: apps/desktop/src-tauri
+        env:
+          # The browser extension's Noise code (Node) against the app's
+          # (snow): never skipped in CI.
+          LAV_REQUIRE_NODE: "1"
       # Linux: the .deb and the AppImage really bundle (unsigned here; the
       # release workflow signs). Catches missing libraries and bad config.
       - name: Bundle (Linux, unsigned)

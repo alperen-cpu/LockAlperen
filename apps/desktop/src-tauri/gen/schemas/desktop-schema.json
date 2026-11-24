@@ -201,6 +201,36 @@
           "markdownDescription": "Enables the auto_type command without any pre-configured scope."
         },
         {
+          "description": "Enables the bridge_revoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-bridge-revoke",
+          "markdownDescription": "Enables the bridge_revoke command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the bridge_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-bridge-set-enabled",
+          "markdownDescription": "Enables the bridge_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the bridge_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-bridge-status",
+          "markdownDescription": "Enables the bridge_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the change_kdf command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-change-kdf",
+          "markdownDescription": "Enables the change_kdf command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the change_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-change-keyfile",
+          "markdownDescription": "Enables the change_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Enables the change_master command without any pre-configured scope.",
           "type": "string",
           "const": "allow-change-master",
@@ -213,10 +243,22 @@
           "markdownDescription": "Enables the check_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the clear_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clear-history",
+          "markdownDescription": "Enables the clear_history command without any pre-configured scope."
+        },
+        {
           "description": "Enables the clear_keyfile command without any pre-configured scope.",
           "type": "string",
           "const": "allow-clear-keyfile",
           "markdownDescription": "Enables the clear_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the close_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-close-tab",
+          "markdownDescription": "Enables the close_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the copy_extra command without any pre-configured scope.",
@@ -279,6 +321,18 @@
           "markdownDescription": "Enables the export_csv command without any pre-configured scope."
         },
         {
+          "description": "Enables the export_html command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-html",
+          "markdownDescription": "Enables the export_html command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the export_kdbx command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-kdbx",
+          "markdownDescription": "Enables the export_kdbx command without any pre-configured scope."
+        },
+        {
           "description": "Enables the fetch_icons command without any pre-configured scope.",
           "type": "string",
           "const": "allow-fetch-icons",
@@ -291,10 +345,64 @@
           "markdownDescription": "Enables the forget_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the gdrive_backup_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-backup-now",
+          "markdownDescription": "Enables the gdrive_backup_now command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-connect",
+          "markdownDescription": "Enables the gdrive_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_disconnect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-disconnect",
+          "markdownDescription": "Enables the gdrive_disconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-list",
+          "markdownDescription": "Enables the gdrive_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-restore",
+          "markdownDescription": "Enables the gdrive_restore command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_set_auto command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-set-auto",
+          "markdownDescription": "Enables the gdrive_set_auto command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_set_client command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-set-client",
+          "markdownDescription": "Enables the gdrive_set_client command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the gdrive_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-gdrive-status",
+          "markdownDescription": "Enables the gdrive_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the generate_password command without any pre-configured scope.",
           "type": "string",
           "const": "allow-generate-password",
           "markdownDescription": "Enables the generate_password command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_gen_profiles command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-gen-profiles",
+          "markdownDescription": "Enables the get_gen_profiles command without any pre-configured scope."
         },
         {
           "description": "Enables the get_settings command without any pre-configured scope.",
@@ -333,6 +441,12 @@
           "markdownDescription": "Enables the list_groups command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_tabs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-tabs",
+          "markdownDescription": "Enables the list_tabs command without any pre-configured scope."
+        },
+        {
           "description": "Enables the lock command without any pre-configured scope.",
           "type": "string",
           "const": "allow-lock",
@@ -345,6 +459,12 @@
           "markdownDescription": "Enables the lock_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the merge_vault command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-merge-vault",
+          "markdownDescription": "Enables the merge_vault command without any pre-configured scope."
+        },
+        {
           "description": "Enables the move_entry command without any pre-configured scope.",
           "type": "string",
           "const": "allow-move-entry",
@@ -355,6 +475,12 @@
           "type": "string",
           "const": "allow-move-group",
           "markdownDescription": "Enables the move_group command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the new_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-new-tab",
+          "markdownDescription": "Enables the new_tab command without any pre-configured scope."
         },
         {
           "description": "Enables the open_url command without any pre-configured scope.",
@@ -385,6 +511,24 @@
           "type": "string",
           "const": "allow-pick-keyfile",
           "markdownDescription": "Enables the pick_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_merge_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-merge-file",
+          "markdownDescription": "Enables the pick_merge_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_merge_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-merge-keyfile",
+          "markdownDescription": "Enables the pick_merge_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pick_new_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pick-new-keyfile",
+          "markdownDescription": "Enables the pick_new_keyfile command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_new_vault_path command without any pre-configured scope.",
@@ -447,10 +591,22 @@
           "markdownDescription": "Enables the save_entry command without any pre-configured scope."
         },
         {
+          "description": "Enables the search_hidden command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-search-hidden",
+          "markdownDescription": "Enables the search_hidden command without any pre-configured scope."
+        },
+        {
           "description": "Enables the select_recent command without any pre-configured scope.",
           "type": "string",
           "const": "allow-select-recent",
           "markdownDescription": "Enables the select_recent command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_gen_profiles command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-gen-profiles",
+          "markdownDescription": "Enables the set_gen_profiles command without any pre-configured scope."
         },
         {
           "description": "Enables the set_group_icon command without any pre-configured scope.",
@@ -471,6 +627,24 @@
           "markdownDescription": "Enables the set_titlebar command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_vault_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-vault-settings",
+          "markdownDescription": "Enables the set_vault_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-tab",
+          "markdownDescription": "Enables the switch_tab command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-state",
+          "markdownDescription": "Enables the tab_state command without any pre-configured scope."
+        },
+        {
           "description": "Enables the totp_code command without any pre-configured scope.",
           "type": "string",
           "const": "allow-totp-code",
@@ -481,6 +655,12 @@
           "type": "string",
           "const": "allow-unlock",
           "markdownDescription": "Enables the unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vault_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vault-settings",
+          "markdownDescription": "Enables the vault_settings command without any pre-configured scope."
         },
         {
           "description": "Denies the add_attachment command without any pre-configured scope.",
@@ -507,6 +687,36 @@
           "markdownDescription": "Denies the auto_type command without any pre-configured scope."
         },
         {
+          "description": "Denies the bridge_revoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-bridge-revoke",
+          "markdownDescription": "Denies the bridge_revoke command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the bridge_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-bridge-set-enabled",
+          "markdownDescription": "Denies the bridge_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the bridge_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-bridge-status",
+          "markdownDescription": "Denies the bridge_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the change_kdf command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-change-kdf",
+          "markdownDescription": "Denies the change_kdf command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the change_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-change-keyfile",
+          "markdownDescription": "Denies the change_keyfile command without any pre-configured scope."
+        },
+        {
           "description": "Denies the change_master command without any pre-configured scope.",
           "type": "string",
           "const": "deny-change-master",
@@ -519,10 +729,22 @@
           "markdownDescription": "Denies the check_update command without any pre-configured scope."
         },
         {
+          "description": "Denies the clear_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clear-history",
+          "markdownDescription": "Denies the clear_history command without any pre-configured scope."
+        },
+        {
           "description": "Denies the clear_keyfile command without any pre-configured scope.",
           "type": "string",
           "const": "deny-clear-keyfile",
           "markdownDescription": "Denies the clear_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the close_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-close-tab",
+          "markdownDescription": "Denies the close_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the copy_extra command without any pre-configured scope.",
@@ -585,6 +807,18 @@
           "markdownDescription": "Denies the export_csv command without any pre-configured scope."
         },
         {
+          "description": "Denies the export_html command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-html",
+          "markdownDescription": "Denies the export_html command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the export_kdbx command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-kdbx",
+          "markdownDescription": "Denies the export_kdbx command without any pre-configured scope."
+        },
+        {
           "description": "Denies the fetch_icons command without any pre-configured scope.",
           "type": "string",
           "const": "deny-fetch-icons",
@@ -597,10 +831,64 @@
           "markdownDescription": "Denies the forget_recent command without any pre-configured scope."
         },
         {
+          "description": "Denies the gdrive_backup_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-backup-now",
+          "markdownDescription": "Denies the gdrive_backup_now command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-connect",
+          "markdownDescription": "Denies the gdrive_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_disconnect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-disconnect",
+          "markdownDescription": "Denies the gdrive_disconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-list",
+          "markdownDescription": "Denies the gdrive_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-restore",
+          "markdownDescription": "Denies the gdrive_restore command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_set_auto command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-set-auto",
+          "markdownDescription": "Denies the gdrive_set_auto command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_set_client command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-set-client",
+          "markdownDescription": "Denies the gdrive_set_client command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the gdrive_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-gdrive-status",
+          "markdownDescription": "Denies the gdrive_status command without any pre-configured scope."
+        },
+        {
           "description": "Denies the generate_password command without any pre-configured scope.",
           "type": "string",
           "const": "deny-generate-password",
           "markdownDescription": "Denies the generate_password command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_gen_profiles command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-gen-profiles",
+          "markdownDescription": "Denies the get_gen_profiles command without any pre-configured scope."
         },
         {
           "description": "Denies the get_settings command without any pre-configured scope.",
@@ -639,6 +927,12 @@
           "markdownDescription": "Denies the list_groups command without any pre-configured scope."
         },
         {
+          "description": "Denies the list_tabs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-tabs",
+          "markdownDescription": "Denies the list_tabs command without any pre-configured scope."
+        },
+        {
           "description": "Denies the lock command without any pre-configured scope.",
           "type": "string",
           "const": "deny-lock",
@@ -651,6 +945,12 @@
           "markdownDescription": "Denies the lock_status command without any pre-configured scope."
         },
         {
+          "description": "Denies the merge_vault command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-merge-vault",
+          "markdownDescription": "Denies the merge_vault command without any pre-configured scope."
+        },
+        {
           "description": "Denies the move_entry command without any pre-configured scope.",
           "type": "string",
           "const": "deny-move-entry",
@@ -661,6 +961,12 @@
           "type": "string",
           "const": "deny-move-group",
           "markdownDescription": "Denies the move_group command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the new_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-new-tab",
+          "markdownDescription": "Denies the new_tab command without any pre-configured scope."
         },
         {
           "description": "Denies the open_url command without any pre-configured scope.",
@@ -691,6 +997,24 @@
           "type": "string",
           "const": "deny-pick-keyfile",
           "markdownDescription": "Denies the pick_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_merge_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-merge-file",
+          "markdownDescription": "Denies the pick_merge_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_merge_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-merge-keyfile",
+          "markdownDescription": "Denies the pick_merge_keyfile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pick_new_keyfile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pick-new-keyfile",
+          "markdownDescription": "Denies the pick_new_keyfile command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_new_vault_path command without any pre-configured scope.",
@@ -753,10 +1077,22 @@
           "markdownDescription": "Denies the save_entry command without any pre-configured scope."
         },
         {
+          "description": "Denies the search_hidden command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-search-hidden",
+          "markdownDescription": "Denies the search_hidden command without any pre-configured scope."
+        },
+        {
           "description": "Denies the select_recent command without any pre-configured scope.",
           "type": "string",
           "const": "deny-select-recent",
           "markdownDescription": "Denies the select_recent command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_gen_profiles command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-gen-profiles",
+          "markdownDescription": "Denies the set_gen_profiles command without any pre-configured scope."
         },
         {
           "description": "Denies the set_group_icon command without any pre-configured scope.",
@@ -777,6 +1113,24 @@
           "markdownDescription": "Denies the set_titlebar command without any pre-configured scope."
         },
         {
+          "description": "Denies the set_vault_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-vault-settings",
+          "markdownDescription": "Denies the set_vault_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_tab command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-tab",
+          "markdownDescription": "Denies the switch_tab command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-state",
+          "markdownDescription": "Denies the tab_state command without any pre-configured scope."
+        },
+        {
           "description": "Denies the totp_code command without any pre-configured scope.",
           "type": "string",
           "const": "deny-totp-code",
@@ -787,6 +1141,12 @@
           "type": "string",
           "const": "deny-unlock",
           "markdownDescription": "Denies the unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vault_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vault-settings",
+          "markdownDescription": "Denies the vault_settings command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

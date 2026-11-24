@@ -16,6 +16,7 @@ type Category =
   | "window"
   | "keys"
   | "drive"
+  | "browser"
   | "updates"
   | "data";
 
@@ -79,6 +80,12 @@ const CATEGORIES: { id: Category; label: string; intro: string }[] = [
     id: "drive",
     label: "Google Drive",
     intro: "Kasanızı Google Drive'a yedekleyin. Yalnızca şifreli kasa dosyası yüklenir.",
+  },
+  {
+    id: "browser",
+    label: "Tarayıcı eklentisi",
+    intro:
+      "Chrome, Chromium, Brave ve Edge'de giriş bilgilerini doldurur. Eklenti ana parolanızı hiçbir zaman sormaz; kasa yalnızca bu uygulamada açılır.",
   },
   { id: "updates", label: "Güncellemeler", intro: "Yeni sürümler GitHub'dan imzası doğrulanarak kurulur." },
   {
@@ -609,6 +616,8 @@ export function SettingsPage(props: {
 
         {category === "drive" && <DrivePanel busy={busy} setBusy={setBusy} onMsg={setMsg} />}
 
+        {category === "browser" && <BrowserPanel busy={busy} setBusy={setBusy} onMsg={setMsg} />}
+
         {category === "vault" && (
           <VaultSettingsPanel
             busy={busy}
@@ -626,5 +635,123 @@ export function SettingsPage(props: {
         {error && <p className="error">{error}</p>}
       </main>
     </div>
+  );
+}
+
+function when(sec: number): string {
+  return new Date(sec * 1000).toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** Settings › Tarayıcı eklentisi (src-tauri/src/bridge/). */
+function BrowserPanel(props: {
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  onMsg: (m: string | null) => void;
+}) {
+  const { busy, setBusy, onMsg } = props;
+  const [st, setSt] = useState<api.BridgeStatus | null>(null);
+
+  useEffect(() => {
+    api.bridgeStatus().then(setSt, (e) => onMsg(api.errorText(e)));
+    // Pairings and "last used" change while this page is open.
+    const t = window.setInterval(() => {
+      api.bridgeStatus().then(setSt, () => {});
+    }, 3000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function run(work: () => Promise<api.BridgeStatus>, done: string | null) {
+    setBusy(true);
+    onMsg(null);
+    try {
+      setSt(await work());
+      onMsg(done);
+    } catch (e) {
+      onMsg(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!st) return null;
+  if (!st.supported) {
+    return (
+      <section className="set-card pad">
+        <p className="muted small">Tarayıcı eklentisi şimdilik yalnızca Linux sürümünde var.</p>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section className="set-card">
+        <Row
+          title={<label htmlFor="s-bridge">Tarayıcı eklentisine izin ver</label>}
+          text={
+            st.enabled
+              ? st.browsers.length
+                ? `Bağlantı kurulu: ${st.browsers.join(", ")}. Yeni kurulan bir tarayıcı için kapatıp yeniden açın.`
+                : "Açık, ama desteklenen bir tarayıcı bulunamadı."
+              : "Kapalıyken tarayıcılar uygulamaya hiç bağlanamaz."
+          }
+        >
+          <input
+            id="s-bridge"
+            type="checkbox"
+            className="switch"
+            checked={st.enabled}
+            disabled={busy}
+            onChange={(e) => {
+              const on = e.target.checked;
+              void run(
+                () => api.bridgeSetEnabled(on),
+                on ? "Bağlantı kuruldu. Tarayıcıyı yeniden başlatın." : "Bağlantı kaldırıldı.",
+              );
+            }}
+          />
+        </Row>
+      </section>
+
+      <section className="set-card pad">
+        <div className="set-text">
+          <span className="set-title">Eklentiyi kurma</span>
+          <span className="muted small">
+            1. Tarayıcıda <span className="kbd">chrome://extensions</span> sayfasını açın ve
+            “Geliştirici modu”nu açın. 2. “Paketlenmemiş öğe yükle” ile LockAlperen klasöründeki{" "}
+            <span className="kbd">apps/browser-extension</span> klasörünü seçin. 3. Eklenti
+            simgesine tıklayıp “Masaüstü uygulamasıyla eşleştir” deyin; iki tarafta görünen kod
+            aynıysa burada açılan pencerede “Eşleştir”e basın.
+          </span>
+          <span className="muted small">
+            Eklenti kimliği: <span className="kbd">{st.extensionId}</span>. Snap ve Flatpak
+            tarayıcılar desteklenmez (uygulamayı başlatamazlar).
+          </span>
+        </div>
+      </section>
+
+      <section className="set-card">
+        {st.pairs.length === 0 ? (
+          <Row title="Eşleştirilmiş tarayıcı yok" />
+        ) : (
+          st.pairs.map((p) => (
+            <Row
+              key={p.id}
+              title={`Tarayıcı ${p.id}`}
+              text={`Eşleştirildi: ${when(p.created)} · Son kullanım: ${when(p.lastUsed)}`}
+            >
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => void run(() => api.bridgeRevoke(p.id), "Eşleştirme kaldırıldı.")}
+              >
+                Kaldır
+              </button>
+            </Row>
+          ))
+        )}
+      </section>
+    </>
   );
 }

@@ -338,6 +338,23 @@ export interface DriveFile {
   size: string | null;
 }
 export const gdriveStatus = () => invoke<DriveStatus>("gdrive_status");
+
+/** Browser extension bridge (src-tauri/src/bridge/). No secrets here. */
+export interface BridgePair {
+  id: string;
+  created: number;
+  lastUsed: number;
+}
+export interface BridgeStatus {
+  supported: boolean;
+  enabled: boolean;
+  extensionId: string;
+  browsers: string[];
+  pairs: BridgePair[];
+}
+export const bridgeStatus = () => invoke<BridgeStatus>("bridge_status");
+export const bridgeSetEnabled = (on: boolean) => invoke<BridgeStatus>("bridge_set_enabled", { on });
+export const bridgeRevoke = (id: string) => invoke<BridgeStatus>("bridge_revoke", { id });
 export const gdriveSetClient = (clientId: string, clientSecret: string) =>
   invoke<DriveStatus>("gdrive_set_client", { clientId, clientSecret });
 export const gdriveConnect = () => invoke<DriveStatus>("gdrive_connect");

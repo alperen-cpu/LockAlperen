@@ -15,6 +15,7 @@ compile_error!("LockAlperen desktop supports Windows and Linux only.");
 
 mod autolock;
 mod autotype;
+mod bridge;
 mod browser;
 #[cfg_attr(target_os = "linux", path = "linux/clipboard.rs")]
 mod clipboard;
@@ -1798,6 +1799,26 @@ fn start_autolock(shared: Shared, last: LastCopy) {
         .expect("idle thread");
 }
 
+/// Browser native-messaging host mode: the browser starts this binary (via
+/// `nm-host.sh`) as `--lav-nm-host <socket> chrome-extension://<id>/`. It
+/// only relays frames to the running app and exits (src/bridge/linux.rs).
+/// Returns the exit code, or None for a normal start.
+pub fn native_host_mode() -> Option<i32> {
+    let mut args = std::env::args_os().skip(1);
+    if args.next()? != "--lav-nm-host" {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let socket = std::path::PathBuf::from(args.next()?);
+        Some(bridge::linux::run_host(&socket))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Some(1)
+    }
+}
+
 pub fn run() {
     // Before anything else loads a DLL or holds a secret.
     #[cfg(windows)]
@@ -1832,6 +1853,7 @@ pub fn run() {
         .manage(Recent::default())
         .manage(SettingsFile::default())
         .manage(Drive::default())
+        .manage(bridge::Bridge::default())
         .manage(update::Pending::default())
         .manage(Notice::default())
         .on_window_event(|window, event| {
@@ -1900,6 +1922,7 @@ pub fn run() {
                         d.file = Some(dfile);
                     });
                 }
+                app.state::<bridge::Bridge>().load(&sfile);
                 if let Ok(mut g) = app.state::<SettingsFile>().0.lock() {
                     *g = Some(sfile);
                 }
@@ -1922,6 +1945,7 @@ pub fn run() {
             if tray::create(app.handle()).is_err() {
                 eprintln!("LockAlperen: tray icon could not be created");
             }
+            bridge::start(app.handle());
             if let Some(w) = app.get_webview_window("main") {
                 let s = settings::current();
                 let _ = w.set_always_on_top(s.always_on_top);
@@ -1998,6 +2022,9 @@ pub fn run() {
             app_version,
             check_update,
             install_update,
+            bridge::bridge_status,
+            bridge::bridge_set_enabled,
+            bridge::bridge_revoke,
             search_hidden,
             get_gen_profiles,
             set_gen_profiles,

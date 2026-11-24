@@ -1,5 +1,22 @@
 # Sürüm Notları
 
+## [Yayınlanmadı]
+
+- **Tarayıcı eklentisi (Chromium, yalnızca doldurma, Linux):** `apps/browser-extension`. Ayarlar ›
+  Tarayıcı eklentisi'nden açılır; eşleştirme iki tarafta görünen 6 haneli kodla yapılır. Kayıtlar
+  yalnızca tam köken eşleşmesiyle önerilir; bir kayıt bir sitede ilk kez doldurulurken masaüstü
+  onay ister. Eklenti ana parolayı hiçbir zaman sormaz. Ayrıntılar: `apps/browser-extension/README.md`.
+- **Linux'ta üst çubuktaki simge kilitlenince değişmiyordu:** Ubuntu'nun AppIndicator eklentisi
+  (GNOME Shell 50) yeni simgeyi alıyor ama eskisini çizmeye devam ediyordu. Simge artık durum
+  değişince yeni bir simgeyle değiştiriliyor.
+- **Güvenlik (rakip karşılaştırması ve pentest, `docs/SECURITY_COMPARISON_2026-11.md`):**
+  - Kasa, `.bak`, ayarlar, son kasalar, Drive deposu, dışa aktarmalar, kaydedilen ekler, anahtar
+    dosyası ve otomatik başlatma dosyası artık yalnızca kullanıcıya açık (0600, klasörler 0700).
+    Önceden Ubuntu'nun umask'ıyla gruba yazılabilir, herkese okunabilirdi.
+  - Kaydedilen ekin önerilen adı temizleniyor (`../`, yol ayırıcıları, kontrol ve yön değiştirme
+    karakterleri). KeePassXC 2.7.12'deki açıkla aynı sınıf.
+  - `url` 2.5.9 (RUSTSEC-2026-0592).
+
 ## [0.9.0] - 2026-11-19: Linux (Ubuntu masaüstü)
 
 - **Linux desteği:** Ubuntu 22.04 ve sonrası için `.deb` ve AppImage. İkisi de uygulama içinden
