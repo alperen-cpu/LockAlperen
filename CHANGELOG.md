@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmadı]
+## [0.10.0] - 2026-11-24: tarayıcı eklentisi, güvenlik düzeltmeleri
 
 - **Tarayıcı eklentisi (Chromium, yalnızca doldurma, Linux):** `apps/browser-extension`. Ayarlar ›
   Tarayıcı eklentisi'nden açılır; eşleştirme iki tarafta görünen 6 haneli kodla yapılır. Kayıtlar
