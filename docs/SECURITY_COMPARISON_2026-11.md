@@ -80,8 +80,8 @@ Durum anahtarı:
   WebView'de kalanlar belgelenmeli.
 - [ ] **Pano (B):** CopyQ ya da GNOME pano eklentisiyle kopyalanan parola geçmişe düşmemeli;
   `journalctl` içinde bulunmamalı.
-- [ ] **Kilit (M):** Ekran kilidi, uyku ve kullanıcı değiştirmede kasa kilitlenmeli; tepsi simgesi
-  kırmızı kilide dönmeli.
+- [ ] **Kilit (M):** Ekran kilidi, uyku ve kullanıcı değiştirmede kasa kilitlenmeli; üst çubuktaki
+  simge kırmızı kilide dönmeli.
 - [ ] **Windows:** Procmon ile DLL arama yolu (I), Win+V (B), ekran görüntüsü (L).
 - [ ] **Güncelleyici (F):** mitmproxy ile imzasız, farklı anahtarla imzalı ve eski sürüm `latest.json`
   denemeleri.
