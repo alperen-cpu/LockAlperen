@@ -27,6 +27,7 @@ mod health;
 mod hotkey;
 mod import;
 mod lockicon;
+mod private;
 mod recent;
 mod session;
 mod settings;
@@ -558,7 +559,7 @@ async fn export_csv(
     let mut bytes = Zeroizing::new(Vec::with_capacity(csv.len() + 3));
     bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
     bytes.extend_from_slice(csv.as_bytes());
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -881,7 +882,7 @@ async fn gdrive_restore(
     if busy {
         return Err("Bu dosya bir sekmede açık; üzerine yazılamaz. Başka bir yer seçin.".into());
     }
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(Some(gdrive::display_name(&path)))
 }
 
@@ -1171,7 +1172,7 @@ async fn export_kdbx(
     else {
         return Ok(false);
     };
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -1198,7 +1199,7 @@ async fn export_html(
     else {
         return Ok(false);
     };
-    std::fs::write(&path, page.as_bytes()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, page.as_bytes()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -1363,6 +1364,29 @@ fn after_copy(window: &tauri::WebviewWindow) {
 
 /// Writes an attachment where the user chooses (Rust save dialog). The file
 /// on disk is NOT encrypted; the UI says so.
+/// The name suggested in the save dialog for an attachment. The name comes
+/// from the vault (an imported KDBX is attacker-controlled): only its last
+/// path component is kept, control and bidi-override characters (which can
+/// disguise `exe.txt` as `txt.exe`) are dropped, and Windows-reserved
+/// characters become `_`. The user still chooses the folder and name.
+fn suggested_file_name(name: &str) -> String {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let cleaned: String = last
+        .chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        })
+        .map(|c| if matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim();
+    if cleaned.is_empty() {
+        "ek".to_owned()
+    } else {
+        cleaned.to_owned()
+    }
+}
+
 #[tauri::command]
 async fn save_attachment(
     id: String,
@@ -1371,6 +1395,7 @@ async fn save_attachment(
     state: State<'_, Shared>,
 ) -> Result<bool, String> {
     let (name, bytes) = state.with(|s| s.attachment(&id, index)).and_then(|r| r)?;
+    let name = suggested_file_name(&name);
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
@@ -1383,7 +1408,7 @@ async fn save_attachment(
         return Ok(false);
     };
     let path = picked.into_path().map_err(|_| INTERNAL.to_owned())?;
-    std::fs::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
+    private::write(&path, bytes.as_slice()).map_err(|_| "Dosya yazılamadı.".to_owned())?;
     Ok(true)
 }
 
@@ -2008,6 +2033,22 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::navigation_allowed;
+    use super::suggested_file_name as n;
+
+    #[test]
+    fn attachment_names_cannot_leave_the_chosen_folder_or_disguise_themselves() {
+        assert_eq!(n("rapor.pdf"), "rapor.pdf");
+        assert_eq!(n("../../.bashrc"), "bashrc");
+        assert_eq!(n("..\\..\\Windows\\x.dll"), "x.dll");
+        assert_eq!(n("/etc/passwd"), "passwd");
+        assert_eq!(n("C:x.dll"), "C_x.dll");
+        assert_eq!(n("fatura\u{202E}fdp.exe"), "faturafdp.exe");
+        assert_eq!(n("a\0b\nc"), "abc");
+        assert_eq!(n("con?.txt"), "con_.txt");
+        assert_eq!(n(".."), "ek");
+        assert_eq!(n(""), "ek");
+        assert_eq!(n("dizin/"), "ek");
+    }
 
     fn ok(s: &str) -> bool {
         navigation_allowed(&s.parse().unwrap())
