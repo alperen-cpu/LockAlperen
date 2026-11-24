@@ -1,198 +1,218 @@
-# LockAlperen masaüstü
+# LockAlperen masaüstü uygulaması
 
-Tauri 2 + React 19. Görünüm, "LockAlperen Ekran Taslakları" tasarımındaki kilit açma ve ana
-ekranı izliyor. Çalışanlar: kasa aç, listele, kilitle, kullanıcı adı/parola kopyala, parolayı göster, otomatik kilit, yeni kasa oluştur, son kasalar, kayıt ekle/düzenle/çoğalt/sil, Geri Dönüşüm Kutusu, son kullanma tarihi, klasörler (ağaç, taşıma, sürükle-bırak), parola üretici, TOTP kodları, parola sağlığı, KeePass (KDBX 4) içe aktarma, CSV dışa aktarma, anahtar dosyası, özel alanlar, ekler, kayıt geçmişi, otomatik yazma (düğme ve global kısayol), siteyi tarayıcıda açma, site ikonları, ana parola değiştirme, sistem simgesi, tek örnek, uygulama içi güncelleme.
+Tauri 2 (Rust) + React 19. Windows ve Linux (Ubuntu masaüstü). Bu belge geliştiriciler ve güvenlik
+incelemesi yapanlar içindir: kodun nasıl düzenlendiği, her konuda hangi güvenlik kararının
+alındığı ve neyin doğrulanıp neyin doğrulanmadığı.
+
+**İçindekiler:** [Geliştirme](#geliştirme) · [Kod yapısı](#kod-yapısı) ·
+[Güvenlik kararları](#güvenlik-kararları) · [Linux](#linux) · [Doğrulananlar](#doğrulananlar) ·
+[Doğrulanmayanlar ve sınırlar](#doğrulanmayanlar-ve-sınırlar) · [Henüz yapılmayanlar](#henüz-yapılmayanlar)
 
 ## Geliştirme
 
 ```sh
 cd apps/desktop
 npm ci
-npm run tauri dev          # Vite + uygulama
-cd src-tauri && cargo test # oturum ve navigasyon testleri
+npm run tauri dev                      # Vite + uygulama
+cd src-tauri && cargo test             # masaüstü testleri
+LAV_REQUIRE_NODE=1 cargo test bridge   # tarayıcı köprüsü (Node gerekir; CI'da zorunlu)
 ```
 
-Denemek için örnek kasa: `cargo run --example demo_vault -- demo.lav <parola>` (yalnızca deneme;
-parola komut satırında görünür).
+- **Deneme kasası:** `cargo run --example demo_vault -- demo.lav <parola>`. Yalnızca deneme
+  içindir; parola komut satırında görünür.
+- **Kurulu uygulamayla yan yana çalıştırma:** Uygulama tek örnek çalışır. Kurulu sürüm açıkken
+  geliştirme sürümünü ayrı bir kimlikle başlatın:
+  `npm run tauri dev -- --config '{"identifier":"com.alperen.lockalperen.dev"}'`
+- **Linux'ta derleme için:**
 
-`src-tauri` ayrı bir Cargo çalışma alanıdır. Tauri bağımlılıkları çekirdeğin `Cargo.lock`
-dosyasına, `cargo deny` politikasına ve Linux CI'ına girmez. CI'da ayrı bir Windows (MSVC) işi
-var.
+  ```sh
+  sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
+    libssl-dev build-essential file patchelf
+  ```
+
+`src-tauri` ayrı bir Cargo çalışma alanıdır: Tauri bağımlılıkları çekirdeğin `Cargo.lock`
+dosyasına ve `cargo deny` politikasına girmez. CI masaüstünü Windows (MSVC) ve Ubuntu 22.04'te
+derler, test eder ve Linux paketlerini oluşturur.
+
+## Kod yapısı
+
+`src-tauri/src/`:
+
+| Modül | Görev |
+|---|---|
+| `lib.rs` | Tauri komutları (WebView'in çağırabildiği 81 komut), uygulama kurulumu |
+| `session.rs`, `tabs.rs` | Açık kasa oturumu; sekmeler (en fazla 8 kasa) |
+| `import.rs`, `export.rs` | KeePass içe ve dışa aktarma, HTML |
+| `totp.rs`, `health.rs` | TOTP kodları, parola sağlığı |
+| `clipboard.rs`, `autolock.rs`, `hardening.rs`, `hotkey.rs`, `autotype.rs`, `startup.rs`, `browser.rs`, `titlebar.rs` | İşletim sistemiyle konuşan Windows modülleri |
+| `linux/` | Aynı modüllerin Linux karşılıkları, aynı fonksiyon adlarıyla ([Linux](#linux)) |
+| `tray.rs`, `lockicon.rs` | Sistem simgesi ve kilit rozeti |
+| `settings.rs`, `recent.rs`, `private.rs` | Ayar ve son kasalar dosyaları; yalnızca kullanıcıya açık dosya yazma |
+| `gdrive.rs`, `update.rs` | Google Drive yedeği, uygulama içi güncelleme |
+| `bridge/` | Tarayıcı eklentisi köprüsü ([eklenti README'si](../browser-extension/README.md)) |
+
+`src/` (React): `App.tsx` ana ekran, `Editor.tsx` kayıt düzenleyici, `Settings.tsx` ayarlar,
+`VaultTools.tsx` kasa araçları, `api.ts` Rust komutlarının tipleri.
 
 ## Güvenlik kararları
 
-| Konu | Uygulama |
+### WebView ve Rust arasındaki sınır
+
+| Konu | Karar |
 |---|---|
-| IPC yüzeyi | WebView yalnızca uygulamanın kendi komutlarını çağırabilir (78 komut, tek tek `capabilities/main.json`'da listeli). Core, dosya sistemi, shell ya da diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı, yetki verilmeyen komut reddedilir. |
-| Dosya yolu | Kasa yolu yalnızca Rust tarafında tutulur. Dosya seçme penceresini Rust açar. WebView hiçbir zaman yol göndermez, bu yüzden WebView'e enjekte edilen bir betik başka bir dosyayı açtıramaz. |
-| Sırlar | Liste yanıtında parola, not, TOTP, özel alan ve ek **yok** (`EntrySummary`). Test, IPC'ye giden JSON'u kontrol ediyor. |
-| Ana parola | React state'inde tutulmaz. Kontrolsüz input kullanılır, gönderilirken okunup hemen temizlenir. Rust tarafında `Zeroizing<String>` içinde tutulur. |
-| Hata mesajı | Kilit açma hatalarının hepsi tek bir Türkçe mesaj (`is_unlock_failure`). Dosya okunamazsa ayrı bir mesaj. |
-| CSP | `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`. Web fontu ve uzak içerik yok. |
-| Navigasyon | Uygulama dışındaki bir adrese (uzak site, `file:`) gezinme engellenir (`navigation_allowed`, test var). |
-| Geliştirici araçları | Tauri'nin `devtools` özelliği açık değil, bu yüzden inceleyici yalnızca debug derlemede var. **Release derlemede doğrulanmadı.** |
-| XSS | Bütün metinler React ile düz metin olarak basılır, `innerHTML` yok. `<script>` başlıklı bir kayıtla elle denendi. |
-| Pano | Kopyalamayı Rust yapar; değer WebView'e gitmez. Pano geçmişi (Win+V), bulut panosu ve izleyiciler için üç işaret (`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory=0`, `CanUploadToCloudClipboard=0`) konur. Seçilen süre sonunda (5–90 sn, varsayılan 12) ve kilitlenince pano temizlenir, ama **yalnızca hâlâ bizim içeriğimiz duruyorsa** (sıra numarası kontrolü). `unsafe` kod yalnızca `src/clipboard.rs`'te. |
-| Parolayı göster | Yalnızca tıklanınca Rust'tan istenir; 15 sn sonra, başka kayıt seçilince ya da kilitlenince ekrandan ve React state'inden düşer. Bu sırada parola WebView belleğindedir (silinemez). |
-| Otomatik kilit | Kararı Rust verir; WebView yalnızca geri sayımı gösterir ve kilidi açık tutamaz. **Boşta kalma:** sistem genelinde son klavye ya da fare girdisinden itibaren 5 dk (`GetLastInputInfo`). Debug derlemede `LAV_IDLE_SECS` ile kısaltılabilir, release derlemede bu değişken yok sayılır. **Windows olayları:** kendi gizli penceremiz şunları alır: Win+L, konsol ya da uzak bağlantının kesilmesi, oturum kapatma (`WM_WTSSESSION_CHANGE`) ve uyku (`PBT_APMSUSPEND`). Her durumda pano da temizlenir. `unsafe` kod `src/autolock.rs`'te. |
-| Yeni kasa | Kaydetme penceresini Rust açar; yol Rust'ta kalır, `.lav` uzantısı eklenir. Parola ve tekrarı Rust'ta karşılaştırılır, en az 8 karakter (çekirdeğin kuralı). **Var olan dosyanın üzerine asla yazılmaz:** önce varlık kontrolü yapılır; arada dosya oluşursa çekirdeğin `save_file` kilidi altındaki kontrolü reddeder. "Üzerine yaz" seçeneği bilinçli olarak yok. Varsayılan KDF: Argon2id 64 MiB, 3 geçiş. |
-| Son kasalar | `%LOCALAPPDATA%\com.alperen.lockalperen\recent.json`: en fazla 5 kayıt, yalnızca yol ve son açılma zamanı (ad, içerik ya da sır yok). Kasanın yanında ya da roaming profilde değil. Geçici dosya + rename ile yazılır; bozuk ya da 64 KiB'tan büyük dosya boş liste sayılır. WebView sıra numarası gönderir, yolu Rust çözer. "Listeden kaldır" dosyayı silmez. |
-| Kayıt düzenleme | Değişiklik önce verinin **kopyasına** uygulanır ve diske kaydedilir; kayıt başarısız olursa bellek eski hâline döner (ekranda diske yazılmamış değişiklik görünmez). Dosya başka yerde değiştirildiyse (`FileChangedOnDisk`) üzerine yazılmaz. Düzenleyici açıkken parola ve notlar WebView'dedir (düzenlemenin doğası); Rust tarafındaki `EntryForm` bırakılırken silinir ve `Debug` çıktısında gizlidir. Önceki sürüm çekirdeğin geçmişine (son 20) girer. Silme iki adımlı onay ister. |
-| Parola üretici | Çekirdeğin `OsRng` tabanlı üreticisi; WebView yalnızca ayarları gönderir. Gösterilen entropi yaklaşık değerdir (her kümeden en az bir karakter zorunluluğu hesaba katılmaz). |
-| TOTP | RFC 6238; SHA-1/256/512, 6–8 hane, 1–300 sn periyot; base32 anahtar ya da `otpauth://totp/` bağlantısı (HOTP desteklenmez). Gizli anahtar Rust'ta kalır; WebView'e yalnızca o anki kod ve kalan süre gider (listede yalnızca `hasTotp`). HMAC RustCrypto'dan (`hmac`, `sha1`, `sha2`); kendi kodumuz yalnızca RFC'nin kesme adımı ve base32 çözümü, ikisi de RFC test vektörleriyle sınanıyor. Düzenleyicide anahtar görünür (düzenleme için). Geçersiz anahtar kaydedilmez. |
-| Parola sağlığı | Rust'ta hesaplanır; WebView'e yalnızca sayılar ve kayıt başına etiket (zayıf/tekrar/süresi dolmuş) gider. Tekrar kontrolü parolaları kopyalamadan, ödünç alarak karşılaştırır. **Zayıflık tahmini basittir:** uzunluk × log2(kullanılan karakter türleri), 60 bitin altı ya da 10 karakterden kısa = zayıf. Sözlük kelimeleri ve kalıplar tanınmaz ("Password123!" zayıf sayılmaz); arayüz bunu söylüyor. Ağ kullanılmaz; sızıntı kontrolü yok. |
-| KeePass içe aktarma | Dosya güvenilmez kabul edilir. `keepass` crate'ine vermeden önce dış başlığı **kendimiz** okuruz: yalnızca KDBX 4, en fazla 64 MiB, KDF sınırları (Argon2 ≤ 1 GiB bellek, ≤ 100 iterasyon, ≤ 16 paralellik; AES-KDF ≤ 300 milyon tur). Crate bu parametreleri sınırlamıyor; sınır olmasa kötü niyetli bir dosya, parola denenmeden önce sınırsız bellek ya da süre harcatabilirdi. Çözüldükten sonra kayıt (50.000), klasör (10.000), derinlik (64), alan (1 MiB), ek (16 MiB, toplam 256 MiB) sınırları; KeePass Geri Dönüşüm Kutusu ve geçmiş aktarılmaz; sonuç `repair_structure`'dan geçer ve **yeni bir üst klasöre** eklenir. Hata durumunda kasa değişmez. KeePass dosyası değiştirilmez. Anahtar dosyası henüz desteklenmiyor. |
-| Süreç sertleştirme | Başlangıçta, hiçbir sır yokken: `SetDefaultDllDirectories(SYSTEM32)`; süreç DACL'ı yalnızca sorgula/bekle/sonlandır (bellek okuma yok). Pencere `WDA_EXCLUDEFROMCAPTURE` ile ekran görüntüsü ve paylaşımdan hariç (debug derlemede `LAV_ALLOW_CAPTURE=1` ile kapatılabilir; release'te yok sayılır). `unsafe` kod `src/hardening.rs`'te. *Doğrulandı:* başka süreçten `OpenProcess(VM_READ)` ve `ALL_ACCESS` reddediliyor (hata 5), `taskkill` çalışıyor, ekran görüntüsünde pencere yok; debug ve release derlemede. **Sınır:** aynı kullanıcı DACL'ı yeniden yazabilir, yöneticiler (`SeDebugPrivilege`) atlar. |
-| Anahtar sayfaları | `lav-core` türetilmiş anahtar ayırmasını `VirtualLock`/`mlock` ile RAM'de kilitler (`region` crate'i; çekirdekte `unsafe` yok). Yalnızca anahtar sayfası; çözülmüş içerik kilitli değil, hibernate tüm belleği yazar. |
-| Anahtar dosyası | Kilit açmada isteğe bağlı; dosya Rust'taki pencereyle seçilir, yolu Rust'ta kalır. Başka kasa seçilince unutulur. Gereksiz anahtar dosyası da aynı genel hatayı verir. |
-| Özel alanlar, ekler, geçmiş | Ayrıntıda gizli alan değerleri ve notlar gönderilmez; tıklanınca tek tek istenir, 15 sn sonra düşer. Kopyalama Rust'ta (pano kuralları aynı). Ekler "Kaydet…" ile diske **şifresiz** yazılır (arayüz söylüyor). Geçmiş yalnızca üst veri gösterir. Düzenleyicide özel alan ekle/sil; `fields` gönderilmezse mevcut alanlar korunur. |
-| Ayarlar | `%LOCALAPPDATA%\...\settings.json`: otomatik kilit süresi, açılışta güncelleme denetimi, kapatınca arka planda çalışma (sistem simgesi), otomatik yazma kısayolu ve tema (Windows ile aynı / açık / koyu); geçersiz değer varsayılana (5 dk) düşer, eksik alan varsayılanını alır (eski dosyadaki değerler korunur). **KeePass Seçenekleri'nden alınanlar** (yeni alanlar eski dosyada bugünkü davranışla açılır): küçültünce kilitle (otomatik yazma ve "kopyalayınca küçült" bunu tetiklemez: kendi küçültmemiz 1,5 sn sessiz sayılır), süre dolunca kapat, kopyalayınca/kilitleyince küçült, küçültünce görev çubuğunda gösterme, her zaman üstte, küçültülmüş başlat, açınca süresi dolanları bildir, pencereyi gösterme kısayolu (`RegisterHotKey`, ayrı kimlik; çakışırsa Ayarlar uyarır), üretici profili (uzunluk 8–128, en az bir karakter türü; Rust düzeltir) ve yeni kayda otomatik parola. **Windows açılışında başlat:** yalnızca `HKCU\...\CurrentVersion\Run` altında `LockAlperen` değeri (tırnaklı exe yolu); gerçeğin kaynağı kayıt defteridir, `settings.json` değil. `unsafe` kod `src/startup.rs`'te; kayıt defterine yazan test elle (`--ignored`) çalıştırılır, **çalıştırılmadı**. |
-| Güncellemeler | `tauri-plugin-updater`: açılışta (kapatılabilir) ya da Ayarlar'dan elle denetlenir; kurulum onayla. HTTPS, gömülü anahtarla minisign doğrulaması, imza sürüme bağlı, sürüm düşürme yok, indirme adresi bu reponun Releases'ı. Kurulumdan önce kasa kilitlenir ve pano temizlenir. WebView yalnızca `check_update`/`install_update` çağırabilir. Ayrıntı: [docs/UPDATES.md](../../docs/UPDATES.md). |
-| Klasörler | Girintili ağaç. **Simge:** klasör araçlarından 49 Font Awesome Free simgesinden biri seçilir; yalnızca yol verisi kendi `<svg>`'mizle çizilir (Font Awesome çalışma zamanı yok; CSP'ye satır içi `<style>` gerekmez), simgenin adı klasörün mevcut `icon` alanında saklanır (format değişmedi). Rust yalnızca kısa küçük harfli adları kabul eder (`icon_name_ok`, testli); tanınmayan ad varsayılan klasör simgesiyle gösterilir. Lisans: `THIRD_PARTY_NOTICES.md`. Oluştur, yeniden adlandır, taşı, sil. **Taşıma:** sürükle-bırak ya da "Taşı" menüsü (klavyeyle de kullanılabilir). Kayıtlar da klasörlerin üzerine sürüklenebilir; bu bir düzenleme sayılmaz, geçmişe sürüm eklenmez. Çekirdek (`move_group`) kök klasörün taşınmasını ve bir klasörün kendi içine ya da alt klasörüne taşınmasını (döngü) reddeder; bozuk veride de sonsuz döngüye girmez. Pencerede `dragDropEnabled: false`: Tauri'nin dosya bırakma işleyicisi kapalı, uygulama dışarıdan dosya kabul etmez. Testli. **Silme ve Geri Dönüşüm Kutusu (KeePass gibi):** bir kayıt ya da klasör silinince önce Geri Dönüşüm Kutusu'na taşınır (ilk silmede kökün altında, çöp kutusu simgesiyle oluşur; kasada `recycle_bin` alanı). Kutunun içinden silmek, kutunun kendisini silmek ve "Boşalt" **kalıcıdır**: arayüz sayıyı gösterir, iki kez onay ister. Kutudaki kayıtlar "Tüm kayıtlar", TOTP, parola sağlığı ve otomatik yazma eşleşmesine girmez (Rust tarafında da). "Geri yükle" kaydı ana klasöre taşır. Ana klasör silinemez. Testli. |
-| Ana parola değiştirme | Mevcut parola yeniden istenir (KeePassXC CVE-2023-35866 dersi). Yeni tuz ve anahtar; eski `.bak` silinir. Kayıt başarısız olursa eski parola geri konur (bellek ve disk aynı kalır). Anahtar dosyası varsa korunur. |
-| Dışa aktarma | CSV; ana parola yeniden doğrulanır; hücreler kaçışlanır ve formül olarak çalışmaz; dosya şifresizdir (arayüz söyler). |
-| Otomatik yazma | Kaydın web sitesi varsa önce siteyi varsayılan tarayıcıda (yeni sekmede) açar, sayfa yüklenip başlığı uyunca yazar (en fazla 25 sn bekler). Site yoksa kullanıcının 10 sn içinde geçtiği pencereye yazar. Hedef pencere doğrulanmadan yazmaz (başka süreç + başlıkta kayıt adı ya da site). Pencere değişirse durur. `unsafe` kod `src/autotype.rs`'te. |
-| Otomatik yazma kısayolu | Ayarlar'dan seçilir: `Ctrl+Alt+A` (varsayılan), `Ctrl+Alt+Shift+A/K/L` ya da Kapalı. Öndeki pencerenin başlığına tam olarak bir kayıt uyarsa yazar. Hiç uymazsa, birden fazla uyarsa ya da kasa kilitliyse yazmaz; uygulama öne gelip nedenini gösterir. Değiştirici tuşlar bırakılmadan yazmaz. Kısayol başka programdaysa Ayarlar uyarır (bu geliştirme makinesinde `Ctrl+Alt+A` doluydu). `unsafe` kod `src/hotkey.rs`'te. |
-| Site ikonları | **Otomatik** (proje sahibinin kararı): kilit açıldıktan ve bir kayıt kaydedildikten sonra arka planda, ikonu olmayan kayıtlar için. `lav-favicon` ile doğrudan siteye bağlanılır (üçüncü taraf servis yok), yalnızca açık internet adresleri, boyut ve süre sınırlı; resim yeniden kodlanmış PNG olarak kasada şifreli saklanır. Her kayıt uygulama açıkken bir kez denenir. **Gizlilik sonucu:** siteler ve ağ (ör. şirket proxy'si, DNS), kasada hangi sitelerin olduğunu görebilir. CSP'ye yalnızca `img-src data:` eklendi. |
-| Geçmiş ve ekler | Eski sürüm iki onayla geri yüklenir; şimdiki hâl geçmişe eklenir (kayıp yok). Ek ekleme: dosya Rust'taki pencereyle seçilir, en fazla 16 MiB, kasada şifreli. |
-| Siteyi açma | Kaydın web sitesi tarayıcıda açılır. WebView yalnızca kayıt kimliğini gönderir; adresi Rust okur. Yalnızca `http`/`https` adresi açılır; `file:`, `cmd://`, `ms-…:` ve özel protokoller gibi başka şemalar tarayıcı yerine program başlatabileceği için reddedilir. `://` içermeyen değer `https://` sayılır (`localhost:8080`, `intranet:8443/giris` de açılır); adresteki kullanıcı bilgisi atılır. `unsafe` kod (`ShellExecuteW`) `src/browser.rs`'te. Testli. |
-| Sistem simgesi | Kapat düğmesi pencereyi gizler, uygulama sistem simgesinde (Windows'ta saatin yanında, Ubuntu'da üst çubukta) çalışmaya devam eder (Ayarlar'dan kapatılabilir, varsayılan açık). Simgenin menüsü: göster, kilitle, kilitle ve çık. Gizliyken de bütün kilit kuralları geçerlidir. Sistem simgesi oluşturulamazsa pencere hiç gizlenmez (geri getirmenin yolu kalmasın diye). |
-| Görünüm | **Listeleme stilleri:** liste, kompakt, kartlar, tablo (sütun başlığıyla sıralama); `settings.json`'da `listStyle`, tanınmayan değer listeye döner. Kart ve tabloda liste sütunu genişler; kayıt alanları ayrıntı kartının kendi genişliğine göre (container query) düzenlenir. Açık ve koyu tema renk değişkenleriyle (`styles.css`). "Windows ile aynı" seçiliyken saf CSS (`prefers-color-scheme`) izler; ayar yüklenene kadar da Windows'a uyduğu için açılışta yanıp sönme olmaz. Duyarlı düzen: >1100 px üç sütun; 760–1100 px klasörler çekmecede (☰, arka plana tıklama ya da Esc kapatır); <760 px liste ya da ayrıntı, geri düğmesiyle. En küçük pencere 380×480. Görsel olarak açık ve koyu temada, üç genişlikte ve çekmece açıkken ekran görüntüsüyle kontrol edildi (2026-11-17). |
-| Tablo sütunları | Başlık, kullanıcı adı, **parola**, web sitesi, klasör, **son kullanma** (sıralanabilir; hiç dolmayanlar sonda, süresi geçenler uyarı renginde). Parola sütunu yalnızca nokta gösterir: tablo için parola WebView'e gönderilmez. |
-| Üzerindeyken Ctrl+C ve kısayollar | Fare bir kullanıcı adının ya da parolanın üzerindeyken (tablo, liste, ayrıntı) Ctrl+C o değeri kopyalar; WebView yalnızca kayıt kimliğini ve alanı gönderir, kopyalamayı Rust yapar (pano kuralları aynı). Fare bir değerin üzerinde değilse seçili kaydın parolası kopyalanır. Metin seçiliyse, bir yazı alanındayken ya da pencere açıkken çalışmaz. Eski bir "üzerinde" bilgisi kullanılmaz (öğe hâlâ farenin altında olmalı). Ctrl+B kullanıcı adı, Ctrl+U site, Ctrl+E/Enter düzenle, Delete sil (sorar). Liste Ayarlar › Klavye kısayolları'nda. |
-| Ayrıntı paneli genişliği | Liste ile panel arasındaki çubuk sürüklenir (çift tık: otomatik, ←/→: klavyeyle). Genişlik WebView'in `localStorage`'ında tutulur (sır değil); pencere küçülünce listeye en az 280 px kalacak şekilde daraltılır. Dar düzende çubuk gizlenir. |
-| Silme onayı | Klasör silme, kayıt silme ve kutuyu boşaltma `Confirm.tsx` onay penceresini açar: ne gideceğini (alt klasör ve kayıt sayısı) ve kalıcı mı yoksa kutuya mı gideceğini söyler. Odak "Vazgeç"te başlar; Enter tek başına silmez, Esc ya da arka plana tıklama vazgeçer. |
-| Sekmeler (birden fazla kasa) | `src/tabs.rs`: her sekme ayrı bir `Session`; komutlar etkin sekmede çalışır. En fazla 8 sekme. Kilitleme (elle, boşta, Win+L, uyku) hepsini kilitler; aynı dosya iki sekmede açılamaz. Sekme kapatılırken önce kilitlenir, o kasadan kopyalanan değer panodan silinir. Kısayolla otomatik yazma bütün açık sekmelere bakar, yine yalnızca tek eşleşmede yazar. |
-| Otomatik yazma dizisi ve pencere kuralı | Kayda özel dizi (`{USERNAME}` `{PASSWORD}` `{TAB}` `{ENTER}` `{TOTP}` `{TITLE}` `{URL}` `{NOTES}` `{SPACE}` `{DELAY n}` `{S:alan}`, `{{}` `{}}`) kaydetmeden önce `autotype::parse_sequence` ile denetlenir (1000 karakter, toplam 30 sn bekleme). Pencere kuralı (`*`, `?`) başlık kuralının yerine geçer; joker dışında en az 3 harf ister. Türkçe i farkı yok sayılır. |
-| Alan referansları | `{REF:<T/U/P/A/N>@<I/T/U/A>:<metin>}` yalnızca Rust'ta, kopyalama, gösterme ve otomatik yazma anında çözülür; en fazla 4 düzey. Düzenleyicideki "Başka bir kayda referans" kimlikle (`@I:`) bağlar. |
-| Renkler | Kayıt başına yazı ve arka plan rengi; Rust yalnızca `#rrggbb` kabul eder (değer stil özniteliğine girer), listede tekrar süzer. |
-| Arama | Başlık, kullanıcı adı, site ve etiketler arayüzde; notlar ve özel alanlar (adı ve gizli olmayan değerler) Rust'ta aranır, yalnızca eşleşen kimlikler döner. Seçim "Alanlar" düğmesinde, bu tarayıcı profilinde hatırlanır. |
-| Görünümler | Sol menüde "Süresi dolacaklar" (7/30/90/365 gün) ve etiket listesi. |
-| Üretici profilleri | Hazır profiller (onaltılık anahtarlar, MAC, PIN) ve kullanıcının profilleri `%LOCALAPPDATA%\...\generator-profiles.json`'da (en fazla 30; geçersiz desen ya da adsız profil atılır). Desen `lav_core::generate_pattern` ile üretilir. |
-| Kasa ayarları | Ad, açıklama, geçmiş sınırı (0–100), geçmişi temizleme, Argon2id gücü, anahtar dosyası oluşturma/ekleme/kaldırma. Kimlik bilgisi değişiklikleri ana parolayı yeniden ister ve kaydetme başarısızsa geri alınır. |
-| Google Drive yedeği | `src/gdrive.rs`. İsteğe bağlı; Ayarlar › Google Drive. OAuth 2.0 masaüstü akışı (sistem tarayıcısı, `127.0.0.1` dönüşü, PKCE S256, `state`), kapsam yalnızca `drive.file`. Yenileme anahtarı DPAPI ile `google-drive.json`'da; erişim anahtarı bellekte (50 dk). Yüklenen tek şey diskteki şifreli `.lav` dosyası: "LockAlperen yedekleri" klasörüne, aynı kasa için aynı dosyanın yeni sürümü olarak. Otomatik yedek her dakika açık kasaların dosya zamanına bakar. İndirilen yedek kasa başlığından geçmezse yazılmaz. HTTP: `reqwest` (rustls, sistem kökleri), yönlendirme izlenmez. Kullanıcı kendi OAuth istemcisini girer (masaüstü istemcisinin gizli anahtarı Google'a göre gizli sayılmaz); derlemede `LAV_GOOGLE_CLIENT_ID` / `LAV_GOOGLE_CLIENT_SECRET` ile varsayılan verilebilir. |
-| Birleştirme ve dışa aktarma | Başka bir `.lav` ile birleştirme (diğer dosya yalnızca okunur), KDBX 4 (`src/export.rs`, `keepass` crate'inin `save_kdbx4` özelliği, Argon2id 64 MiB) ve yazdırılabilir HTML (her değer kaçışlı, CSP `default-src 'none'`). Hepsi ana parolayı yeniden ister. |
-| Kilit simgesi | Kasa kilitliyken (ya da henüz açılmamışken) pencere ve sistem simgesinin sağ altında kırmızı bir kilit rozeti görünür; açıkken normal simge. Rozet uygulamanın kendi simgesinden çalışma sırasında çizilir (`src/lockicon.rs`, ek dosya yok). Linux'ta GNOME pencere simgesini kullanmaz (Dock ve Alt+Tab `.desktop` dosyasındaki sabit simgeyi gösterir); rozet yalnızca üst çubuktaki simgede görünür, ve Ubuntu'nun AppIndicator eklentisi değişen simgeyi çizmediği için simge her durum değişikliğinde yenisiyle değiştirilir (`tray::replace_icon`). Durumu bir izleyici 300 ms'de bir okur; böylece kilitlemenin her yolu (düğme, Ctrl+L, sistem simgesinin menüsü, boşta kalma, Win+L, uyku, oturum kapatma) aynı yerden yakalanır. Testli; `LAV_ICON_PREVIEW=<klasör> cargo test lock_badge_preview -- --ignored` gerçek simgeyle önizleme üretir. |
-| Tek örnek | Uygulama ikinci kez açılırsa yeni süreç çalışmaz, mevcut pencere öne gelir (`tauri-plugin-single-instance`; adlandırılmış mutex + `WM_COPYDATA`). İkinci açılışın argümanları yok sayılır. |
+| IPC yüzeyi | WebView yalnızca uygulamanın kendi komutlarını çağırabilir: 81 komut, tek tek `capabilities/main.json`'da listeli. Core, dosya sistemi, shell ve diyalog yetkisi yok. Komutlar `build.rs`'te tanımlı; yetki verilmeyen komut reddedilir. |
+| Dosya yolları | Kasa yolu yalnızca Rust'ta tutulur, dosya seçme penceresini Rust açar. WebView hiç yol göndermez; böylece WebView'e enjekte edilen bir betik başka bir dosyayı açtıramaz. |
+| Sırlar | Liste yanıtında parola, not, TOTP, özel alan ve ek **yok** (`EntrySummary`). IPC'ye giden JSON'u bir test kontrol ediyor. Tablodaki parola sütunu yalnızca nokta gösterir. |
+| Ana parola | React state'inde tutulmaz: kontrolsüz input, gönderilirken okunup hemen temizlenir. Rust'ta `Zeroizing<String>` içinde. |
+| CSP | `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `img-src 'self' data:` (site ikonları), `connect-src` yalnızca Tauri IPC, `frame-src 'none'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`. Web fontu ve uzak içerik yok. |
+| XSS | Bütün metinler React ile düz metin olarak basılır, `innerHTML` yok. `<script>` başlıklı bir kayıtla elle denendi. Kayıt renkleri Rust'ta yalnızca `#rrggbb` olarak kabul edilir. |
+| Navigasyon | Uygulama dışına (uzak site, `file:`) gezinme engellenir (`navigation_allowed`, testli). Dışarıdan dosya bırakma kapalı (`dragDropEnabled: false`). |
+| Geliştirici araçları | Tauri'nin `devtools` özelliği açık değil; inceleyici yalnızca debug derlemede var. **Release derlemede doğrulanmadı.** |
+| Hata mesajı | Kilit açma hatalarının hepsi tek bir genel mesaj (`is_unlock_failure`). Dosya okunamazsa ayrı bir mesaj. |
+
+### Kasa ve kimlik bilgileri
+
+| Konu | Karar |
+|---|---|
+| Yeni kasa | Kaydetme penceresini Rust açar, `.lav` uzantısı eklenir. Parola en az 8 karakter (çekirdeğin kuralı). **Var olan dosyanın üzerine asla yazılmaz**; arada dosya oluşursa çekirdeğin kilit altındaki kontrolü reddeder. Varsayılan KDF: Argon2id 64 MiB, 3 geçiş. |
 | Kilit | Kilitlemek kasayı bırakır; anahtarları ve içeriği `lav-core` siler. Başarısız bir yeniden deneme ya da yeni dosya seçmek de kilitler. |
+| Anahtar sayfaları | `lav-core` türetilmiş anahtarı `VirtualLock`/`mlock` ile RAM'de kilitler. Yalnızca anahtar sayfası kilitli; çözülmüş içerik kilitli değil, hazırda bekletme tüm belleği diske yazar. |
+| Anahtar dosyası | Kilit açmada isteğe bağlı; Rust'taki pencereyle seçilir, yolu Rust'ta kalır. Yanlış ya da gereksiz anahtar dosyası da aynı genel hatayı verir. |
+| Kayıt düzenleme | Değişiklik önce verinin **kopyasına** uygulanır ve diske yazılır; yazma başarısızsa bellek eski hâline döner. Dosya başka yerde değiştirildiyse (`FileChangedOnDisk`) üzerine yazılmaz. `EntryForm` bırakılırken silinir, `Debug` çıktısında gizlidir. Önceki sürüm geçmişe girer. |
+| Ana parola değiştirme | Mevcut parola yeniden istenir (KeePassXC CVE-2023-35866). Yeni tuz ve anahtar; eski `.bak` silinir. Kayıt başarısız olursa eski parola geri konur. |
+| Kasa ayarları | Ad, açıklama, geçmiş sınırı (0–100), Argon2id gücü, anahtar dosyası. Kimlik bilgisi değişiklikleri ana parolayı yeniden ister. |
+| Parola üretici | Çekirdeğin `OsRng` tabanlı üreticisi; WebView yalnızca ayarları gönderir. Profiller en fazla 30; geçersiz desen atılır. |
+| TOTP | RFC 6238: SHA-1/256/512, 6–8 hane, 1–300 sn periyot. Gizli anahtar Rust'ta kalır; WebView'e yalnızca o anki kod gider. HMAC RustCrypto'dan; RFC test vektörleriyle sınanıyor. HOTP yok. |
+| Parola sağlığı | Rust'ta hesaplanır; WebView'e yalnızca sayılar ve etiketler gider. **Zayıflık tahmini basittir:** uzunluk × log2(karakter türleri); sözlük kelimelerini tanımaz ("Password123!" zayıf sayılmaz) ve arayüz bunu söyler. Sızıntı kontrolü yok. |
+| Alan referansları | `{REF:…}` yalnızca Rust'ta, kopyalama, gösterme ve otomatik yazma anında çözülür; en fazla 4 düzey. |
+| Arama | Başlık, kullanıcı adı, site ve etiketler arayüzde aranır. Notlar ve özel alanlar Rust'ta aranır, yalnızca eşleşen kimlikler döner. |
+| Gizli değerleri gösterme | Parola, gizli özel alanlar ve notlar yalnızca tıklanınca istenir. 15 sn sonra, başka kayıt seçilince ya da kilitlenince ekrandan düşer. Bu sırada WebView belleğindedir ve silinemez. |
 
-## Doğrulananlar
+### İçe aktarma, dışa aktarma ve dosyalar
 
-- `cargo test`: 66 test (masaüstü, 2026-11-17) + çekirdekte sayfa kilidi testi (Windows, GNU araç zinciri). Gerçek panoyu kullanan 2 test
-  (`cargo test -- --ignored --test-threads=1`) elle çalıştırıldı ve geçti: üç işaret konuyor,
-  temizleniyor, sonradan kopyalanan içerik silinmiyor.
-- KeePass içe aktarma elle denendi: yanlış parolada genel mesaj; doğru parolayla 3 kayıt, 1 klasör,
-  1 TOTP aktarıldı, sağlık kartı güncellendi. Testler: gerçek KDBX 4 dosyası (crate'in kendi
-  yazıcısıyla, yalnızca testte), yanlış parola, KDBX 3.1 ve rastgele dosyanın reddi, **aşırı KDF
-  ayarlarının hiçbir hesaplama yapılmadan reddi**, 300 rastgele bozulmuş dosyada panik olmaması
-  (mutasyon testi; libFuzzer değil).
-- Sertleştirme, özel alan, gizli değer gösterme, geçmiş ve ayarlar elle denendi (ekran görüntüleri
-  ile). Anahtar dosyası birim testlerle (gerekli/yanlış/taşınmama) sınandı, arayüzde elle
-  denenmedi.
-- Parola sağlığı elle denendi: demo kasada aynı parolayı kullanan 4 kayıt "Tekrar" olarak
-  işaretlendi, oran %0. Testler: tahmin sınırları, sayımlar, rapor JSON'unda parola olmaması.
-- TOTP elle denendi: uygulamadaki kod, Python'un `hmac` kütüphanesiyle bağımsız hesaplanan değerle
-  aynı (810016, aynı saniye). RFC 6238 Ek B vektörlerinin hepsi (SHA-1/256/512, 6 zaman) ve RFC
-  4648 base32 vektörleri testte.
-- Düzenleyici elle denendi: Ctrl+N, alanlar, Ctrl+S; kayıt listeye ve diske geldi. Testler: ekle
-  ve yeniden aç, düzenle/sil, **başka biri dosyayı değiştirdiyse bellek ve disk değişmiyor**, başlık,
-  klasör ve kimlik kontrolleri, üretici ayarları, `Debug` gizliliği.
-- Son kasalar elle denendi: oluşturulan kasa listeye yazıldı; uygulama yeniden açılınca seçili
-  geldi ve parolayla açıldı.
-- Yeni kasa elle denendi: kaydetme penceresi, parolalar uyuşmayınca mesaj, oluşturunca boş kasa
-  açılıyor ve dosya diskte. Testler: kaydet-aç-yeniden aç, ad/tekrar/uzunluk kontrolleri, var olan
-  dosyanın baytlarının değişmemesi.
-- Otomatik kilit elle denendi (`LAV_IDLE_SECS=20`): geri sayım göründü, süre dolunca kasa
-  kilitlendi ve bildirim çıktı. Gizli pencereye gönderilen gerçek mesajlarla (kilitlenme, uyku)
-  kilitleme testi var.
-- Pano elle de denendi: kopya → 13 sn sonra boş; araya kullanıcı kopyası girince korunuyor;
-  Ctrl+L panoyu hemen temizliyor.
-- `cargo clippy -D warnings` ve `fmt` temiz. `npm audit` 0 açık.
-- `cargo audit`: bilinen açık yok. Uyarılar yalnızca Linux derlemesine giren bağımlılıklarda:
-  `proc-macro-error` bakımsız, `glib` unsound (GTK yolu) ve `zvariant`/`zbus_names`/`zvariant_derive`
-  bakımsız (tek örnek eklentisinin D-Bus yolu). `cargo tree` ile Windows hedefinde olmadıkları
-  doğrulandı; CI'daki istisnalar gerekçeleriyle `ci.yml`'de. **Windows derlemesinde olan tek
-  uyarı:** `chrono` bakımsız (RUSTSEC-2026-0543, 2026-11-17), `keepass` üzerinden KDBX içe
-  aktarmada tarihleri okumak için. Bilinen açık yok, düzeltilmiş sürüm yok; `fxhash` ile aynı
-  politika. `keepass` `chrono`'yu bırakınca istisna kaldırılmalı.
-- **Gerçek uygulamada otomasyonla denenenler (2026-11-17, debug derleme, geçici test kasası):**
-  - Sistem simgesi: kapatınca pencere gizleniyor ve süreç sürüyor; ikinci açılış yeni süreç başlatmadan
-    pencereyi geri getiriyor; ayar kapalıyken kapatmak çıkıyor.
-  - Otomatik yazma kısayolu: tek eşleşme doğru metni yazdı; iki eşleşme, eşleşme yokluğu, `Ctrl`
-    basılı kalması ve kilitli kasa hiçbir şey yazmadı. Tuşlara sentetik girdiyle basıldı.
-  - Sürükle-bırak (gerçek fare hareketiyle): kayıt klasöre taşındı, klasör başka klasörün altına
-    taşındı, kendi alt klasörüne bırakılan klasörde hiçbir şey değişmedi.
-- **Elle denenenler (debug derleme, Windows 10, GNU):**
-  - dosya seçme;
-  - yanlış parolada genel mesaj ve alanın temizlenmesi;
-  - ardından doğru parolayla açma;
-  - liste, klasör filtresi ve arama;
-  - Ctrl+L ile kilitleme;
-  - XSS başlığının düz metin görünmesi.
+| Konu | Karar |
+|---|---|
+| KeePass içe aktarma | Dosya güvenilmez sayılır. `keepass` crate'ine vermeden önce dış başlığı **kendimiz** okuruz: yalnızca KDBX 4, en fazla 64 MiB. KDF sınırları da kontrol edilir: Argon2 ≤ 1 GiB, ≤ 100 iterasyon; AES-KDF ≤ 300 milyon tur. Sınır olmasa kötü niyetli bir dosya, parola denenmeden önce sınırsız bellek ya da süre harcatabilirdi. Çözüldükten sonra da sınırlar var: kayıt, klasör, derinlik, alan ve ek boyutu. Sonuç **yeni bir üst klasöre** eklenir; hata olursa kasa değişmez. |
+| Dışa aktarma | CSV, KDBX 4 ve yazdırılabilir HTML. Hepsi ana parolayı yeniden ister. CSV hücreleri formül olarak çalışmaz (`= + - @` önekli). HTML'de her değer kaçışlı, CSP `default-src 'none'`. Dosyalar şifresizdir ve arayüz bunu söyler. |
+| Ekler | Eklenecek dosya Rust'taki pencereyle seçilir (en fazla 16 MiB, kasada şifreli). Kaydederken önerilen ad temizlenir: yalnızca son parça kalır, kontrol ve yön değiştirme karakterleri atılır. Kaydedilen dosya **şifresizdir**. |
+| Dosya izinleri | Kasa, `.bak`, `.lock`, ayarlar, son kasalar, Drive deposu, köprü deposu, dışa aktarmalar, ekler, anahtar dosyası ve otomatik başlatma dosyası Unix'te **0600**, uygulamanın klasörleri **0700** (`private.rs`, testli). Windows'ta kullanıcı klasörlerinin varsayılan ACL'i geçerli. |
+| Ayarlar | `settings.json` (Windows'ta `%LOCALAPPDATA%\com.alperen.lockalperen\`, Linux'ta `~/.local/share/com.alperen.lockalperen/`). Değerler sabit listelerle sınırlı. Boşta kilit 1–60 dk olabilir, "asla" seçeneği yok. Geçersiz değer varsayılana döner. Tetikleyici ya da betik yok (KeePass CVE-2023-24055). |
+| Son kasalar | `recent.json`: en fazla 5 kayıt, yalnızca yol ve zaman. Bozuk ya da 64 KiB'tan büyük dosya boş liste sayılır. WebView sıra numarası gönderir, yolu Rust çözer. |
 
-## Doğrulanmayanlar / bilinen sınırlar
+### İşletim sistemi
 
-- **MSVC:** yerelde GNU ile derlendi. Release derlemesi (GNU, LTO) yerelde derlendi ve çalıştırıldı:
-  konsol penceresi yok, sertleştirme etkin. MSVC sonucunu CI işi gösterir.
-- **GNU bağlayıcı uyarısı:** "multiple non-default manifests". Dosya seçme penceresi çalıştı;
-  release ya da MSVC'de bu uyarı beklenmiyor ama doğrulanmadı.
-- **Caps Lock uyarısı:** otomasyonla denenemedi, elle denenmeli.
-- **IPC tamponları:** parola JSON olarak WebView'den Rust'a gider. WebView/JS dizgileri ve
-  Tauri'nin ara tamponları silinemez. Bu, SECURITY.md'de belirtilen bilinen sınır.
-- **Anahtar dosyası:** kilit açma, yeni kasa ve KeePass içe aktarmada destekleniyor (içe aktarmanın anahtar dosyası kasanınkinden ayrı tutulur).
-- **Pano:** Windows'un `EmptyClipboard` ile bıraktığı bellek bizim tarafımızdan silinmez; pano
-  açıkken başka bir program içeriği okuyabilir. Pano geçmişi işaretlerinin Win+V'de gerçekten
-  gizlendiği elle (Win+V açılarak) **kontrol edilmedi**; yalnızca işaretlerin konduğu doğrulandı.
-- **Win+L:** proje sahibi elle doğruladı (2026-11-15): Win+L sonrası kasa kilitli. **Uyku** elle
-  denenmedi.
-- **Boşta kalma süresi** Ayarlar'dan seçilir (1–60 dk; "asla" bilinçli olarak yok).
-- **KeePass:** başlık okuyucumuz için libFuzzer hedefi yok (masaüstü crate'i yalnızca Windows'ta
-  derleniyor, fuzz CI'ı Linux'ta); yerine mutasyon testi var. `keepass` crate'inin çözdüğü
-  verinin bellekte silinip silinmediği crate'e bağlı, doğrulanmadı. Geçmiş, otomatik yazma ve
-  özel ikonlar aktarılmıyor.
-- **KDF satırı** ("Argon2id · 64 MiB · 3 geçiş") henüz doğrulanmamış header'dan okunuyor; yalnızca
-  bilgi amaçlı.
+| Konu | Karar |
+|---|---|
+| Pano | Kopyalamayı Rust yapar; değer WebView'e gitmez. Windows'ta pano geçmişi, bulut panosu ve izleyiciler için üç işaret konur. Linux'ta `x-kde-passwordManagerHint: secret` konur. Seçilen sürede (5–90 sn, varsayılan 12) ve kilitlenince pano temizlenir, ama **yalnızca hâlâ bizim içeriğimiz duruyorsa**. |
+| Otomatik kilit | Kararı Rust verir; WebView kilidi açık tutamaz. Boşta kalma sistem genelindeki son girdiden ölçülür. Ekran kilidi, uyku, oturum kapatma ve kullanıcı değiştirme de kilitler; her durumda pano da temizlenir. Debug derlemede `LAV_IDLE_SECS` ile kısaltılabilir. |
+| Süreç sertleştirme (Windows) | DLL'ler yalnızca SYSTEM32'den yüklenir. Süreç DACL'ı yalnızca sorgula/bekle/sonlandır izni verir. Pencere ekran görüntüsünden hariç tutulur (`WDA_EXCLUDEFROMCAPTURE`). *Doğrulandı:* başka süreçten bellek okuma reddediliyor (hata 5). **Sınır:** aynı kullanıcı DACL'ı değiştirebilir; yöneticiler atlar. |
+| Süreç sertleştirme (Linux) | `PR_SET_DUMPABLE=0` ve core dump 0, **yalnızca ana süreçte**. WebKitGTK'nın alt süreçleri dump alınabilir durumda kalıyor; gösterilen parola ve düzenlenen kayıt bunların belleğinde. Açık madde, ayrıntısı [karşılaştırma raporunda](../../docs/SECURITY_COMPARISON_2026-11.md). |
+| Siteyi açma | WebView yalnızca kayıt kimliğini gönderir; adresi Rust okur. Yalnızca `http`/`https` açılır. `file:`, `javascript:`, `ms-…:` ve UNC yolları reddedilir. Adresteki kullanıcı bilgisi atılır. Testli. |
+| Otomatik yazma (Windows) | Hedef pencere doğrulanmadan yazmaz: başka bir süreç olmalı ve başlıkta kayıt adı ya da site geçmeli. Pencere değişirse durur. Kısayolla yazmada tam olarak bir kayıt eşleşmeli. Diziler kaydetmeden önce denetlenir: en fazla 1000 karakter, toplam 30 sn bekleme. |
+| Tek örnek | İkinci açılış yeni süreç başlatmaz, mevcut pencereyi öne getirir; argümanları yok sayılır. |
+| Sistem simgesi | Kapat düğmesi pencereyi gizler, uygulama simgede çalışmaya devam eder. Bu ayar kapatılabilir, varsayılanı açık. Simgenin menüsünde göster, kilitle, kilitle ve çık var. Simge oluşturulamazsa pencere hiç gizlenmez. |
+| Kilit rozeti | Kasa kilitliyken simgenin köşesinde kırmızı kilit görünür. Kilit durumu 300 ms'de bir okunur; böylece her kilitleme yolu yakalanır. Linux'ta Dock simgesi değiştirilemez; rozet yalnızca üst çubukta görünür. Ubuntu'nun AppIndicator eklentisi değişen simgeyi çizmediği için simge her değişiklikte yenisiyle değiştirilir. |
+
+### Ağ
+
+| Konu | Karar |
+|---|---|
+| Güncellemeler | Açılışta (kapatılabilir) ya da elle denetlenir; kurulum onayla yapılır. Bağlantı HTTPS'tir. İmza, gömülü anahtarla minisign ile doğrulanır ve sürüme bağlıdır. Eski sürüme düşürme yok; indirme yalnızca bu reponun Releases'ından. Kurulumdan önce kasa kilitlenir. Ayrıntı: [docs/UPDATES.md](../../docs/UPDATES.md). |
+| Site ikonları | **Otomatik:** kilit açıldıktan sonra, ikonu olmayan kayıtlar için. `lav-favicon` yalnızca HTTPS kullanır. DNS'i sabitler ve özel ya da iç IP adreslerini engeller. Her yönlendirmeyi yeniden denetler. Boyut ve süre sınırlıdır. Resim yeniden kodlanır. **Gizlilik:** siteler ve ağ, kasada hangi sitelerin olduğunu görebilir. |
+| Google Drive yedeği | İsteğe bağlı. OAuth 2.0 masaüstü akışı kullanılır: dönüş `127.0.0.1`'e, PKCE S256 ve `state` ile. Kapsam yalnızca `drive.file`. Yenileme anahtarı Windows'ta DPAPI ile, Linux'ta Secret Service'te saklanır. Yalnızca şifreli `.lav` dosyası yüklenir. İndirilen yedek, kasa başlığı doğrulanmazsa yazılmaz. |
+| Tarayıcı köprüsü | Ağ portu yok: kullanıcıya özel Unix soketi, Noise XX ile şifreli ve eşleştirmeli. Ayrıntı: [eklenti README'si](../browser-extension/README.md). |
+
+### Arayüz
+
+| Konu | Karar |
+|---|---|
+| Klasörler | Girintili ağaç. Sürükle-bırak ya da "Taşı" menüsüyle taşınır. Çekirdek döngü oluşturacak taşımaları reddeder. Klasör simgeleri Font Awesome Free'den yol verisi olarak çizilir, çalışma zamanı kodu yok. |
+| Geri Dönüşüm Kutusu | Silinen kayıt ya da klasör önce kutuya gider. Kutudan silmek ve "Boşalt" **kalıcıdır**; iki kez onay ister. Kutudaki kayıtlar TOTP, sağlık ve otomatik yazmaya girmez. |
+| Silme onayı | Ne gideceğini ve kalıcı olup olmadığını söyler. Odak "Vazgeç"te başlar; Enter tek başına silmez. |
+| Görünüm | Liste, kompakt, kart, tablo; açık ve koyu tema. Duyarlı düzen: üç sütun, çekmece ya da tek sütun. En küçük pencere 380×480. |
+| Kısayollar | Fare bir değerin üzerindeyken Ctrl+C o değeri kopyalar; WebView yalnızca kimliği gönderir. Ctrl+B, Ctrl+U, Ctrl+E, Delete. Tam liste Ayarlar › Klavye kısayolları'nda. |
+| Sekmeler | Her sekme ayrı bir oturumdur. Kilitleme hepsini kilitler. Aynı dosya iki sekmede açılamaz. Kapatılan sekmenin panoya kopyaladığı değer silinir. |
 
 ## Linux
 
-Aynı uygulama Ubuntu masaüstünde (22.04 ve sonrası, Wayland ve X11) çalışacak şekilde derleniyor.
-İşletim sistemiyle konuşan modüllerin Linux karşılıkları `src-tauri/src/linux/` altında, aynı
-fonksiyon adlarıyla:
+Aynı uygulama Ubuntu 22.04 ve sonrasında (Wayland ve X11) çalışır. İşletim sistemiyle konuşan
+modüllerin Linux karşılıkları `src-tauri/src/linux/` altındadır.
 
 | Windows | Linux |
 |---|---|
-| Pano: `SetClipboardData`, geçmiş/bulut işaretleri | GTK panosu; `x-kde-passwordManagerHint: secret` (pano yöneticileri geçmişe almaz); başkası kopyalayınca bizim değerimiz silinmez |
-| Otomatik kilit: `GetLastInputInfo`, `WM_WTSSESSION_CHANGE`, `WM_POWERBROADCAST` | D-Bus: Mutter/KDE boşta kalma süresi (yoksa logind `IdleHint`); ekran koruyucu `ActiveChanged`, logind `Lock`, `LockedHint`, `Active`, `PrepareForSleep`, `PrepareForShutdown` |
-| Süreç DACL'ı, `SetDefaultDllDirectories` | `PR_SET_DUMPABLE=0` (ptrace ve `/proc/<pid>/mem` kapalı), core dump sınırı 0. **Yalnızca ana süreçte:** WebKitGTK'nın alt süreçleri (`WebKitWebProcess`, gösterilen parola ve düzenlenen kayıt bunlardadır) `exec` ile başladığı için yeniden dump alınabilir; `ptrace_scope=0` olan sistemlerde aynı kullanıcının süreçleri onları okuyabilir (pentest 2026-11-24, açık) |
+| Pano: `SetClipboardData`, geçmiş/bulut işaretleri | GTK panosu, `x-kde-passwordManagerHint: secret` |
+| Otomatik kilit: `GetLastInputInfo`, oturum ve güç mesajları | D-Bus: Mutter/KDE boşta kalma (yoksa logind), ekran koruyucu, logind `Lock`, `PrepareForSleep`, `PrepareForShutdown` |
+| Süreç DACL'ı, `SetDefaultDllDirectories` | `PR_SET_DUMPABLE=0`, core dump 0 (yalnızca ana süreç; yukarıya bakın) |
 | Ekran görüntüsünden gizleme | Yok (X11 ve Wayland'de böyle bir ayar yok) |
-| Google erişim anahtarı: DPAPI | Secret Service (GNOME Keyring / KWallet); ayar dosyasında yalnızca bir işaretçi durur |
-| Açılışta başlat: HKCU `Run` | `~/.config/autostart/com.alperen.lockalperen.desktop` (AppImage'da `$APPIMAGE` yolu) |
-| Siteyi aç: `ShellExecuteW` | `xdg-open` (yalnızca http/https; AppImage kütüphane yolları tarayıcıya geçmez) |
-| Başlık çubuğu rengi: DWM | Masaüstü temasına bırakılır |
-| Tarayıcı eklentisi | Unix soketi (`$XDG_RUNTIME_DIR`), native messaging manifestleri `~/.config/<tarayıcı>/NativeMessagingHosts/`; Windows'ta **yok** (`src/bridge/`) |
-| Otomatik yazma, global kısayollar | **Yok.** Wayland başka pencerenin başlığını okumaya ve tuş göndermeye izin vermiyor; arayüz bu seçenekleri Linux'ta göstermiyor |
+| Google erişim anahtarı: DPAPI | Secret Service (GNOME Keyring / KWallet) |
+| Açılışta başlat: HKCU `Run` | `~/.config/autostart/com.alperen.lockalperen.desktop` (0600) |
+| Siteyi aç: `ShellExecuteW` | `xdg-open` |
+| Tarayıcı eklentisi: **yok** | Unix soketi + native messaging manifestleri (`src/bridge/`) |
+| Otomatik yazma, genel kısayollar | **Yok.** Wayland başka pencereye tuş göndermeye izin vermiyor; arayüz bu seçenekleri göstermiyor. |
 
-Paketler: `.deb` (bağımlılıklar: WebKitGTK 4.1, `libayatana-appindicator3-1`, `xdg-utils`) ve
-AppImage. Ubuntu 22.04'te derleniyor; böylece 22.04 ve 24.04'te çalışıyor.
+**Paketler:** `.deb` (bağımlılıklar: WebKitGTK 4.1, `libayatana-appindicator3-1`, `xdg-utils`) ve
+AppImage. Ubuntu 22.04'te derlenir, 22.04 ve sonrasında çalışır.
 
-**Doğrulanan:** CI'da (Ubuntu 22.04) `cargo fmt`, `clippy -D warnings`, testler ve iki paketin
-oluşması. **Doğrulanmayan:** Gerçek bir Ubuntu masaüstünde çalıştırma: pano, ekran kilidiyle kilitlenme,
-boşta kilit, üst çubuktaki simge, anahtarlık ve `.deb`/AppImage güncellemesi elle denenmeli.
+## Doğrulananlar
 
-Linux'ta geliştirme için gerekenler:
+**Otomatik testler (2026-11-24, Linux):**
+- Masaüstü: 122 test. Bunların arasında tarayıcı köprüsünün JS ve Rust tarafının birbirine karşı
+  sınandığı Noise testi de var.
+- Çekirdek: 146 test.
+- `cargo fmt`, `clippy -D warnings` ve `cargo audit` temiz; `npm audit --omit=dev` temiz.
 
-```sh
-sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
-  libssl-dev build-essential file patchelf
-```
+**CI (her commit'te):** Windows (MSVC) ve Ubuntu 22.04'te derleme, testler, Linux paketleri,
+libFuzzer hedefleri ve bağımlılık taraması.
+
+**Elle ve otomasyonla denenenler (Windows):**
+- **Kasa:** kasa açma, yanlış parolada genel mesaj, liste, arama, Ctrl+L, XSS başlığının düz metin
+  görünmesi.
+- **İçe aktarma:** KeePass içe aktarma (yanlış ve doğru parola). Testlerde gerçek bir KDBX 4
+  dosyası, aşırı KDF ayarlarının hesaplama yapılmadan reddi ve 300 bozuk dosyada panik
+  olmaması sınanıyor.
+- **Pano:** 13 sn sonra temizleniyor; sonradan kopyalanan içerik korunuyor.
+- **Otomatik kilit:** `LAV_IDLE_SECS=20` ile denendi. Win+L'yi proje sahibi doğruladı.
+- **TOTP:** Python'la bağımsız hesaplanan kodla aynı çıktı.
+- **Arka plan ve otomatik yazma:** Sistem simgesi, tek örnek, otomatik yazma kısayolu (tek eşleşme
+  yazıyor; çoklu eşleşme, eşleşme yokluğu ve kilitli kasa yazmıyor), sürükle-bırak.
+
+**Linux'ta denenenler:**
+- Uygulama Ubuntu masaüstünde çalıştı.
+- Kilit durumu değişince üst çubuğa doğru simge bildiriliyor (D-Bus `NewIcon` izlendi).
+- Tarayıcı köprüsünde gerçek native host üzerinden uçtan uca bağlantı kuruluyor. Eşleştirilmemiş
+  eklenti `not_paired` dışında bir şey alamıyor.
+
+## Doğrulanmayanlar ve sınırlar
+
+- **Linux masaüstünde elle denenmesi gerekenler:**
+  - Üst çubuktaki simgenin kilitte değiştiğinin gözle görülmesi.
+  - Eklentinin gerçek Chrome'da eşleştirilip doldurması.
+  - Ekran kilidi ve uykuda kilitlenme.
+  - Pano yöneticisiyle pano davranışı.
+  - `.deb`/AppImage güncellemesi.
+- **Windows:**
+  - Pano geçmişi işaretlerinin Win+V'de gerçekten gizlendiği gözle kontrol edilmedi.
+  - Uyku sonrası kilitlenme elle denenmedi.
+  - Caps Lock uyarısı elle denenmedi.
+  - "Windows ile başlat" kayıt defteri testi çalıştırılmadı.
+- **Bellek:** WebView ve JavaScript dizeleri ile Tauri'nin ara tamponları silinemez. Gösterilen ya
+  da düzenlenen değerler WebView belleğinde kalır.
+- **Pano:** Windows'un bıraktığı pano belleği bizim tarafımızdan silinmez; pano açıkken başka bir
+  program içeriği okuyabilir.
+- **KeePass:** `keepass` crate'inin çözdüğü verinin bellekte silinip silinmediği doğrulanmadı.
+  Sıkıştırılmış içerik açılırken boyut sınırı yok (gzip bombası, açık madde). Geçmiş ve özel
+  ikonlar aktarılmıyor.
+- **KDF satırı:** Kilit açma ekranındaki satır henüz doğrulanmamış başlıktan okunuyor; yalnızca
+  bilgi amaçlı.
+
+Açık güvenlik maddelerinin tam listesi:
+[docs/SECURITY_COMPARISON_2026-11.md](../../docs/SECURITY_COMPARISON_2026-11.md).
 
 ## Henüz yapılmayanlar
 
-- **Linux'ta otomatik yazma ve global kısayollar:** X11 oturumunda (XTest) ve yeni GNOME'larda
-  (GlobalShortcuts portalı) yapılabilir; henüz yok.
-
+- **Tarayıcı eklentisi Windows'ta:** named pipe ve kayıt defteri tarafı yazılmadı.
+- **Linux'ta otomatik yazma ve genel kısayollar:** X11 (XTest) ve yeni GNOME'larda (GlobalShortcuts
+  portalı) yapılabilir.
+- **Kod imzası:** Windows kurulum dosyası imzasız.
 - **Windows Hello:** proje sahibinin kararıyla yapılmıyor.
-- **Kod imzası:** sertifika gerekiyor. Kurulum dosyası (NSIS) imzasız.
-- **Tasarımdaki iki ifade bilinçli olarak alınmadı:**
-  - "Kasanız bu bilgisayardan hiç çıkmaz": kasa OneDrive'daysa doğru değil.
-  - "Sızıntılarda bulunmadı": ağ erişimi gerektiriyor ve bu özellik henüz yok.
+- **Sızıntı kontrolü:** ağ erişimi gerektiriyor, henüz yok.
