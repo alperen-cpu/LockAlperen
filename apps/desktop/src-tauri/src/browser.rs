@@ -66,6 +66,9 @@ pub fn open(u: &url::Url) -> Result<(), &'static str> {
         return Err(NOT_A_WEB_ADDRESS);
     }
     let mut cmd = std::process::Command::new("xdg-open");
+    // Our LD_PRELOAD (linux/hardening.rs) is for WebKit only; the browser
+    // and everything it starts get the user's own environment.
+    crate::hardening::restore_preload(&mut cmd);
     cmd.arg(u.as_str())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

@@ -257,6 +257,8 @@ pub fn convert(db: &Database, data: &mut VaultData, folder: &str) -> Result<Summ
             n.username = field(&e, "UserName")?.to_owned();
             n.password = SecretString::new(field(&e, "Password")?);
             n.url = field(&e, "URL")?.to_owned();
+            // Addresses from someone else's file: no automatic requests.
+            n.icon_on_request = true;
             n.notes = SecretString::new(field(&e, "Notes")?);
             n.tags = e
                 .tags

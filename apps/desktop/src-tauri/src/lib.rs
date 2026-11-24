@@ -19,6 +19,7 @@ mod bridge;
 mod browser;
 #[cfg_attr(target_os = "linux", path = "linux/clipboard.rs")]
 mod clipboard;
+mod confirm;
 mod export;
 mod gdrive;
 #[cfg_attr(target_os = "linux", path = "linux/hardening.rs")]
@@ -40,6 +41,7 @@ mod titlebar;
 mod totp;
 mod tray;
 mod update;
+mod wintarget;
 
 use std::sync::{Arc, Mutex};
 
@@ -167,7 +169,11 @@ impl Notice {
 /// only if exactly one entry matches its title, after the keys are released
 /// and while it is still the foreground window.
 #[cfg(windows)]
-fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::HWND) {
+fn on_autotype_hotkey(
+    app: &AppHandle,
+    target: windows_sys::Win32::Foundation::HWND,
+    by_hand: Result<(), &'static str>,
+) {
     use tauri::Manager;
     if target.is_null() || autotype::pid_of(target) == std::process::id() {
         return;
@@ -197,6 +203,10 @@ fn on_autotype_hotkey(app: &AppHandle, target: windows_sys::Win32::Foundation::H
         notice.set(text);
         tray::show_main(app);
     };
+    // A program "pressing" the shortcut for a window of its own.
+    if let Err(e) = by_hand {
+        return tell(e.to_owned());
+    }
     let (tab, id) = match found.as_slice() {
         [(tab, id, _)] => (*tab, id.clone()),
         [] => {
@@ -242,15 +252,16 @@ async fn check_update(app: AppHandle) -> Result<Option<update::Available>, Strin
     update::check(&app).await
 }
 
-/// Installs the update found by the last check. The vault is locked (and our
+/// Installs the update found by the last check, after the user approves it
+/// in a native dialog (false: they did not). The vault is locked (and our
 /// clipboard value cleared) once the installer has been verified; on success
-/// the app exits and the installer restarts it, so this returns only errors.
+/// the app exits and the installer restarts it.
 #[tauri::command]
 async fn install_update(
     app: AppHandle,
     state: State<'_, Shared>,
     last: State<'_, LastCopy>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let (shared, last) = (state.inner().clone(), last.inner().clone());
     update::install(&app, move || lock_all(&shared, &last)).await
 }
@@ -1228,26 +1239,55 @@ struct IconsResult {
 /// contacted again on every unlock or save.
 static ICON_TRIED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
+/// The same for a download the user asked for ("Eksik ikonları indir"),
+/// emptied when such a download starts, so asking again retries.
+static ICON_REQUESTED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Icons fetched at the same time per call.
 const ICON_BATCH: usize = 12;
 
-/// Downloads missing site icons automatically (after unlock and save), one
-/// batch per call, the batch in parallel, saved once per batch so icons
-/// appear as they arrive. Each icon goes through lav-favicon: direct to the
-/// site (no third-party service), public addresses only, size/time limits,
-/// re-encoded PNG.
+/// Downloads missing site icons, one batch per call, the batch in parallel,
+/// saved once per batch so icons appear as they arrive. Each icon goes
+/// through lav-favicon: direct to the site (no third-party service), public
+/// addresses only, size/time limits, re-encoded PNG.
+///
+/// Automatic (after unlock and save; `on_request` false): only if the
+/// setting allows it, and never for imported entries. On request: every
+/// entry with an address and no icon; `first` starts a new round.
 #[tauri::command]
-async fn fetch_icons(state: State<'_, Shared>) -> Result<IconsResult, String> {
+async fn fetch_icons(
+    on_request: bool,
+    first: bool,
+    state: State<'_, Shared>,
+) -> Result<IconsResult, String> {
+    if !on_request && !settings::site_icons() {
+        return Ok(IconsResult {
+            fetched: 0,
+            failed: 0,
+            remaining: 0,
+            entries: Vec::new(),
+        });
+    }
+    let tried_set = if on_request {
+        &ICON_REQUESTED
+    } else {
+        &ICON_TRIED
+    };
+    if on_request && first {
+        if let Ok(mut t) = tried_set.lock() {
+            t.clear();
+        }
+    }
     let mut todo = state
-        .with(|s| s.missing_icons(usize::MAX))
+        .with(|s| s.missing_icons(usize::MAX, on_request))
         .and_then(|r| r)?;
-    if let Ok(tried) = ICON_TRIED.lock() {
+    if let Ok(tried) = tried_set.lock() {
         todo.retain(|(id, _)| !tried.contains(id));
     }
     let remaining = todo.len().saturating_sub(ICON_BATCH);
     todo.truncate(ICON_BATCH);
-    if let Ok(mut tried) = ICON_TRIED.lock() {
+    if let Ok(mut tried) = tried_set.lock() {
         tried.extend(todo.iter().map(|(id, _)| id.clone()));
     }
     let handles: Vec<_> = todo
@@ -1825,6 +1865,15 @@ pub fn run() {
     if !hardening::restrict_dll_search() {
         eprintln!("LockAlperen: SetDefaultDllDirectories failed");
     }
+    #[cfg(windows)]
+    if !hardening::no_crash_dumps() {
+        eprintln!("LockAlperen: crash dumps could not be turned off");
+    }
+    // Linux: WebKit's helper processes are made non-dumpable too.
+    #[cfg(target_os = "linux")]
+    if !hardening::preload_nodump() {
+        eprintln!("LockAlperen: liblav_nodump.so not found; WebKit processes stay dumpable");
+    }
     // Windows: process DACL. Linux: not dumpable (no ptrace, no
     // /proc/<pid>/mem for other processes of the user) and no core dumps.
     if !hardening::protect_process() {
@@ -1938,7 +1987,7 @@ pub fn run() {
                 let handle = app.handle().clone();
                 let show = app.handle().clone();
                 hotkey::start(
-                    move |target| on_autotype_hotkey(&handle, target),
+                    move |target, by_hand| on_autotype_hotkey(&handle, target, by_hand),
                     move || tray::show_main(&show),
                 );
             }

@@ -6,7 +6,6 @@ import type { AvailableUpdate } from "./api";
 
 /** "Install?" with the consequences spelled out, then the install itself. */
 export function UpdateOffer(props: { update: AvailableUpdate; onLater?: () => void }) {
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,11 +13,11 @@ export function UpdateOffer(props: { update: AvailableUpdate; onLater?: () => vo
     setBusy(true);
     setError(null);
     try {
-      // On success the app exits and the installer restarts it.
+      // Rust asks for approval in a native dialog (false: declined). On
+      // success the app exits and the installer restarts it.
       await api.installUpdate();
     } catch (e) {
       setError(api.errorText(e));
-      setConfirming(false);
     } finally {
       setBusy(false);
     }
@@ -32,26 +31,11 @@ export function UpdateOffer(props: { update: AvailableUpdate; onLater?: () => vo
       {props.update.notes && <p className="update-notes muted small">{props.update.notes}</p>}
       {busy ? (
         <p className="muted small" role="status">
-          İndiriliyor ve imzası doğrulanıyor…
+          Açılan pencerede onaylayın; ardından indirilip imzası doğrulanır…
         </p>
-      ) : confirming ? (
-        <>
-          <p className="muted small">
-            Kasa kilitlenir, kaydedilmemiş düzenlemeler kaybolur. Kurulum bitince uygulama yeniden
-            açılır. Kasa dosyalarınız ve ayarlarınız değişmez.
-          </p>
-          <div className="update-buttons">
-            <button type="button" className="btn btn-accent" onClick={install}>
-              Kur ve yeniden başlat
-            </button>
-            <button type="button" className="btn" onClick={() => setConfirming(false)}>
-              Vazgeç
-            </button>
-          </div>
-        </>
       ) : (
         <div className="update-buttons">
-          <button type="button" className="btn btn-accent" onClick={() => setConfirming(true)}>
+          <button type="button" className="btn btn-accent" onClick={install}>
             Güncelle
           </button>
           {props.onLater && (

@@ -119,7 +119,8 @@ pub async fn check(app: &AppHandle) -> Result<Option<Available>, String> {
 /// Downloads, verifies and starts the installer. `before_install` runs only
 /// after the signature has been verified, right before the process exits.
 /// Returns only on failure.
-pub async fn install(app: &AppHandle, before_install: impl FnOnce()) -> Result<(), String> {
+/// `Ok(false)`: the user said no in the confirmation dialog.
+pub async fn install(app: &AppHandle, before_install: impl FnOnce()) -> Result<bool, String> {
     let update = app
         .state::<Pending>()
         .0
@@ -131,6 +132,29 @@ pub async fn install(app: &AppHandle, before_install: impl FnOnce()) -> Result<(
     // cost is nothing and the property is the one that matters.
     if !download_url_allowed(&update.download_url) {
         return Err(BAD_SOURCE.to_owned());
+    }
+    // Approved in a native dialog, not in the page: a script injected into
+    // the WebView must not be able to install (even a signed) update and
+    // restart the app on its own.
+    let question = format!(
+        "LockAlperen {} kurulsun mu?\n\nKasa kilitlenir, kaydedilmemiş düzenlemeler kaybolur. \
+         Kurulum bitince uygulama yeniden açılır. Kasa dosyalarınız ve ayarlarınız değişmez.",
+        update.version
+    );
+    let approved = crate::confirm::ask_async(
+        app,
+        "Güncelleme".into(),
+        question,
+        "Kur ve yeniden başlat",
+        "Vazgeç",
+    )
+    .await;
+    if approved != Some(true) {
+        // Still on offer: the user may install it later.
+        if let Ok(mut slot) = app.state::<Pending>().0.lock() {
+            slot.get_or_insert(update);
+        }
+        return Ok(false);
     }
     // `download` verifies the signature (and the signed version) of the
     // bytes; `install` verifies them again before running anything.
@@ -146,7 +170,7 @@ pub async fn install(app: &AppHandle, before_install: impl FnOnce()) -> Result<(
     if cfg!(not(windows)) {
         app.restart();
     }
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]

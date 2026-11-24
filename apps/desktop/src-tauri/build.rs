@@ -1,4 +1,28 @@
+/// Linux: builds nodump/nodump.c into a shared library that the bundle
+/// carries as a resource (tauri.linux.conf.json). It must exist before
+/// tauri-build copies the resources.
+fn build_nodump() {
+    println!("cargo:rerun-if-changed=nodump/nodump.c");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
+        return;
+    }
+    let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let dir = root.join("target").join("nodump");
+    std::fs::create_dir_all(&dir).expect("target/nodump");
+    let status = cc::Build::new()
+        .get_compiler()
+        .to_command()
+        .args(["-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .args(["-Wl,-z,relro,-z,now", "-o"])
+        .arg(dir.join("liblav_nodump.so"))
+        .arg(root.join("nodump").join("nodump.c"))
+        .status()
+        .expect("C compiler for nodump.c");
+    assert!(status.success(), "nodump.c did not compile");
+}
+
 fn main() {
+    build_nodump();
     // Declare the app's own commands so that they are denied unless a
     // capability file grants them explicitly (least privilege).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(

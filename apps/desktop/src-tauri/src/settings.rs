@@ -295,6 +295,9 @@ pub struct Settings {
     pub auto_generate_password: bool,
     #[serde(deserialize_with = "lenient")]
     pub generator: Generator,
+    /// Download missing site icons on their own (after unlock and save).
+    /// Off: only when the user asks. Imported entries are never automatic.
+    pub site_icons: bool,
 }
 
 impl Default for Settings {
@@ -320,6 +323,7 @@ impl Default for Settings {
             show_expired_on_open: false,
             auto_generate_password: true,
             generator: Generator::default(),
+            site_icons: true,
         }
     }
 }
@@ -368,6 +372,9 @@ pub fn minimize_on_lock() -> bool {
 }
 pub fn minimize_to_tray() -> bool {
     read().minimize_to_tray
+}
+pub fn site_icons() -> bool {
+    read().site_icons
 }
 pub fn show_window_shortcut() -> ShowShortcut {
     read().show_window_shortcut

@@ -2525,8 +2525,6 @@ dependencies = [
 [[package]]
 name = "keepass"
 version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8025344cf174f72cccbac2a99640a8d1e82cf46922d57e06a45a32e49edfed16"
 dependencies = [
  "aes 0.9.4",
  "base64 0.23.1",
@@ -2683,6 +2681,7 @@ name = "lockalperen-desktop"
 version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "chrono",
  "gtk",
  "hmac 0.12.1",

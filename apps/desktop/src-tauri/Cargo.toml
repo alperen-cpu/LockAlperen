@@ -8,6 +8,7 @@ publish = false
 # A workspace of its own: the Tauri/WebView dependency tree stays out of the
 # core workspace (its CI, Cargo.lock and `cargo deny` policy).
 [workspace]
+exclude = ["vendor"]
 
 [lib]
 name = "lockalperen_desktop_lib"
@@ -15,6 +16,8 @@ crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.7.4", features = [] }
+# Already in the tree (ring, ...): finds the C compiler for nodump/nodump.c.
+cc = "=1.11.2"
 
 [dependencies]
 lav-core = { path = "../../../crates/lav-core" }
@@ -59,6 +62,7 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_System_DataExchange",
+    "Win32_System_ErrorReporting",
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_LibraryLoader",
@@ -71,6 +75,7 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_Security",
     "Win32_Security_Cryptography",
     "Win32_Security_Authorization",
+    "Win32_Security_WinTrust",
     "Win32_System_Threading",
 ] }
 
@@ -103,3 +108,9 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# keepass 0.17.0 with one change: gzip decompression has an upper bound (a
+# crafted KDBX file could otherwise inflate to gigabytes). See
+# vendor/keepass/LOCKALPEREN.md.
+[patch.crates-io]
+keepass = { path = "vendor/keepass" }

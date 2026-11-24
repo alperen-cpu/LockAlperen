@@ -872,7 +872,7 @@ impl Session {
                 e.title = title.clone();
                 e.username = form.username.clone();
                 e.password = form.password.as_str().into();
-                e.url = form.url.trim().to_owned();
+                e.set_url(form.url.trim());
                 e.notes = form.notes.as_str().into();
                 e.tags = tags.clone();
                 e.totp = totp.clone();
@@ -1029,7 +1029,7 @@ impl Session {
                 e.title = v.title.clone();
                 e.username = v.username.clone();
                 e.password = v.password.clone();
-                e.url = v.url.clone();
+                e.set_url(&v.url);
                 e.notes = v.notes.clone();
                 e.totp = v.totp.clone();
                 e.fields = v.fields.clone();
@@ -1151,14 +1151,20 @@ impl Session {
         Ok(out)
     }
 
-    /// Entries with a URL and no icon yet: (id, url).
-    pub fn missing_icons(&self, limit: usize) -> Result<Vec<(String, String)>, String> {
+    /// Entries with a URL and no icon yet: (id, url). Imported entries are
+    /// included only when the user asked (`on_request`).
+    pub fn missing_icons(
+        &self,
+        limit: usize,
+        on_request: bool,
+    ) -> Result<Vec<(String, String)>, String> {
         let vault = self.vault.as_ref().ok_or(LOCKED)?;
         Ok(vault
             .data
             .entries
             .iter()
             .filter(|e| e.icon.is_none() && !e.url.trim().is_empty())
+            .filter(|e| on_request || !e.icon_on_request)
             .take(limit)
             .map(|e| (e.id.to_string(), e.url.clone()))
             .collect())
@@ -1175,6 +1181,7 @@ impl Session {
             for (id, png) in icons {
                 if let Some(e) = data.entries.iter_mut().find(|e| e.id.to_string() == id) {
                     e.icon = Some(lav_core::EntryIcon { png, fetched: now });
+                    e.icon_on_request = false;
                 }
             }
             Ok(())

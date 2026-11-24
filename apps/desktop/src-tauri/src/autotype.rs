@@ -4,9 +4,10 @@
 //! Verification: the target is the window the user switches to within
 //! WAIT, it must belong to another process, and its title must contain the
 //! entry's title or the URL's host. Typing stops at once if the foreground
-//! window changes. Limit: a window title can be chosen by any program, so
-//! this protects against typing into the WRONG window by mistake, not
-//! against a malicious program imitating the right one.
+//! window changes. A window title can be chosen by any program, so the
+//! program behind the window is checked too (`wintarget`): installed by an
+//! administrator or signed. A malicious program that is signed, or installed
+//! by an administrator, is not caught.
 #![allow(unsafe_code)]
 
 use std::time::Duration;
@@ -380,6 +381,9 @@ fn send(inputs: &[INPUT]) {
 /// still the foreground window.
 #[cfg(windows)]
 pub fn type_into(target: HWND, steps: &[Step]) -> Result<(), &'static str> {
+    // The title matched; the program behind the window must be trusted too
+    // (a title can be copied by any program).
+    crate::wintarget::check(pid_of(target))?;
     let still = || unsafe { GetForegroundWindow() } == target;
     for step in steps {
         match step {
