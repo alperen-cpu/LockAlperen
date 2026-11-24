@@ -325,28 +325,29 @@ impl conn::Host for RealHost {
 /// Starts listening (Linux) if the integration is on. Idempotent.
 pub fn start(app: &AppHandle) {
     let bridge = app.state::<Bridge>().inner().clone();
-    if !bridge.enabled() || bridge.with(|st| st.listening).unwrap_or(true) {
-        return;
+    if bridge.enabled() && !bridge.with(|st| st.listening).unwrap_or(true) {
+        #[cfg(target_os = "linux")]
+        listen(app, bridge);
     }
-    #[cfg(target_os = "linux")]
-    {
-        let Some(path) = linux::socket_path(&app.config().identifier) else {
-            return;
-        };
-        let host = RealHost {
-            app: app.clone(),
-            bridge: bridge.clone(),
-        };
-        let host = Arc::new(host);
-        let r = linux::listen(&path, move |stream| {
-            let _ = conn::serve(stream, host.as_ref());
-        });
-        match r {
-            Ok(()) => {
-                bridge.with(|st| st.listening = true);
-            }
-            Err(_) => eprintln!("LockAlperen: browser bridge could not listen"),
+}
+
+#[cfg(target_os = "linux")]
+fn listen(app: &AppHandle, bridge: Bridge) {
+    let Some(path) = linux::socket_path(&app.config().identifier) else {
+        return;
+    };
+    let host = Arc::new(RealHost {
+        app: app.clone(),
+        bridge: bridge.clone(),
+    });
+    let r = linux::listen(&path, move |stream| {
+        let _ = conn::serve(stream, host.as_ref());
+    });
+    match r {
+        Ok(()) => {
+            bridge.with(|st| st.listening = true);
         }
+        Err(_) => eprintln!("LockAlperen: browser bridge could not listen"),
     }
 }
 
@@ -411,7 +412,7 @@ pub fn bridge_set_enabled(app: AppHandle, on: bool) -> Result<Status, String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (&app, on);
-        return Err("Tarayıcı eklentisi şimdilik yalnızca Linux'ta destekleniyor.".into());
+        Err("Tarayıcı eklentisi şimdilik yalnızca Linux'ta destekleniyor.".into())
     }
     #[cfg(target_os = "linux")]
     {
