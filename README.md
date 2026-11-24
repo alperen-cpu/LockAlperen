@@ -1,126 +1,177 @@
 # LockAlperen 🔒
 
-Windows ve Linux (Ubuntu masaüstü) için yerel, açık kaynaklı ve sade bir parola yöneticisi.
-KeePass'e modern bir alternatif.
+Windows ve Linux (Ubuntu masaüstü) için yerel, açık kaynaklı bir parola yöneticisi; KeePass'e
+modern bir alternatif. Sunucu, hesap ve telemetri yok. Kasanız, istediğiniz yerde duran tek bir
+şifreli `.lav` dosyasıdır.
 
-- **Yerel:** Sunucu yok, hesap yok, telemetri yok. Kasanız, istediğiniz yerde duran tek bir şifreli
-  `.lav` dosyasıdır ve hiçbir sunucuya gönderilmez.
-- **Modern kriptografi:** Argon2id, HKDF-SHA256 ve XChaCha20-Poly1305 ([format](docs/FORMAT.md))
-- **KeePass'ten geçiş:** `.kdbx` (KDBX 4) dosyalarını içe aktarma
-- **Günlük kullanım:** Kayıt ekleme, düzenleme ve çoğaltma (Ctrl+K), son kullanma tarihi, Geri Dönüşüm Kutusu, klasör ağacı (sürükle-bırak ile taşıma), parola
-  üretici, TOTP kodları, parola sağlığı, ekler, özel alanlar ve kayıt geçmişi
-- **Otomatik yazma (Windows):** Düğmeyle ya da global kısayolla (varsayılan `Ctrl+Alt+A`); yalnızca başlığı
-  doğrulanan pencereye yazar. Kaydın sitesi varsa düğme önce siteyi tarayıcıda açar, sonra yazar
-- **Hızlı kullanım:** Tablo görünümünde parola ve son kullanma sütunları; fare bir kullanıcı adı ya da
-  parolanın üzerindeyken Ctrl+C ile kopyalama; KeePass kısayolları (Ctrl+B, Ctrl+U, Ctrl+E, Delete);
-  sürükleyerek genişletilen ayrıntı paneli; silmeden önce onay penceresi
-- **Birden fazla kasa:** Kasalar sekmelerde aynı anda açık kalır; başka bir kasayla birleştirme (KeePass
-  "Synchronize"), KeePass (KDBX 4) olarak dışa aktarma ve yazdırılabilir acil durum sayfası
-- **KeePass'teki ileri özellikler:** kayda özel otomatik yazma dizisi ve pencere kuralı, alan
-  referansları (`{REF:…}`), kayıt renkleri, etiket ve "süresi dolacaklar" görünümleri, aramada alan
-  seçimi, üretici profilleri ve desenler, kasa ayarları (geçmiş, şifreleme gücü, anahtar dosyası)
-- **Google Drive yedeği (isteğe bağlı):** Şifreli kasa dosyası Drive'a elle ya da otomatik yedeklenir;
-  uygulama Drive'da yalnızca kendi dosyalarını görür, Google erişimi Windows'ta DPAPI ile şifreli,
-  Linux'ta sistem anahtarlığında (GNOME Keyring) saklanır
-- **Arka planda çalışma:** Kapatınca saatin yanındaki simgede çalışmaya devam eder; site adresleri tek tıkla tarayıcıda açılır
-- **Güvenlik:** Otomatik kilit (boşta kalınca, ekran kilidi ve uyku), pano seçilen sürede (varsayılan 12 sn) temizlenir ve pano
-  geçmişine alınmaması için işaretlenir, pencere ekran görüntüsünde görünmez (Windows) ([SECURITY.md](SECURITY.md))
-- **Site ikonları:** Favicon'lar doğrudan sitenin kendisinden, güvenli şekilde alınır (üçüncü taraf
-  servis yok)
-- **Uygulama içi güncelleme:** Yeni sürüm, imzası doğrulanarak kurulu sürümün üzerine kurulur
-  ([nasıl çalışır](docs/UPDATES.md))
-- **Açık kaynak:** MIT lisansı
+> ⚠️ Proje hâlâ genç. Kasanızın yedeğini alın ve en önemli parolalarınızı şimdilik yalnızca bu
+> uygulamaya emanet etmeyin.
 
-> ⚠️ İlk sürümler yayında, ama proje hâlâ genç. Kasanızın yedeğini alın ve en önemli
-> parolalarınızı şimdilik yalnızca bu uygulamaya emanet etmeyin.
+**İçindekiler:** [Özellikler](#özellikler) · [Kurulum](#kurulum) ·
+[Windows ve Linux farkları](#windows-ve-linux-farkları) · [Ağ bağlantıları](#ağ-bağlantıları) ·
+[Güvenlik](#güvenlik) · [Durum](#durum) · [Geliştirme](#geliştirme) · [Belgeler](#belgeler)
+
+## Özellikler
+
+**Kasa**
+- Argon2id, HKDF-SHA256 ve XChaCha20-Poly1305 ile şifrelenmiş tek dosya ([format](docs/FORMAT.md))
+- Ana parola ve isteğe bağlı anahtar dosyası
+- Birden fazla kasa sekmelerde aynı anda açık kalabilir
+- Başka bir kasayla birleştirme (KeePass "Synchronize")
+
+**Kayıtlar**
+- Klasör ağacı, sürükle-bırakla taşıma, Geri Dönüşüm Kutusu
+- Kayıt geçmişi, ekler, özel alanlar, etiketler, renkler, son kullanma tarihi
+- Parola üretici (profiller ve desenler), TOTP kodları, parola sağlığı raporu
+- Site ikonları, doğrudan sitenin kendisinden alınır (üçüncü taraf servis yok)
+
+**Günlük kullanım**
+- Liste, kompakt, kart ve tablo görünümleri; açık ve koyu tema
+- Kopyalama Ctrl+C ile yapılır: fare hangi kullanıcı adı ya da parolanın üzerindeyse o kopyalanır.
+  KeePass kısayolları da var (Ctrl+B, Ctrl+U, Ctrl+E, Delete).
+- Pencere kapatılınca uygulama arka planda çalışmaya devam eder: Windows'ta saatin yanındaki,
+  Ubuntu'da üst çubuktaki simgeden açılır
+- **Tarayıcı eklentisi (Chrome, Chromium, Brave, Edge; şimdilik yalnızca Linux):** giriş
+  bilgilerini açık siteye doldurur ([ayrıntılar](apps/browser-extension/README.md))
+- **Otomatik yazma (yalnızca Windows):** Bir düğmeyle ya da genel kısayolla (varsayılan
+  `Ctrl+Alt+A`) çalışır. Yalnızca başlığı doğrulanan pencereye yazar.
+
+**KeePass ile uyum**
+- KeePass (KDBX 4) içe ve dışa aktarma
+- Alan referansları (`{REF:…}`), kayda özel otomatik yazma dizileri, KeePass seçenekleri
+- CSV dışa aktarma ve yazdırılabilir acil durum sayfası
+
+**Yedek ve güncelleme**
+- İsteğe bağlı Google Drive yedeği: Drive'a yalnızca şifreli kasa dosyası gider
+- Uygulama içi güncelleme: yeni sürüm, imzası doğrulanarak kurulur ([nasıl çalışır](docs/UPDATES.md))
+
+**Güvenlik**
+- Otomatik kilit: boşta kalınca, ekran kilitlenince, uykuda ve oturum kapanınca
+- Pano seçilen sürede temizlenir (varsayılan 12 sn) ve pano geçmişine alınmaz
+- Windows'ta pencere ekran görüntüsünde ve ekran paylaşımında görünmez
+- Uygulamanın dosyaları yalnızca sizin kullanıcınıza açıktır
+- Ayrıntılar: [Güvenlik](#güvenlik)
 
 ## Kurulum
 
+Bütün dosyalar [Releases](https://github.com/alperen-cpu/LockAlperen/releases/latest)
+sayfasında. Sonraki sürümler uygulama açılınca önerilir ve tek tıkla kurulur; kasa dosyalarınız
+ve ayarlarınız korunur. Bu denetim Ayarlar'dan kapatılabilir.
+
 ### Windows
 
-1. [Releases](https://github.com/alperen-cpu/LockAlperen/releases/latest) sayfasından
-   `LockAlperen_x.y.z_x64-setup.exe` dosyasını indirip çalıştırın. Yönetici yetkisi gerekmez.
-2. Kurulum dosyasında Windows kod imzası yok. Bu yüzden SmartScreen "tanınmayan uygulama" uyarısı
-   verebilir: **Ek bilgi → Yine de çalıştır**.
-3. Sonraki sürümler uygulama açılınca önerilir ve tek tıkla kurulur. Kasa dosyalarınız ve
-   ayarlarınız korunur. Bu denetim Ayarlar'dan kapatılabilir.
+1. `LockAlperen_x.y.z_x64-setup.exe` dosyasını indirip çalıştırın. Yönetici yetkisi gerekmez.
+2. Kurulum dosyasında Windows kod imzası yok. Bu yüzden SmartScreen "tanınmayan uygulama"
+   uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
 
 ### Linux (Ubuntu 22.04 ve sonrası, x86-64)
 
-İki paket var; ikisi de uygulama içinden güncellenir:
-
-- **`.deb` (önerilen):** `LockAlperen_x.y.z_amd64.deb` dosyasını indirip kurun:
+- **`.deb` (önerilen):**
 
   ```sh
   sudo apt install ./LockAlperen_x.y.z_amd64.deb
   ```
 
-  Güncellemede sistem yönetici parolanızı sorar (`pkexec`).
-- **AppImage:** `LockAlperen_x.y.z_amd64.AppImage` dosyasını indirin, çalıştırılabilir yapın
-  (`chmod +x`) ve açın. Kurulum ve yönetici izni gerekmez; güncelleme dosyanın kendisini değiştirir.
+  Güncellemede yönetici parolası sorulur.
+- **AppImage:** `LockAlperen_x.y.z_amd64.AppImage` dosyasını indirin, `chmod +x` ile
+  çalıştırılabilir yapın ve açın. Kurulum ve yönetici izni gerekmez.
 
-Linux'ta farklı olanlar:
+### Tarayıcı eklentisi (isteğe bağlı, Linux)
 
-- **Otomatik yazma ve global kısayollar henüz yok.** Ubuntu'nun varsayılan oturumu Wayland, başka bir
-  pencerenin başlığını okumaya ve ona tuş göndermeye izin vermiyor. Bu yüzden hedef pencere
-  doğrulanamıyor. Kullanıcı adını ve parolayı kopyalayıp yapıştırın.
-- **Ekran görüntüsü engeli yok.** X11'de de Wayland'de de bir pencereyi ekran paylaşımından
-  gizleyecek bir ayar yok.
-- **Otomatik kilit:** Boşta kalma süresi GNOME'dan (KDE'de KDE'den) okunur. Ekran kilidi (Super+L),
-  uyku, kapanma, oturumu kapatma ve başka kullanıcıya geçiş kasayı kilitler.
-- **Arka plan simgesi:** Üst çubukta görünür. Ubuntu'da AppIndicator uzantısı bunu varsayılan olarak
-  sağlar; başka masaüstlerinde bu simgeleri gösteren bir uzantı gerekebilir.
+1. LockAlperen'de **Ayarlar › Tarayıcı eklentisi › "Tarayıcı eklentisine izin ver"** seçeneğini
+   açın ve tarayıcıyı yeniden başlatın.
+2. Tarayıcıda `chrome://extensions` › **Geliştirici modu** › **Paketlenmemiş öğe yükle** ›
+   `apps/browser-extension` klasörünü seçin.
+3. Eklenti simgesinden **Masaüstü uygulamasıyla eşleştir** deyin. İki tarafta görünen 6 haneli kod
+   aynıysa masaüstünde **Eşleştir**'e basın.
 
-Ağa çıkan işlemler: site ikonlarının indirilmesi, GitHub'dan sürüm denetimi ve isteğe bağlı Google Drive yedeği.
-Drive'a yalnızca şifreli kasa dosyası gider; Google hesabı bağlanmadıkça hiçbir şey gönderilmez.
+Eklenti ana parolanızı hiçbir zaman sormaz; kasa yalnızca masaüstü uygulamasında açılır.
+
+## Windows ve Linux farkları
+
+| | Windows | Linux |
+|---|---|---|
+| Otomatik yazma ve genel kısayollar | Var | **Yok.** Wayland, başka bir pencereye tuş göndermeye izin vermiyor. Kopyalayıp yapıştırın. |
+| Ekran görüntüsünden gizleme | Var | **Yok.** X11'de de Wayland'de de böyle bir ayar yok. |
+| Tarayıcı eklentisi | Henüz yok | Var |
+| Otomatik kilit | Boşta kalma, Win+L, uyku, oturum kapatma | Boşta kalma (GNOME/KDE), ekran kilidi, uyku, kapanma, kullanıcı değiştirme |
+| Arka plan simgesi | Saatin yanında | Üst çubukta. Ubuntu'da hazır gelir; başka masaüstlerinde AppIndicator uzantısı gerekebilir. |
+| Google erişiminin saklandığı yer | DPAPI ile şifreli | Sistem anahtarlığı (GNOME Keyring / KWallet) |
+
+## Ağ bağlantıları
+
+Uygulama yalnızca şu durumlarda ağa çıkar:
+- **Site ikonları:** doğrudan sitenin kendisinden indirilir. Siteler ve ağınız (örneğin şirket
+  proxy'si) kasanızda hangi sitelerin olduğunu görebilir. Bu indirme şu an kapatılamıyor.
+- **Sürüm denetimi:** GitHub'dan yapılır; Ayarlar'dan kapatılabilir.
+- **Google Drive yedeği:** yalnızca hesap bağlanırsa. Drive'a yalnızca şifreli kasa dosyası
+  gider.
+
+Tarayıcı eklentisi ağ kullanmaz. Uygulamayla yalnızca sizin kullanıcınıza açık bir yerel soketten,
+şifreli olarak konuşur.
+
+## Güvenlik
+
+- [SECURITY.md](SECURITY.md): güvenlik özellikleri ve KeePass açıklarıyla karşılaştırma
+- [docs/SECURITY_COMPARISON_2026-11.md](docs/SECURITY_COMPARISON_2026-11.md): rakiplerde son 10
+  yılda çıkan açıklarla karşılaştırma, pentest sonuçları ve açık kalan maddeler
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): neye karşı korur, neye karşı korumaz
+
+Bir açık bulursanız lütfen herkese açık bir issue yerine [SECURITY.md](SECURITY.md)'deki yoldan
+bildirin.
 
 ## Durum
 
-| Faz | Kapsam | Durum |
-|---|---|---|
-| 0 | Format belgesi, tehdit modeli, repo | ✅ |
-| 1 | `lav-core`: format, kriptografi, veri modeli, parola üretici | ✅ |
-| 1b | Güvenlik sıkılaştırması ([SECURITY.md](SECURITY.md)), `lav-favicon` | ✅ |
-| 2 | Masaüstü uygulama (Tauri 2 + React): [apps/desktop](apps/desktop/README.md) | ✅ |
-| 3 | KeePass içe aktarma (KDBX 4), CSV dışa aktarma | ✅ KDBX 3.1 ve CSV içe aktarma yok |
-| 4 | TOTP, otomatik yazma (düğme ve global kısayol) | ✅ |
-| 5 | İmzalı sürümler ve uygulama içi güncelleme ([UPDATES.md](docs/UPDATES.md)) | ✅ |
-| 6 | Arka planda çalışma (saatin yanındaki simge), tek örnek, klasör taşıma, siteyi tarayıcıda açma | ✅ |
-| 7 | KeePass özellikleri: çoğaltma, son kullanma tarihi, Geri Dönüşüm Kutusu, KeePass seçenekleri, kısayollar | ✅ |
-| 8 | Sekmeler, birleştirme, KDBX/HTML dışa aktarma, otomatik yazma dizileri, referanslar, renkler, kasa ayarları | ✅ |
-| 9 | Linux (Ubuntu masaüstü): `.deb` ve AppImage, otomatik kilit, pano, anahtarlık | 🚧 CI'da derleniyor; gerçek masaüstünde henüz denenmedi |
+| Alan | Durum |
+|---|---|
+| Kasa formatı, kriptografi, çekirdek kütüphane (`lav-core`) | ✅ |
+| Masaüstü uygulaması (Windows) | ✅ |
+| KeePass içe ve dışa aktarma (KDBX 4) | ✅ KDBX 3.1 ve CSV içe aktarma yok |
+| İmzalı sürümler ve uygulama içi güncelleme | ✅ |
+| Linux (Ubuntu): `.deb` ve AppImage | ✅ CI'da derlenip test ediliyor. Gerçek masaüstünde kısmen denendi. |
+| Tarayıcı eklentisi (Chromium, yalnızca doldurma) | 🚧 Protokol testli, gerçek tarayıcıda denenmesi sürüyor. Windows desteği yok. |
 
-**Bilinçli olarak yapılmayanlar ve eksikler:**
-- Windows Hello yok (proje sahibinin kararı).
-- Sızıntı kontrolü yok.
-- Site ikonu indirme kapatılamıyor (şirket proxy'si kasadaki siteleri görebilir).
-- Windows kod imzası yok.
-- Mobil uygulama ve senkron sunucusu planlanmıyor.
-
-Ayrıntılı liste: [apps/desktop/README.md](apps/desktop/README.md).
+**Bilinçli olarak yapılmayanlar:** Windows Hello, mobil uygulama ve senkron sunucusu.
+**Henüz olmayanlar:** sızıntı kontrolü, Windows kod imzası, Linux'ta otomatik yazma.
 
 ## Geliştirme
 
-```sh
-cargo test           # çekirdek testleri
-cargo clippy --all-targets
-cargo test -p lav-favicon -- --ignored   # gerçek ağ testi
-cargo audit          # bağımlılık güvenlik taraması
+| Klasör | İçerik |
+|---|---|
+| `crates/lav-core` | Kasa formatı, kriptografi, veri modeli, parola üretici |
+| `crates/lav-favicon` | Site ikonlarını güvenli indirme ve yeniden kodlama |
+| `apps/desktop` | Masaüstü uygulaması (Tauri 2 + React); [README](apps/desktop/README.md) |
+| `apps/browser-extension` | Chromium eklentisi; [README](apps/browser-extension/README.md) |
+| `fuzz` | libFuzzer hedefleri |
+| `prototypes/r1-rollback` | Geri alma tespiti prototipi (üretimde kullanılmıyor) |
+| `docs` | Format, tehdit modeli, güvenlik incelemeleri, sürüm süreci |
 
-cd apps/desktop      # masaüstü uygulama (ayrı Cargo çalışma alanı)
+```sh
+cargo test                      # çekirdek testleri
+cargo clippy --all-targets
+cargo audit                     # bağımlılık güvenlik taraması
+
+cd apps/desktop                 # masaüstü uygulaması (ayrı Cargo çalışma alanı)
 npm ci
 npm run tauri dev
 ```
 
-Sürüm yayınlama: `node scripts/set-version.mjs x.y.z`, ardından `vx.y.z` etiketini gönderin.
+Linux'ta derlemek için gereken paketler ve diğer ayrıntılar
+[apps/desktop/README.md](apps/desktop/README.md)'de.
+
+**Sürüm yayınlama:** `apps/desktop` içinde `node scripts/set-version.mjs x.y.z` çalıştırın,
+ardından `vx.y.z` etiketini gönderin. İş akışı paketleri imzalayıp taslak bir sürüm oluşturur.
 Adımlar [docs/UPDATES.md](docs/UPDATES.md)'de.
 
 ## Belgeler
 
+- [Sürüm notları](CHANGELOG.md)
 - [Dosya formatı](docs/FORMAT.md)
 - [Tehdit modeli](docs/THREAT_MODEL.md)
-- [Güvenlik ve KeePass açıklarıyla karşılaştırma](SECURITY.md)
+- [Güvenlik](SECURITY.md) ve [rakip karşılaştırması](docs/SECURITY_COMPARISON_2026-11.md)
 - [Güncellemeler ve sürüm yayınlama](docs/UPDATES.md)
-- [Masaüstü uygulamanın güvenlik kararları](apps/desktop/README.md)
-- [Sürüm notları](CHANGELOG.md)
+- [Masaüstü uygulamasının güvenlik kararları](apps/desktop/README.md)
+- [Tarayıcı eklentisi](apps/browser-extension/README.md)
 - [Üçüncü taraf bildirimleri](THIRD_PARTY_NOTICES.md) (Font Awesome simgeleri, CC BY 4.0)
+
+Lisans: MIT.
