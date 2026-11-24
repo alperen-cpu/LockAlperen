@@ -15,7 +15,7 @@
     Önceden Ubuntu'nun umask'ıyla gruba yazılabilir, herkese okunabilirdi.
   - Kaydedilen ekin önerilen adı temizleniyor (`../`, yol ayırıcıları, kontrol ve yön değiştirme
     karakterleri). KeePassXC 2.7.12'deki açıkla aynı sınıf.
-  - `url` 2.5.9 (RUSTSEC-2026-0592).
+  - `url` 2.5.9 (RUSTSEC-2026-0592) ve `cookie` 0.18.3 (RUSTSEC-2026-0594, Tauri üzerinden).
 
 ## [0.9.0] - 2026-11-19: Linux (Ubuntu masaüstü)
 
