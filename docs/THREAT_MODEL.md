@@ -91,7 +91,7 @@ Windows'ta dizin `FlushFileBuffers`'ının rename'i kalıcı yaptığı belgelen
    ipucu vermeyiz. v2'den itibaren key commitment, bir dosyanın birden fazla parolayla doğrulanmasını
    da engeller.
 4. Çekirdek ağa hiç çıkmaz. Uygulamanın ağa çıktığı yerler: site ikonu indirme (doğrudan
-   sitenin kendisinden; şu an kapatılamıyor), GitHub Releases üzerinden sürüm denetimi
+   sitenin kendisinden; Ayarlar'dan kapatılabilir, içe aktarılan kayıtlar için yalnızca istenince), GitHub Releases üzerinden sürüm denetimi
    (Ayarlar'dan kapatılabilir) ve isteğe bağlı Google Drive yedeği. Drive'a yalnızca şifreli
    kasa dosyası gider; Google'ın elindeki dosya, ana parola olmadan çözülemez (KDF maliyeti
    çevrimdışı tahmini yavaşlatır, zayıf ana parola yine risktir). Sızıntı kontrolü (HIBP) yoktur. Ayrıntı:

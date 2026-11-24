@@ -106,9 +106,9 @@ derler, test eder ve Linux paketlerini oluşturur.
 | Pano | Kopyalamayı Rust yapar; değer WebView'e gitmez. Windows'ta pano geçmişi, bulut panosu ve izleyiciler için üç işaret konur. Linux'ta `x-kde-passwordManagerHint: secret` konur. Seçilen sürede (5–90 sn, varsayılan 12) ve kilitlenince pano temizlenir, ama **yalnızca hâlâ bizim içeriğimiz duruyorsa**. |
 | Otomatik kilit | Kararı Rust verir; WebView kilidi açık tutamaz. Boşta kalma sistem genelindeki son girdiden ölçülür. Ekran kilidi, uyku, oturum kapatma ve kullanıcı değiştirme de kilitler; her durumda pano da temizlenir. Debug derlemede `LAV_IDLE_SECS` ile kısaltılabilir. |
 | Süreç sertleştirme (Windows) | DLL'ler yalnızca SYSTEM32'den yüklenir. Süreç DACL'ı yalnızca sorgula/bekle/sonlandır izni verir. Pencere ekran görüntüsünden hariç tutulur (`WDA_EXCLUDEFROMCAPTURE`). *Doğrulandı:* başka süreçten bellek okuma reddediliyor (hata 5). **Sınır:** aynı kullanıcı DACL'ı değiştirebilir; yöneticiler atlar. |
-| Süreç sertleştirme (Linux) | `PR_SET_DUMPABLE=0` ve core dump 0, **yalnızca ana süreçte**. WebKitGTK'nın alt süreçleri dump alınabilir durumda kalıyor; gösterilen parola ve düzenlenen kayıt bunların belleğinde. Açık madde, ayrıntısı [karşılaştırma raporunda](../../docs/SECURITY_COMPARISON_2026-11.md). |
+| Süreç sertleştirme (Linux) | Ana süreçte `PR_SET_DUMPABLE=0` ve core dump 0. WebKitGTK'nın alt süreçleri (`WebKitWebProcess`, `WebKitNetworkProcess`) `exec` ile başladığı için bu bayrak onlara geçmez; gösterilen parola ve düzenlenen kayıt da bu süreçlerin belleğinde. Bu yüzden `nodump/nodump.c` küçük bir kütüphaneye derlenir ve paketle gelir (`.deb`: `/usr/lib/LockAlperen`, root'a ait; AppImage: salt okunur imaj). Uygulama açılırken bu kütüphaneyi `LD_PRELOAD`'a ekler; kütüphane yalnızca adı `WebKit` ile başlayan süreçlerde aynı bayrağı kapatır. Tarayıcı açılırken kullanıcının kendi `LD_PRELOAD`'u geri verilir. Doğrulandı: alt süreçlerin `/proc/<pid>/mem` dosyası root'a geçiyor, `environ` okunamıyor. |
 | Siteyi açma | WebView yalnızca kayıt kimliğini gönderir; adresi Rust okur. Yalnızca `http`/`https` açılır. `file:`, `javascript:`, `ms-…:` ve UNC yolları reddedilir. Adresteki kullanıcı bilgisi atılır. Testli. |
-| Otomatik yazma (Windows) | Hedef pencere doğrulanmadan yazmaz: başka bir süreç olmalı ve başlıkta kayıt adı ya da site geçmeli. Pencere değişirse durur. Kısayolla yazmada tam olarak bir kayıt eşleşmeli. Diziler kaydetmeden önce denetlenir: en fazla 1000 karakter, toplam 30 sn bekleme. |
+| Otomatik yazma (Windows) | Hedef pencere doğrulanmadan yazmaz: başka bir süreç olmalı ve başlıkta kayıt adı ya da site geçmeli. Pencerenin programı Windows ya da Program Files klasöründe olmalı veya geçerli bir Authenticode imzası taşımalı (`wintarget.rs`). Genel kısayol yazılımla gönderilmişse (`LLKHF_INJECTED`) hiçbir şey yazılmaz (`hotkey.rs`). Pencere değişirse durur. Kısayolla yazmada tam olarak bir kayıt eşleşmeli. Diziler kaydetmeden önce denetlenir: en fazla 1000 karakter, toplam 30 sn bekleme. |
 | Tek örnek | İkinci açılış yeni süreç başlatmaz, mevcut pencereyi öne getirir; argümanları yok sayılır. |
 | Sistem simgesi | Kapat düğmesi pencereyi gizler, uygulama simgede çalışmaya devam eder. Bu ayar kapatılabilir, varsayılanı açık. Simgenin menüsünde göster, kilitle, kilitle ve çık var. Simge oluşturulamazsa pencere hiç gizlenmez. |
 | Kilit rozeti | Kasa kilitliyken simgenin köşesinde kırmızı kilit görünür. Kilit durumu 300 ms'de bir okunur; böylece her kilitleme yolu yakalanır. Linux'ta Dock simgesi değiştirilemez; rozet yalnızca üst çubukta görünür. Ubuntu'nun AppIndicator eklentisi değişen simgeyi çizmediği için simge her değişiklikte yenisiyle değiştirilir. |
@@ -117,8 +117,8 @@ derler, test eder ve Linux paketlerini oluşturur.
 
 | Konu | Karar |
 |---|---|
-| Güncellemeler | Açılışta (kapatılabilir) ya da elle denetlenir; kurulum onayla yapılır. Bağlantı HTTPS'tir. İmza, gömülü anahtarla minisign ile doğrulanır ve sürüme bağlıdır. Eski sürüme düşürme yok; indirme yalnızca bu reponun Releases'ından. Kurulumdan önce kasa kilitlenir. Ayrıntı: [docs/UPDATES.md](../../docs/UPDATES.md). |
-| Site ikonları | **Otomatik:** kilit açıldıktan sonra, ikonu olmayan kayıtlar için. `lav-favicon` yalnızca HTTPS kullanır. DNS'i sabitler ve özel ya da iç IP adreslerini engeller. Her yönlendirmeyi yeniden denetler. Boyut ve süre sınırlıdır. Resim yeniden kodlanır. **Gizlilik:** siteler ve ağ, kasada hangi sitelerin olduğunu görebilir. |
+| Güncellemeler | Açılışta (kapatılabilir) ya da elle denetlenir; kurulum Rust'ın açtığı yerel bir sistem penceresinde onaylanır (WebView'deki bir betik onaylayamaz). Bağlantı HTTPS'tir. İmza, gömülü anahtarla minisign ile doğrulanır ve sürüme bağlıdır. Eski sürüme düşürme yok; indirme yalnızca bu reponun Releases'ından. Kurulumdan önce kasa kilitlenir. Ayrıntı: [docs/UPDATES.md](../../docs/UPDATES.md). |
+| Site ikonları | **Otomatik** (Ayarlar › Veri'den kapatılabilir): kilit açıldıktan ve kaydettikten sonra, ikonu olmayan kayıtlar için. İçe aktarılan kayıtlar hiçbir zaman otomatik değil; yalnızca "Eksik ikonları şimdi indir" ile. `lav-favicon` yalnızca HTTPS kullanır. DNS'i sabitler ve özel ya da iç IP adreslerini engeller. Her yönlendirmeyi yeniden denetler. Boyut ve süre sınırlıdır. Resim yeniden kodlanır. **Gizlilik:** siteler ve ağ, kasada hangi sitelerin olduğunu görebilir. |
 | Google Drive yedeği | İsteğe bağlı. OAuth 2.0 masaüstü akışı kullanılır: dönüş `127.0.0.1`'e, PKCE S256 ve `state` ile. Kapsam yalnızca `drive.file`. Yenileme anahtarı Windows'ta DPAPI ile, Linux'ta Secret Service'te saklanır. Yalnızca şifreli `.lav` dosyası yüklenir. İndirilen yedek, kasa başlığı doğrulanmazsa yazılmaz. |
 | Tarayıcı köprüsü | Ağ portu yok: kullanıcıya özel Unix soketi, Noise XX ile şifreli ve eşleştirmeli. Ayrıntı: [eklenti README'si](../browser-extension/README.md). |
 
@@ -142,7 +142,7 @@ modüllerin Linux karşılıkları `src-tauri/src/linux/` altındadır.
 |---|---|
 | Pano: `SetClipboardData`, geçmiş/bulut işaretleri | GTK panosu, `x-kde-passwordManagerHint: secret` |
 | Otomatik kilit: `GetLastInputInfo`, oturum ve güç mesajları | D-Bus: Mutter/KDE boşta kalma (yoksa logind), ekran koruyucu, logind `Lock`, `PrepareForSleep`, `PrepareForShutdown` |
-| Süreç DACL'ı, `SetDefaultDllDirectories` | `PR_SET_DUMPABLE=0`, core dump 0 (yalnızca ana süreç; yukarıya bakın) |
+| Süreç DACL'ı, `SetDefaultDllDirectories`, WER dışlaması | `PR_SET_DUMPABLE=0` (WebKit alt süreçleri dahil), core dump 0 |
 | Ekran görüntüsünden gizleme | Yok (X11 ve Wayland'de böyle bir ayar yok) |
 | Google erişim anahtarı: DPAPI | Secret Service (GNOME Keyring / KWallet) |
 | Açılışta başlat: HKCU `Run` | `~/.config/autostart/com.alperen.lockalperen.desktop` (0600) |
@@ -200,7 +200,8 @@ libFuzzer hedefleri ve bağımlılık taraması.
 - **Pano:** Windows'un bıraktığı pano belleği bizim tarafımızdan silinmez; pano açıkken başka bir
   program içeriği okuyabilir.
 - **KeePass:** `keepass` crate'inin çözdüğü verinin bellekte silinip silinmediği doğrulanmadı.
-  Sıkıştırılmış içerik açılırken boyut sınırı yok (gzip bombası, açık madde). Geçmiş ve özel
+  Sıkıştırılmış içerik en fazla 384 MiB'a açılır (gzip bombası); bunun için `keepass` crate'inin
+  yamalı bir kopyası kullanılıyor (`src-tauri/vendor/keepass/LOCKALPEREN.md`). Geçmiş ve özel
   ikonlar aktarılmıyor.
 - **KDF satırı:** Kilit açma ekranındaki satır henüz doğrulanmamış başlıktan okunuyor; yalnızca
   bilgi amaçlı.

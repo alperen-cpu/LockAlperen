@@ -33,7 +33,7 @@ başlatılır. Ayarlar `~/.local/share/com.alperen.lockalperen/` altında kalır
 | İndirme adresi | Yalnızca `https://github.com/alperen-cpu/LockAlperen/releases/download/...` (`update::download_url_allowed`, testli). Kontrol hem denetimde hem kurulumdan önce yapılır |
 | Kurulum dosyası | Minisign (Ed25519) imzası, uygulamanın **içine gömülü** açık anahtarla doğrulanır. İmza tutmazsa hiçbir şey diske yazılmaz ve çalıştırılmaz |
 | Sürüm bağlama | İmzanın güvenilir yorumunda sürüm yazar ve bu, `latest.json`'daki sürümle aynı olmalıdır (`requireSignedVersion`). Böylece kurcalanmış bir `latest.json`, eski ama geçerli imzalı bir kurulumu "yeni sürüm" diye sunamaz |
-| WebView | Adres, imza ya da dosya göremez ve veremez. Yalnızca "denetle" ve "bulduğunu kur" diyebilir (`check_update`, `install_update`). Eklentinin kendi JS komutlarına izin verilmez |
+| WebView | Adres, imza ya da dosya göremez ve veremez. Yalnızca "denetle" ve "bulduğunu kur" diyebilir (`check_update`, `install_update`). Kurulum ayrıca Rust'ın açtığı yerel bir sistem penceresinde onaylanır; WebView'deki bir betik bu onayı veremez. Eklentinin kendi JS komutlarına izin verilmez |
 | Anahtar yokken | `pubkey` boşsa ağa hiç çıkılmaz ("Bu sürümde güncelleme anahtarı yok") |
 
 Ayarlar `src-tauri/tauri.conf.json` → `plugins.updater` içindedir. Bunların gevşetilmediğini

@@ -1,5 +1,23 @@
 # Sürüm Notları
 
+## [Yayınlanmadı]: açık kalan güvenlik maddeleri
+
+- **Linux: WebKit süreçlerinin belleği korunuyor.** Gösterilen parola ve düzenlenen kayıt WebKit
+  alt süreçlerinde duruyordu ve bu süreçlerin belleği aynı kullanıcının programlarına açıktı.
+  Artık bu süreçler de dump alınamaz.
+- **Windows: çökme dökümleri.** Program Windows Hata Bildirimi'nden dışlanıyor; döküm alınırsa
+  yığın dışarıda kalıyor.
+- **Güncelleme onayı sistem penceresinde.** "Güncelle" denince onay, uygulamanın sayfasında değil
+  sistemin kendi penceresinde sorulur.
+- **Site ikonları:** Ayarlar › Veri'de "Site ikonlarını otomatik indir" seçeneği ve "Eksik
+  ikonları şimdi indir" düğmesi. KeePass'ten içe aktarılan kayıtların ikonları artık
+  kendiliğinden indirilmiyor; yalnızca bu düğmeyle.
+- **KeePass içe aktarma:** küçük ama devasa boyuta açılan dosyalar (gzip bombası) artık
+  uygulamayı çökertmiyor; açılan veri en fazla 384 MiB.
+- **Windows: otomatik yazmada sahte pencere.** Hedef pencerenin programı Windows ya da Program
+  Files klasöründe olmalı veya geçerli bir imza taşımalı. Genel kısayol bir program tarafından
+  "basılırsa" hiçbir şey yazılmaz.
+
 ## [0.10.0] - 2026-11-24: tarayıcı eklentisi, güvenlik düzeltmeleri
 
 - **Tarayıcı eklentisi (Chromium, yalnızca doldurma, Linux):** `apps/browser-extension`. Ayarlar ›
