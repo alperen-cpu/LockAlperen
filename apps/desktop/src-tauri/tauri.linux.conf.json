@@ -4,6 +4,9 @@
     "targets": ["deb", "appimage"],
     "category": "Utility",
     "shortDescription": "Parola kasası",
+    "resources": {
+      "target/nodump/liblav_nodump.so": "liblav_nodump.so"
+    },
     "linux": {
       "deb": {
         "section": "utils",

@@ -508,6 +508,8 @@ export interface Settings {
   showWindowShortcut: ShowShortcut;
   /** Mirrors the HKCU Run key (Rust reads and writes it). */
   runAtStartup: boolean;
+  /** Download missing site icons on their own (never for imported entries). */
+  siteIcons: boolean;
   showExpiredOnOpen: boolean;
   autoGeneratePassword: boolean;
   generator: GenOptions;
@@ -588,7 +590,8 @@ export const checkUpdate = () => invoke<AvailableUpdate | null>("check_update");
 
 /** Locks the vault, installs the update found by checkUpdate and restarts.
  *  Resolves only if something failed (it throws then). */
-export const installUpdate = () => invoke<void>("install_update");
+/** Rust asks for approval in a native dialog; false: the user declined. */
+export const installUpdate = () => invoke<boolean>("install_update");
 
 export const addGroup = (parent: string | null, name: string) =>
   invoke<string>("add_group", { parent, name });
@@ -607,10 +610,15 @@ export const changeMaster = (current: string, newPassword: string, confirm: stri
 /** Re-checks the master password; writes a PLAIN-TEXT CSV. */
 export const exportCsv = (current: string) => invoke<boolean>("export_csv", { current });
 export const pickImportKeyfile = () => invoke<string | null>("pick_import_keyfile");
-/** Downloads missing site icons (automatic; each entry tried once per run). */
-export const fetchIcons = () =>
+/**
+ * Downloads missing site icons, one batch per call. Automatic: only if the
+ * setting allows it, never for imported entries. `onRequest`: every entry,
+ * `first` starts a new round.
+ */
+export const fetchIcons = (onRequest = false, first = false) =>
   invoke<{ fetched: number; failed: number; remaining: number; entries: EntrySummary[] }>(
     "fetch_icons",
+    { onRequest, first },
   );
 /** Minimizes the app; types into the verified window the user switches to. */
 export const autoType = (id: string) => invoke<void>("auto_type", { id });

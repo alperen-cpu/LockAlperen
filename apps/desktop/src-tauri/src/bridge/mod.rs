@@ -41,9 +41,6 @@ pub struct State {
 #[derive(Default, Clone)]
 pub struct Bridge(Arc<Mutex<State>>);
 
-/// One dialog at a time; a second request while one is open gets "busy".
-static DIALOG: Mutex<()> = Mutex::new(());
-
 impl Bridge {
     fn with<T>(&self, f: impl FnOnce(&mut State) -> T) -> Option<T> {
         self.0.lock().ok().map(|mut g| f(&mut g))
@@ -159,25 +156,7 @@ impl RealHost {
 
     /// A native dialog over the main window (brought forward first).
     fn ask(&self, title: &str, message: &str, yes: &str, no: &str) -> Result<bool, Refusal> {
-        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-        let Ok(_one) = DIALOG.try_lock() else {
-            return Err(Refusal::Busy);
-        };
-        crate::tray::show_main(&self.app);
-        let mut d = self
-            .app
-            .dialog()
-            .message(message)
-            .title(title)
-            .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancelCustom(
-                yes.to_owned(),
-                no.to_owned(),
-            ));
-        if let Some(w) = self.app.get_webview_window("main") {
-            d = d.parent(&w);
-        }
-        Ok(d.blocking_show())
+        crate::confirm::ask(&self.app, title, message, yes, no).ok_or(Refusal::Busy)
     }
 }
 

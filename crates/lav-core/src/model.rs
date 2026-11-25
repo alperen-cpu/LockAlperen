@@ -157,6 +157,12 @@ pub struct Entry {
     /// Sanitized site icon (re-encoded PNG), cached so it is fetched only once.
     #[serde(default)]
     pub icon: Option<EntryIcon>,
+    /// The site icon is fetched only when the user asks, never on its own:
+    /// set on imported entries, whose addresses the user did not type (a
+    /// crafted file would otherwise make the app contact its server on every
+    /// unlock). Cleared when the user changes the address.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub icon_on_request: bool,
     pub created: Timestamp,
     pub modified: Timestamp,
     pub history: Vec<EntryVersion>,
@@ -286,6 +292,7 @@ impl Entry {
             favorite: false,
             expires: None,
             icon: None,
+            icon_on_request: false,
             created: t,
             modified: t,
             history: Vec::new(),
@@ -293,6 +300,16 @@ impl Entry {
             fg_color: None,
             bg_color: None,
             moved: 0,
+        }
+    }
+
+    /// Sets the address the user typed. A different address drops the old
+    /// site's icon and lets the new one be fetched automatically.
+    pub fn set_url(&mut self, url: &str) {
+        if self.url != url {
+            self.url = url.to_owned();
+            self.icon = None;
+            self.icon_on_request = false;
         }
     }
 
@@ -1042,6 +1059,22 @@ impl VaultData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_address_drops_the_old_icon_and_the_on_request_mark() {
+        let mut e = Entry::new(Uuid::new_v4(), "x");
+        e.set_url("https://a.example");
+        e.icon = Some(EntryIcon {
+            png: vec![1],
+            fetched: 1,
+        });
+        e.icon_on_request = true;
+        e.set_url("https://a.example"); // same address: nothing changes
+        assert!(e.icon.is_some() && e.icon_on_request);
+        e.set_url("https://b.example");
+        assert!(e.icon.is_none() && !e.icon_on_request);
+        assert_eq!(e.url, "https://b.example");
+    }
 
     #[test]
     fn groups_and_cascading_delete() {

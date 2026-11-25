@@ -102,7 +102,9 @@ Eklenti ana parolanızı hiçbir zaman sormaz; kasa yalnızca masaüstü uygulam
 
 Uygulama yalnızca şu durumlarda ağa çıkar:
 - **Site ikonları:** doğrudan sitenin kendisinden indirilir. Siteler ve ağınız (örneğin şirket
-  proxy'si) kasanızda hangi sitelerin olduğunu görebilir. Bu indirme şu an kapatılamıyor.
+  proxy'si) kasanızda hangi sitelerin olduğunu görebilir. Otomatik indirme **Ayarlar › Veri**'den
+  kapatılabilir. İçe aktarılan kayıtların ikonları hiçbir zaman kendiliğinden indirilmez; yalnızca
+  "Eksik ikonları şimdi indir" düğmesiyle.
 - **Sürüm denetimi:** GitHub'dan yapılır; Ayarlar'dan kapatılabilir.
 - **Google Drive yedeği:** yalnızca hesap bağlanırsa. Drive'a yalnızca şifreli kasa dosyası
   gider.

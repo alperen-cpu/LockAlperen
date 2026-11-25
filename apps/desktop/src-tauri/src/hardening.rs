@@ -11,6 +11,9 @@ use windows_sys::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, DACL_SECURITY_INFORMATION,
     PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
 };
+use windows_sys::Win32::System::ErrorReporting::{
+    WerAddExcludedApplication, WerSetFlags, WER_FAULT_REPORTING_FLAG_NOHEAP,
+};
 use windows_sys::Win32::System::LibraryLoader::{
     SetDefaultDllDirectories, LOAD_LIBRARY_SEARCH_SYSTEM32,
 };
@@ -27,6 +30,33 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 pub fn restrict_dll_search() -> bool {
     // SAFETY: plain flag argument.
     unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) != 0 }
+}
+
+/// Crash dumps (Enpass 2017: a Windows Error Reporting dump put vault data
+/// on disk). Two steps, each best effort:
+/// - the program is added to the user's WER exclusion list
+///   (HKCU\...\Windows Error Reporting\ExcludedApplications), so its crashes
+///   are not reported or collected; it stays there, which is harmless;
+/// - should WER still write a dump (e.g. LocalDumps configured by an
+///   administrator), it leaves out the heap, where the secrets are.
+///
+/// The WebView2 processes (msedgewebview2.exe) are shared with other apps and
+/// are not excluded here.
+pub fn no_crash_dumps() -> bool {
+    let name = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_owned()))
+        .unwrap_or_else(|| "lockalperen.exe".into());
+    let wide: Vec<u16> = std::os::windows::ffi::OsStrExt::encode_wide(name.as_os_str())
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: `wide` is NUL-terminated and outlives the call; WerSetFlags
+    // takes a plain flag.
+    unsafe {
+        let excluded = WerAddExcludedApplication(wide.as_ptr(), 0) >= 0;
+        let no_heap = WerSetFlags(WER_FAULT_REPORTING_FLAG_NOHEAP) >= 0;
+        excluded && no_heap
+    }
 }
 
 /// Rights other processes of the same user keep on ours: see that it runs,

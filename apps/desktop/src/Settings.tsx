@@ -214,6 +214,33 @@ export function SettingsPage(props: {
   const current = CATEGORIES.find((c) => c.id === category)!;
   const off = settings === null;
 
+  async function fetchIconsNow() {
+    setBusy(true);
+    setMsg(null);
+    setError(null);
+    let fetched = 0;
+    let failed = 0;
+    try {
+      for (let round = 0; round < 100; round++) {
+        const r = await api.fetchIcons(true, round === 0);
+        fetched += r.fetched;
+        failed += r.failed;
+        if (r.fetched > 0) props.onEntries(r.entries);
+        if (r.remaining === 0) break;
+      }
+      setMsg(
+        fetched + failed === 0
+          ? "İkonu eksik kayıt yok."
+          : `${fetched} ikon indirildi` +
+              (failed > 0 ? `, ${failed} sitede ikon bulunamadı.` : "."),
+      );
+    } catch (e) {
+      setError(api.errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   type BoolKey = {
     [K in keyof api.Settings]: api.Settings[K] extends boolean ? K : never;
   }[keyof api.Settings];
@@ -587,6 +614,35 @@ export function SettingsPage(props: {
                 <button type="button" className="btn" onClick={props.onImport}>
                   <DownloadIcon />
                   İçe aktar…
+                </button>
+              </Row>
+            </section>
+            <section className="set-card">
+              <Row
+                title={<label htmlFor="s-site-icons">Site ikonlarını otomatik indir</label>}
+                text="İkonlar doğrudan sitenin kendisinden indirilir; site ve ağınız bu isteği görür. İçe aktarılan kayıtların ikonları yalnızca aşağıdaki düğmeyle indirilir."
+              >
+                <input
+                  id="s-site-icons"
+                  type="checkbox"
+                  className="switch"
+                  checked={settings?.siteIcons ?? true}
+                  disabled={off}
+                  onChange={(e) => void change({ siteIcons: e.target.checked })}
+                />
+              </Row>
+              <Row
+                title="Eksik ikonları şimdi indir"
+                text="İçe aktarılanlar dahil, adresi olup ikonu olmayan bütün kayıtlar."
+              >
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => void fetchIconsNow()}
+                >
+                  <DownloadIcon />
+                  İndir
                 </button>
               </Row>
             </section>
