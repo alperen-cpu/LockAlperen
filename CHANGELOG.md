@@ -1,6 +1,6 @@
 # Sürüm Notları
 
-## [Yayınlanmadı]: açık kalan güvenlik maddeleri
+## [0.11.0] - 2026-11-25: açık kalan güvenlik maddeleri
 
 - **Linux: WebKit süreçlerinin belleği korunuyor.** Gösterilen parola ve düzenlenen kayıt WebKit
   alt süreçlerinde duruyordu ve bu süreçlerin belleği aynı kullanıcının programlarına açıktı.
